@@ -1,0 +1,20 @@
+services:
+  - type: web
+    name: studentos-backend
+    runtime: python
+    rootDir: .
+    buildCommand: pip install -r backend/requirements.txt
+    startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
+    plan: free
+    healthCheckPath: /health
+    envVars:
+      - key: SECRET_KEY
+        generateValue: true
+      - key: DATABASE_URL
+        value: sqlite+aiosqlite:///./studentos.db
+      - key: GEMINI_API_KEY
+        value: ""
+      - key: OPENAI_API_KEY
+        value: ""
+      - key: PYTHON_VERSION
+        value: "3.12.0"
