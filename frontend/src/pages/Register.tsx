@@ -1,7 +1,9 @@
 import { useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
-import { GraduationCap, Mail, Lock, User, Eye, EyeOff } from 'lucide-react'
+import { useDispatch, useSelector } from 'react-redux'
+import { register as registerUser } from '../store/slices/authSlice'
+import { AppDispatch, RootState } from '../store'
+import { AlertCircle, GraduationCap, Mail, Lock, User, Eye, EyeOff } from 'lucide-react'
 
 const roles = [
   { value: 'student', label: 'Student', desc: 'Pursuing degree' },
@@ -17,13 +19,19 @@ export default function Register() {
   const [role, setRole] = useState('student')
   const [showPw, setShowPw] = useState(false)
   const [error, setError] = useState('')
-  const { register, loading } = useAuth()
+  const dispatch = useDispatch<AppDispatch>()
+  const { loading } = useSelector((s: RootState) => s.auth)
   const navigate = useNavigate()
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setError('')
-    try { await register(email, password, name, role); navigate('/dashboard') }
-    catch { setError('Registration failed') }
+    e.preventDefault()
+    setError('')
+    const result = await dispatch(registerUser({ email: email.trim(), password, name: name.trim(), role }))
+    if (registerUser.fulfilled.match(result)) {
+      navigate('/dashboard', { replace: true })
+    } else {
+      setError((result.payload as string) || 'Registration failed. Please try again.')
+    }
   }
 
   return (
@@ -38,7 +46,12 @@ export default function Register() {
           <p className="text-dark-muted mt-2">Join StudentOS today</p>
         </div>
         <form onSubmit={handleSubmit} className="glass rounded-2xl p-8 space-y-4">
-          {error && <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-2 rounded-lg text-sm">{error}</div>}
+          {error && (
+            <div className="bg-red-500/10 border border-red-500/30 text-red-300 px-4 py-3 rounded-xl text-sm flex items-start gap-2 leading-relaxed">
+              <AlertCircle size={16} className="shrink-0 mt-0.5 text-red-400" />
+              {error}
+            </div>
+          )}
           <div>
             <label className="text-sm text-dark-muted mb-1.5 block">Full Name</label>
             <div className="relative"><User className="absolute left-3 top-1/2 -translate-y-1/2 text-dark-muted" size={18} /><input type="text" value={name} onChange={e => setName(e.target.value)} required className="w-full bg-dark-lighter border border-dark-border rounded-xl py-3 pl-10 pr-4 text-white placeholder:text-dark-muted focus:outline-none focus:border-primary" placeholder="John Doe" /></div>

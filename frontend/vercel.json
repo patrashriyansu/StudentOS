@@ -7,6 +7,6 @@
     { "source": "/(.*)", "destination": "/index.html" }
   ],
   "env": {
-    "VITE_API_URL": ""
+    "VITE_API_URL": "https://studentos-backend-a58j.onrender.com"
   }
 }

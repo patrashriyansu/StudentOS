@@ -3,7 +3,7 @@ services:
     name: studentos-backend
     runtime: python
     rootDir: .
-    buildCommand: pip install -r backend/requirements.txt
+    buildCommand: pip install -r backend/requirements-render.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
     plan: starter
     healthCheckPath: /health
@@ -21,7 +21,9 @@ services:
       - key: PYTHON_VERSION
         value: "3.12.0"
       - key: FRONTEND_URL
-        value: ""
+        value: "https://frontend-kappa-six-cdsrakqjdt.vercel.app"
+      - key: SEED_DEMO_DATA
+        value: "true"
 
   - type: web
     name: studentos-frontend
@@ -31,7 +33,7 @@ services:
     staticPublishPath: ./dist
     envVars:
       - key: VITE_API_URL
-        value: ""
+        value: "https://studentos-backend-a58j.onrender.com"
     routes:
       - type: rewrite
         source: /*

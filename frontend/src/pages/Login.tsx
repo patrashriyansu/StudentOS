@@ -3,7 +3,7 @@ import { Link, useNavigate } from 'react-router-dom'
 import { useDispatch, useSelector } from 'react-redux'
 import { login } from '../store/slices/authSlice'
 import { AppDispatch, RootState } from '../store'
-import { GraduationCap, Mail, Lock, Eye, EyeOff, Zap, BookOpen, Code, Heart } from 'lucide-react'
+import { AlertCircle, GraduationCap, Mail, Lock, Eye, EyeOff, Zap, BookOpen, Code, Heart } from 'lucide-react'
 
 export default function Login() {
   const [email, setEmail] = useState('')
@@ -68,8 +68,8 @@ export default function Login() {
 
           {/* Error banner */}
           {error && (
-            <div className="bg-red-500/10 border border-red-500/30 text-red-400 px-4 py-3 rounded-xl text-sm flex items-center gap-2">
-              <span className="shrink-0">⚠️</span>
+            <div className="bg-red-500/10 border border-red-500/30 text-red-300 px-4 py-3 rounded-xl text-sm flex items-start gap-2 leading-relaxed">
+              <AlertCircle size={16} className="shrink-0 mt-0.5 text-red-400" />
               {error}
             </div>
           )}
@@ -103,7 +103,7 @@ export default function Login() {
                 required
                 autoComplete="current-password"
                 className="w-full bg-dark-lighter border border-dark-border rounded-xl py-3 pl-10 pr-10 text-white text-sm placeholder:text-dark-muted focus:outline-none focus:border-primary transition-colors"
-                placeholder="••••••••"
+                placeholder="Password"
               />
               <button
                 type="button"
@@ -126,6 +126,18 @@ export default function Login() {
             ) : (
               'Sign In to StudentOS'
             )}
+          </button>
+
+          <button
+            type="button"
+            onClick={() => {
+              setEmail('demo@studentos.app')
+              setPassword('demo1234')
+              setError('')
+            }}
+            className="w-full border border-dark-border bg-dark-lighter hover:border-primary/60 text-dark-muted hover:text-white font-medium py-3 rounded-xl transition-all text-sm"
+          >
+            Use demo account
           </button>
 
           <p className="text-center text-sm text-dark-muted pt-1">

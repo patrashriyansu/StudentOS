@@ -1,4 +1,7 @@
-from fastapi import FastAPI
+import asyncio
+import contextlib
+import logging
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from backend.core.database import engine, Base
@@ -17,15 +20,35 @@ import backend.finance.models        # noqa: F401
 
 from backend.api import router as api_router
 
+logger = logging.getLogger("studentos.startup")
+
+
+async def initialize_database(app: FastAPI):
+    try:
+        async with engine.begin() as conn:
+            await conn.run_sync(Base.metadata.create_all)
+        if settings.SEED_DEMO_DATA:
+            await seed_data()
+        app.state.db_ready = True
+        app.state.db_error = None
+        logger.info("Database initialization complete")
+    except Exception as exc:
+        app.state.db_ready = False
+        app.state.db_error = str(exc)
+        logger.exception("Database initialization failed")
+
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    # Auto-create all tables on startup
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
-    # Seed demo data if DB is empty
-    await seed_data()
+    app.state.db_ready = False
+    app.state.db_error = None
+    app.state.db_init_task = asyncio.create_task(initialize_database(app))
     yield
+    task = getattr(app.state, "db_init_task", None)
+    if task and not task.done():
+        task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await task
     await engine.dispose()
 
 
@@ -54,8 +77,17 @@ app.include_router(api_router, prefix="/api/v1")
 @app.get("/health")
 @app.get("/api/v1/health")
 async def health():
-    return {"status": "healthy", "version": "1.0.0", "database": settings.DATABASE_URL.split("://")[0]}
+    return {
+        "status": "healthy",
+        "version": "1.0.0",
+        "database": settings.DATABASE_URL.split("://")[0],
+        "database_ready": bool(getattr(app.state, "db_ready", False)),
+        "database_error": getattr(app.state, "db_error", None),
+    }
 
 @app.get("/ready")
 async def ready():
+    if not getattr(app.state, "db_ready", False):
+        detail = getattr(app.state, "db_error", None) or "Database is still starting"
+        raise HTTPException(status_code=503, detail=detail)
     return {"ready": True}

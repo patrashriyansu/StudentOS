@@ -1,6 +1,7 @@
 import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
 import { AuthState, User } from '../../types'
 import { api } from '../../services/api'
+import { getFriendlyApiError } from '../../services/errors'
 
 const initialState: AuthState = {
   user: JSON.parse(localStorage.getItem('user') || 'null'),
@@ -18,7 +19,7 @@ export const login = createAsyncThunk('auth/login', async ({ email, password }: 
     const userRes = await api.get('/auth/me', { headers: { Authorization: `Bearer ${data.access_token}` } })
     localStorage.setItem('user', JSON.stringify(userRes.data))
     return { token: data.access_token, refreshToken: data.refresh_token, user: userRes.data }
-  } catch (err: any) { return rejectWithValue(err.response?.data?.detail || 'Login failed') }
+  } catch (err) { return rejectWithValue(getFriendlyApiError(err, 'Login failed. Please check your email and password.')) }
 })
 
 export const register = createAsyncThunk('auth/register', async ({ email, password, name, role }: { email: string; password: string; name: string; role: string }, { rejectWithValue }) => {
@@ -29,7 +30,7 @@ export const register = createAsyncThunk('auth/register', async ({ email, passwo
     const userRes = await api.get('/auth/me', { headers: { Authorization: `Bearer ${data.access_token}` } })
     localStorage.setItem('user', JSON.stringify(userRes.data))
     return { token: data.access_token, refreshToken: data.refresh_token, user: userRes.data }
-  } catch (err: any) { return rejectWithValue(err.response?.data?.detail || 'Registration failed') }
+  } catch (err) { return rejectWithValue(getFriendlyApiError(err, 'Registration failed. Please check your details and try again.')) }
 })
 
 const authSlice = createSlice({
