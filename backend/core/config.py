@@ -21,6 +21,7 @@ class Settings(BaseSettings):
     AWS_ACCESS_KEY_ID: str = ""
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "us-east-1"
+    FRONTEND_URL: str = ""   # Set this to your Vercel URL in production
 
     class Config:
         env_file = _env_file

@@ -38,14 +38,16 @@ services:
     environment:
       DATABASE_URL: postgresql+asyncpg://studentos:studentos123@postgres:5432/studentos
       REDIS_URL: redis://redis:6379/0
-      SECRET_KEY: ${SECRET_KEY}
+      SECRET_KEY: ${SECRET_KEY:-studentos-production-secret-key-change-this}
+      GEMINI_API_KEY: ${GEMINI_API_KEY:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
     volumes:
-      - ./backend:/app
+      - ./backend:/app/backend
 
   frontend:
     build:
