@@ -28,6 +28,10 @@ services:
     buildCommand: npm install && npm run build
     staticPublishPath: ./dist
     plan: free
+    envVars:
+      - key: VITE_API_URL
+        # Set this to your Render backend URL, e.g. https://studentos-backend.onrender.com
+        value: ""
     routes:
       - type: rewrite
         source: /*

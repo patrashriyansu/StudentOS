@@ -41,11 +41,14 @@ services:
       SECRET_KEY: ${SECRET_KEY:-studentos-production-secret-key-change-this}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
       OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      PYTHONPATH: /app
     depends_on:
       postgres:
         condition: service_healthy
       redis:
         condition: service_healthy
+    # NOTE: Remove the volume below for production. It is only for local dev hot-reload.
+    # For production, use: docker compose -f docker-compose.yml -f docker-compose.prod.yml up
     volumes:
       - ./backend:/app/backend
 

@@ -1,0 +1,11 @@
+# Production override — removes the dev hot-reload volume mount.
+# Usage: docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d
+#
+# This ensures the backend container uses the code from the Docker image
+# (COPY'd during build) rather than the local filesystem.
+
+version: '3.8'
+
+services:
+  backend:
+    volumes: []  # Remove the dev ./backend:/app/backend volume mount
