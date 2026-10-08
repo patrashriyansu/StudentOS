@@ -23,7 +23,7 @@ services:
       - key: FRONTEND_URL
         value: "https://frontend-kappa-six-cdsrakqjdt.vercel.app"
       - key: SEED_DEMO_DATA
-        value: "true"
+        value: "false"
 
   - type: web
     name: studentos-frontend

@@ -15,6 +15,7 @@ class NotificationCreate(BaseModel):
     message: str
     notification_type: str = "info"
 
+@router.get("")
 @router.get("/")
 async def get_notifications(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(

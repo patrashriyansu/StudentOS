@@ -45,6 +45,13 @@ class MeditationEntry(BaseModel):
 
 
 # ── Mood ───────────────────────────────────────────────────────────────────────
+@router.get("/mood")
+async def get_mood(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Alias for /mood/today — frontend calls GET /wellness/mood"""
+    result = await db.execute(select(MoodLog).where(MoodLog.user_id == current_user.id, MoodLog.date == date.today()))
+    log = result.scalar_one_or_none()
+    return {"mood_score": log.mood_score if log else None, "note": log.note if log else None}
+
 @router.post("/mood")
 async def log_mood(req: MoodEntry, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     today = date.fromisoformat(req.date) if req.date else date.today()
@@ -77,6 +84,13 @@ async def get_mood_history(current_user: User = Depends(get_current_user), days:
 
 
 # ── Sleep ──────────────────────────────────────────────────────────────────────
+@router.get("/sleep")
+async def get_sleep(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Alias for /sleep/today — frontend calls GET /wellness/sleep"""
+    result = await db.execute(select(SleepLog).where(SleepLog.user_id == current_user.id, SleepLog.date == date.today()))
+    log = result.scalar_one_or_none()
+    return {"hours": log.hours if log else None, "quality": log.quality if log else None, "bedtime": log.bedtime if log else None, "wake_time": log.wake_time if log else None}
+
 @router.post("/sleep")
 async def log_sleep(req: SleepEntry, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     today = date.fromisoformat(req.date) if req.date else date.today()
@@ -107,6 +121,15 @@ async def get_sleep_history(current_user: User = Depends(get_current_user), days
 
 
 # ── Water ──────────────────────────────────────────────────────────────────────
+@router.get("/water")
+async def get_water(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Alias for /water/today — frontend calls GET /wellness/water"""
+    result = await db.execute(select(WaterLog).where(WaterLog.user_id == current_user.id, WaterLog.date == date.today()))
+    log = result.scalar_one_or_none()
+    glasses = log.glasses if log else 0
+    goal = log.goal if log else 8
+    return {"glasses": glasses, "goal": goal, "remaining": max(0, goal - glasses), "percentage": min(100, round(glasses / goal * 100))}
+
 @router.post("/water")
 async def log_water(req: WaterEntry, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     today = date.fromisoformat(req.date) if req.date else date.today()

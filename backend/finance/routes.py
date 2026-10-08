@@ -176,6 +176,7 @@ async def set_budget(req: BudgetCreate, current_user: User = Depends(get_current
 
 # ── Savings Goals ──────────────────────────────────────────────────────────────
 @router.get("/savings")
+@router.get("/savings-goals")
 async def get_savings_goals(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(SavingsGoal).where(SavingsGoal.user_id == current_user.id).order_by(SavingsGoal.created_at.desc()))
     goals = result.scalars().all()
