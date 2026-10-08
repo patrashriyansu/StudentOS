@@ -132,15 +132,6 @@ $btnStop.FlatAppearance.BorderSize = 0
 $btnStop.Enabled   = $false
 $form.Controls.Add($btnStop)
 
-# Hint label
-$hint = New-Object System.Windows.Forms.Label
-$hint.Text      = "Demo login: demo@studentos.app / demo1234"
-$hint.ForeColor = [System.Drawing.Color]::FromArgb(108, 99, 255)
-$hint.Location  = New-Object System.Drawing.Point(25, 495)
-$hint.Size      = New-Object System.Drawing.Size(550, 22)
-$hint.Font      = New-Object System.Drawing.Font("Segoe UI", 9, [System.Drawing.FontStyle]::Italic)
-$form.Controls.Add($hint)
-
 # ── Launch logic ─────────────────────────────────────────────────────────────────
 $btnStart.Add_Click({
     $btnStart.Enabled = $false
@@ -232,10 +223,9 @@ $btnStart.Add_Click({
             $lblHealth.ForeColor = [System.Drawing.Color]::FromArgb(16, 185, 129)
             $btnOpen.Enabled = $true
             $global:Timer.Stop()
-            Write-Log "==========================================" "Cyan"
+            Write-Log "===========================================" "Cyan"
             Write-Log "  StudentOS is LIVE at http://localhost:5173" "Cyan"
-            Write-Log "  Demo: demo@studentos.app / demo1234" "Cyan"
-            Write-Log "==========================================" "Cyan"
+            Write-Log "===========================================" "Cyan"
             Start-Process "http://localhost:5173"
         } elseif ($global:checkCount -gt 40) {
             $global:Timer.Stop()

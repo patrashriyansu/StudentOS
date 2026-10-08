@@ -24,7 +24,7 @@ export const login = createAsyncThunk('auth/login', async ({ email, password }: 
 
 export const register = createAsyncThunk('auth/register', async ({ email, password, name, role }: { email: string; password: string; name: string; role: string }, { rejectWithValue }) => {
   try {
-    const { data } = await api.post('/auth/register', { email, password, name, role })
+    const { data } = await api.post('/auth/register', { email, password, name, role }, { timeout: 30000 })
     localStorage.setItem('token', data.access_token)
     localStorage.setItem('refreshToken', data.refresh_token)
     const userRes = await api.get('/auth/me', { headers: { Authorization: `Bearer ${data.access_token}` } })

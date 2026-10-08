@@ -128,18 +128,6 @@ export default function Login() {
             )}
           </button>
 
-          <button
-            type="button"
-            onClick={() => {
-              setEmail('demo@studentos.app')
-              setPassword('demo1234')
-              setError('')
-            }}
-            className="w-full border border-dark-border bg-dark-lighter hover:border-primary/60 text-dark-muted hover:text-white font-medium py-3 rounded-xl transition-all text-sm"
-          >
-            Use demo account
-          </button>
-
           <p className="text-center text-sm text-dark-muted pt-1">
             Don&apos;t have an account?{' '}
             <Link to="/register" className="text-primary hover:underline font-medium">

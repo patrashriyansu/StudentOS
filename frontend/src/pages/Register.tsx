@@ -75,7 +75,9 @@ export default function Register() {
               ))}
             </div>
           </div>
-          <button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary-600 text-white font-medium py-3 rounded-xl transition-all disabled:opacity-50">{loading ? 'Creating account...' : 'Create Account'}</button>
+          <button type="submit" disabled={loading} className="w-full bg-primary hover:bg-primary-600 text-white font-medium py-3 rounded-xl transition-all disabled:opacity-50 flex items-center justify-center gap-2">
+            {loading ? <><span className="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Creating account...</> : 'Create Account'}
+          </button>
           <p className="text-center text-sm text-dark-muted">Already have an account? <Link to="/login" className="text-primary hover:underline">Sign in</Link></p>
         </form>
       </div>
