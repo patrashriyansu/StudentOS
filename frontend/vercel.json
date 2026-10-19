@@ -1,4 +1,5 @@
 {
+  "name": "studentos-app",
   "buildCommand": "npm run build",
   "outputDirectory": "dist",
   "installCommand": "npm install",
