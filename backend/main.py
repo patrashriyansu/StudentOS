@@ -65,7 +65,7 @@ app.add_middleware(
     CORSMiddleware,
     # In production, set FRONTEND_URL (e.g. https://studentos.vercel.app) to restrict CORS.
     # Wildcard "*" is used as fallback for local dev; credentials are disabled in that mode.
-    allow_origins=[settings.FRONTEND_URL] if settings.FRONTEND_URL else ["*"],
+    allow_origins=["*"],
     allow_credentials=bool(settings.FRONTEND_URL),  # True only when specific origin is set
     allow_methods=["*"],
     allow_headers=["*"],
