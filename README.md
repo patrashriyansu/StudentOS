@@ -1,6 +1,6 @@
 # StudentOS
-
-> **Your Academic Superpower** — A comprehensive mobile app for students.
+**Live Website**: https//studentos-patrashriyansus-projects.vercel.app/
+**StudentOS** by Shriyansu Patra — All-in-One Student Operating System for Academic Tracking, Coding Practice, Placement Prep & Productivity.
 
 ---
 
