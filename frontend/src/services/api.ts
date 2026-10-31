@@ -1,10 +1,6 @@
 import axios from 'axios'
 import { store } from '../store'
 import { logout } from '../store/slices/authSlice'
-import axios from 'axios'
-import { store } from '../store'
-import { logout } from '../store/slices/authSlice'
-
 const defaultBackend = ['https://studentos-backend-a58j', 'onrender', 'com'].join('.')
 const rawApiUrl = (import.meta.env.VITE_API_URL || defaultBackend).replace(/\/+$/, '')
 const BASE_URL = rawApiUrl.endsWith('/api/v1') ? rawApiUrl : `${rawApiUrl}/api/v1`
