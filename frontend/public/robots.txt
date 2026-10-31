@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://studentos-patrashriyansus-projects.vercel.app/sitemap.xml
+Sitemap: https://studentos.in/sitemap.xml
