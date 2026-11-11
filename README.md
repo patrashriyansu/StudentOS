@@ -1,5 +1,5 @@
 # StudentOS
-**Live Website**: https//studentos.in/
+**Live Website**: https://studentos-shriyansu.vercel.app/
 **StudentOS** by Shriyansu Patra — All-in-One Student Operating System for Academic Tracking, Coding Practice, Placement Prep & Productivity.
 
 ---
