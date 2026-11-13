@@ -4,6 +4,17 @@
   "outputDirectory": "dist",
   "installCommand": "npm install",
   "framework": "vite",
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        {
+          "key": "X-Robots-Tag",
+          "value": "index, follow"
+        }
+      ]
+    }
+  ],
   "rewrites": [
     {
       "source": "/(robots\\.txt|sitemap\\.xml|google.*\\.html)",
