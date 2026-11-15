@@ -57,11 +57,27 @@ export default function Wellness() {
     setTimeout(() => setSavedMessage(null), 3000)
   }
 
+  const refreshAnalytics = async () => {
+    const [scoreResponse, historyResponse] = await Promise.all([
+      api.get('/wellness/score'),
+      api.get('/wellness/history', { params: { days: 7 } }),
+    ])
+    setWellnessScore(scoreResponse.data)
+    const history = Array.isArray(historyResponse.data?.history) ? historyResponse.data.history : []
+    setTrendData(history
+      .filter((entry: { score?: number | null }) => entry.score !== null && entry.score !== undefined)
+      .map((entry: { date: string; score: number }) => ({
+        day: new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' }),
+        score: entry.score,
+      })))
+  }
+
   // Log Mood
   const handleLogMood = async () => {
     try {
       await api.post('/wellness/mood', { mood_score: mood, note: moodNote })
       notify('Mood logged successfully! Keep tracking daily.')
+      void refreshAnalytics().catch(console.error)
     } catch (err) {
       console.error(err)
     }
@@ -73,6 +89,7 @@ export default function Wellness() {
       await api.post('/wellness/water', { glasses, goal: 8 })
       setWater(glasses)
       notify(`${glasses} glasses recorded! Stay hydrated.`)
+      void refreshAnalytics().catch(console.error)
     } catch (err) {
       console.error(err)
     }
@@ -83,6 +100,7 @@ export default function Wellness() {
     try {
       await api.post('/wellness/sleep', { hours: sleep, quality: 4 })
       notify(`Logged ${sleep} hours of sleep!`)
+      void refreshAnalytics().catch(console.error)
     } catch (err) {
       console.error(err)
     }
@@ -142,9 +160,9 @@ export default function Wellness() {
           {
             icon: Activity,
             label: 'Vitality Score',
-            value: wellnessScore
-              ? `${wellnessScore.overall_score ?? wellnessScore.score ?? Math.round((mood / 5) * 30 + Math.min(water, 8) / 8 * 30 + Math.min(sleep, 8) / 8 * 40)}/100`
-              : `${Math.round((mood / 5) * 30 + Math.min(water, 8) / 8 * 30 + Math.min(sleep, 8) / 8 * 40)}/100`,
+            value: wellnessScore?.overall_score == null
+              ? 'Not enough data'
+              : `${wellnessScore.overall_score}/100`,
             color: 'from-emerald-500 to-teal-500',
           },
         ].map(({ icon: Icon, label, value, color }) => (
@@ -176,7 +194,7 @@ export default function Wellness() {
               <ResponsiveContainer width="100%" height={220}>
                 <LineChart data={trendData}>
                   <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 12 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 12 }} domain={[50, 100]} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 12 }} domain={[0, 100]} />
                   <Tooltip contentStyle={{ background: '#1A1A2E', border: '1px solid #2A2A3E', borderRadius: '12px' }} />
                   <Line type="monotone" dataKey="score" stroke="#A855F7" strokeWidth={2.5} dot={{ fill: '#A855F7', r: 4 }} />
                 </LineChart>
@@ -188,14 +206,13 @@ export default function Wellness() {
 
           <div className="glass rounded-2xl p-6 border border-dark-border space-y-4">
             <h3 className="font-semibold text-base flex items-center gap-2">
-              <Sparkles size={16} className="text-primary" /> AI Health Recommendations
+              <Sparkles size={16} className="text-primary" /> Wellness Guidance
             </h3>
             <div className="space-y-3">
-              {[
-                'Maintain a consistent 11:00 PM sleep schedule to optimize memory consolidation.',
-                'Drink at least 2 more glasses of water in the afternoon study stretch.',
-                'Take a 5-minute eye rest break every 45 minutes of coding.',
-              ].map((tip, i) => (
+              {(wellnessScore?.recommendations?.length
+                ? wellnessScore.recommendations
+                : ['Keep logging your daily habits to receive guidance based on your wellness history.']
+              ).map((tip: string, i: number) => (
                 <div key={i} className="p-3 rounded-xl bg-dark-lighter border border-dark-border text-xs leading-relaxed text-slate-200">
                   {tip}
                 </div>
