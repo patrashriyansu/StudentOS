@@ -62,9 +62,9 @@ async def send_test_reminder_email(
             current_user.email,
             "StudentOS email delivery test",
             (
-                f"Hello {current_user.name},\\n\\n"
+                f"Hello {current_user.name},\n\n"
                 "This is a test email from StudentOS. Your SMTP settings are working, "
-                "and scheduled reminders can now be delivered.\\n"
+                "and scheduled reminders can now be delivered.\n"
             ),
         )
     except Exception as exc:
