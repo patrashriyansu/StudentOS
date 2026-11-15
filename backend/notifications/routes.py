@@ -75,11 +75,6 @@ async def create_reminder(
         raise HTTPException(status_code=422, detail="Enter a valid reminder date and time")
     if remind_at <= datetime.now(timezone.utc):
         raise HTTPException(status_code=422, detail="Reminder must be scheduled in the future")
-    if not email_delivery_configured():
-        raise HTTPException(
-            status_code=503,
-            detail="Email reminders are not configured yet. Configure SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD and SMTP_FROM_EMAIL on the backend.",
-        )
     reminder = EmailReminder(
         user_id=current_user.id,
         title=req.title.strip(),
@@ -90,7 +85,11 @@ async def create_reminder(
     db.add(reminder)
     await db.commit()
     await db.refresh(reminder)
-    return {"id": reminder.id, "message": "Email reminder scheduled"}
+    return {
+        "id": reminder.id,
+        "message": "Email reminder queued",
+        "email_configured": email_delivery_configured(),
+    }
 
 
 @router.delete("/reminders/{reminder_id}")
