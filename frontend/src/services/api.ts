@@ -4,7 +4,7 @@ import { logout } from '../store/slices/authSlice'
 import { getAccessToken, getRefreshToken, saveTokens, shouldRememberAuth } from './authStorage'
 
 const defaultBackend = ['https://studentos-backend-a58j', 'onrender', 'com'].join('.')
-const rawApiUrl = (import.meta.env.VITE_API_URL || defaultBackend).replace(/\\/+$/, '')
+const rawApiUrl = (import.meta.env.VITE_API_URL || defaultBackend).replace(/\/+$/, '')
 const BASE_URL = rawApiUrl.endsWith('/api/v1') ? rawApiUrl : `${rawApiUrl}/api/v1`
 
 export const api = axios.create({ baseURL: BASE_URL, timeout: 15000 })
@@ -26,7 +26,7 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const original = error.config as RetryableConfig | undefined
     const requestUrl = original?.url || ''
-    const isAuthEndpoint = /\\/auth\\/(login|register|refresh|google|send-otp|verify-otp|reset-password)(\\?|$)/.test(requestUrl)
+    const isAuthEndpoint = new Set(['/auth/login', '/auth/register', '/auth/refresh', '/auth/google', '/auth/send-otp', '/auth/verify-otp', '/auth/reset-password']).has(requestUrl.split('?')[0])
 
     if (error.response?.status === 401 && original && !original._retry && !isAuthEndpoint) {
       const refreshToken = getRefreshToken()
