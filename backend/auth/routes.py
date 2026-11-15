@@ -2,8 +2,11 @@ from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from datetime import datetime, timedelta, timezone
-import random
-import string
+import asyncio
+import secrets
+import smtplib
+import ssl
+from email.message import EmailMessage
 import httpx
 import jwt as pyjwt
 from backend.core.database import get_db
@@ -19,6 +22,35 @@ router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
 
 GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/certs"
+
+def email_delivery_configured() -> bool:
+    return all((settings.SMTP_HOST, settings.SMTP_USERNAME, settings.SMTP_PASSWORD, settings.SMTP_FROM_EMAIL))
+
+
+async def send_otp_email(email: str, code: str, purpose: OTPPurpose) -> None:
+    if not email_delivery_configured():
+        raise RuntimeError("SMTP email delivery is not configured")
+
+    message = EmailMessage()
+    message["Subject"] = "Your StudentOS recovery code" if purpose == OTPPurpose.PASSWORD_RESET else "Your StudentOS verification code"
+    message["From"] = settings.SMTP_FROM_EMAIL
+    message["To"] = email
+    message.set_content(
+        f"Your StudentOS verification code is {code}. It expires in 10 minutes. "
+        "Do not share this code with anyone. If you did not request it, you can ignore this email."
+    )
+
+    def deliver() -> None:
+        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as server:
+            if settings.SMTP_STARTTLS:
+                server.starttls(context=ssl.create_default_context())
+            server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
+            server.send_message(message)
+
+    await asyncio.to_thread(deliver)
+
+
+
 _google_keys_cache: dict | None = None
 
 
@@ -141,67 +173,106 @@ async def refresh_token(request: Request, refresh_token: str = Depends(oauth2_sc
 @router.post("/send-otp")
 @limiter.limit("3/minute")
 async def send_otp(request: Request, req: OTPRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == req.email))
+    if not email_delivery_configured():
+        raise HTTPException(status_code=503, detail="Password recovery email is not configured. Please contact support.")
+
+    try:
+        purpose = OTPPurpose(req.purpose)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid OTP purpose")
+
+    result = await db.execute(select(User).where(func.lower(User.email) == req.email.lower()))
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
-    code = ''.join(random.choices(string.digits, k=6))
+        # Avoid revealing whether an email address is registered.
+        return {"message": "If an account exists, a verification code has been sent."}
+
+    pending_result = await db.execute(
+        select(OTP).where(OTP.user_id == user.id, OTP.purpose == purpose, OTP.is_used.is_(False))
+    )
+    for previous in pending_result.scalars().all():
+        previous.is_used = True
+
+    code = f"{secrets.randbelow(1_000_000):06d}"
     otp = OTP(
         user_id=user.id,
         code=code,
-        purpose=OTPPurpose(req.purpose),
-        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10)
+        purpose=purpose,
+        expires_at=datetime.now(timezone.utc) + timedelta(minutes=10),
     )
     db.add(otp)
     await db.commit()
-    return {"message": "OTP sent"}
+
+    try:
+        await send_otp_email(user.email, code, purpose)
+    except Exception:
+        otp.is_used = True
+        await db.commit()
+        raise HTTPException(status_code=503, detail="We could not send the recovery email. Please try again later.")
+
+    return {"message": "If an account exists, a verification code has been sent."}
+
 
 @router.post("/verify-otp")
 @limiter.limit("5/minute")
 async def verify_otp(request: Request, req: OTPVerifyRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == req.email))
+    try:
+        purpose = OTPPurpose(req.purpose)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Invalid OTP purpose")
+
+    result = await db.execute(select(User).where(func.lower(User.email) == req.email.lower()))
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=400, detail="Invalid or expired OTP")
+
     result = await db.execute(
         select(OTP).where(
             OTP.user_id == user.id,
             OTP.code == req.code,
-            OTP.purpose == OTPPurpose(req.purpose),
-            OTP.is_used == False,
-            OTP.expires_at > datetime.now(timezone.utc)
-        )
+            OTP.purpose == purpose,
+            OTP.is_used.is_(False),
+            OTP.expires_at > datetime.now(timezone.utc),
+        ).order_by(OTP.created_at.desc()).limit(1)
     )
     otp = result.scalar_one_or_none()
     if not otp:
         raise HTTPException(status_code=400, detail="Invalid or expired OTP")
-    otp.is_used = True
-    await db.commit()
+
+    # Password-reset verification is intentionally non-consuming. The reset
+    # endpoint consumes the same code after the new password is stored.
+    if purpose != OTPPurpose.PASSWORD_RESET:
+        otp.is_used = True
+        await db.commit()
     return {"message": "OTP verified"}
+
 
 @router.post("/reset-password")
 @limiter.limit("3/minute")
 async def reset_password(request: Request, req: PasswordResetRequest, db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(User).where(User.email == req.email))
+    result = await db.execute(select(User).where(func.lower(User.email) == req.email.lower()))
     user = result.scalar_one_or_none()
     if not user:
-        raise HTTPException(status_code=404, detail="User not found")
+        raise HTTPException(status_code=400, detail="Invalid or expired reset code")
+
     result = await db.execute(
         select(OTP).where(
             OTP.user_id == user.id,
             OTP.code == req.code,
             OTP.purpose == OTPPurpose.PASSWORD_RESET,
-            OTP.is_used == False,
-            OTP.expires_at > datetime.now(timezone.utc)
-        )
+            OTP.is_used.is_(False),
+            OTP.expires_at > datetime.now(timezone.utc),
+        ).order_by(OTP.created_at.desc()).limit(1)
     )
     otp = result.scalar_one_or_none()
     if not otp:
         raise HTTPException(status_code=400, detail="Invalid or expired reset code")
+
     user.password_hash = hash_password(req.new_password)
     otp.is_used = True
     await db.commit()
     return {"message": "Password reset successful"}
+
 
 @router.get("/me")
 async def get_me(current_user: User = Depends(get_current_user)):
