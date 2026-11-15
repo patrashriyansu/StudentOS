@@ -214,7 +214,7 @@ export default function Layout() {
           </button>
 
           {/* Search */}
-          <div style={{ flex: 1, maxWidth: 460, position: 'relative' }}>
+          <div className="app-topbar-search" style={{ flex: 1, maxWidth: 460, position: 'relative', minWidth: 0 }}>
             <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--app-muted)', pointerEvents: 'none' }} />
             <input
               value={searchQuery}
@@ -234,7 +234,7 @@ export default function Layout() {
             }}>Ctrl K</span>
           </div>
 
-          <div style={{ flex: 1 }} />
+          <div className="app-topbar-spacer" style={{ flex: 1 }} />
 
           <ThemeControl compact />
 
@@ -266,7 +266,11 @@ export default function Layout() {
 
           {/* User */}
           <div
-            style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+            className="app-user-menu"
+            role="button"
+            tabIndex={0}
+            onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') navigate('/profile') }}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', minWidth: 0 }}
             onClick={() => navigate('/profile')}
           >
             <div style={{
@@ -277,7 +281,7 @@ export default function Layout() {
             }}>
               {user?.name?.[0]?.toUpperCase() || 'S'}
             </div>
-            <div>
+            <div className="app-user-meta">
               <div className="app-user-name" style={{ fontSize: 13, fontWeight: 600, color: 'var(--app-text)', lineHeight: 1 }}>
                 {user?.name || 'Student'}
               </div>
@@ -299,7 +303,7 @@ export default function Layout() {
         </header>
 
         {/* Page Content */}
-        <main style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+        <main className="app-page-content" style={{ flex: 1, minHeight: 0, minWidth: 0, overflowY: 'auto', overflowX: 'hidden', padding: '24px' }}>
           <Outlet />
         </main>
       </div>
