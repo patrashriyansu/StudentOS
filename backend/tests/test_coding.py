@@ -199,10 +199,17 @@ def test_leetcode_public_fetch_retries_post_when_get_is_rejected(monkeypatch) ->
             self.post_calls.append(kwargs)
             return FakeResponse(200, payload)
 
-    fake_client = FakeAsyncClient()
-    monkeypatch.setattr(coding_routes.httpx, "AsyncClient", lambda **kwargs: fake_client)
+    clients = []
+
+    def make_fake_client(**kwargs):
+        client = FakeAsyncClient(**kwargs)
+        clients.append(client)
+        return client
+
+    monkeypatch.setattr(coding_routes.httpx, "AsyncClient", make_fake_client)
 
     stats = asyncio.run(coding_routes.fetch_leetcode_public_stats("shriyansupatra"))
+    fake_client = clients[0]
 
     assert stats["total_problems_solved"] == 242
     assert stats["easy_solved"] == 127
