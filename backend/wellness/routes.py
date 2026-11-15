@@ -190,7 +190,7 @@ async def log_meditation(req: MeditationEntry, current_user: User = Depends(get_
 @router.get("/summary")
 async def get_wellness_summary(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     today = date.today()
-    since_7 = today - timedelta(days=7)
+    since_7 = today - timedelta(days=6)
 
     mood_r = await db.execute(select(MoodLog).where(MoodLog.user_id == current_user.id, MoodLog.date == today))
     today_mood = mood_r.scalar_one_or_none()
@@ -275,19 +275,27 @@ async def get_wellness_history(
 @router.get("/score")
 async def get_wellness_score(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     today = date.today()
-    since_7 = today - timedelta(days=7)
+    since_7 = today - timedelta(days=6)
 
     mood_r = await db.execute(select(func.avg(MoodLog.mood_score)).where(MoodLog.user_id == current_user.id, MoodLog.date >= since_7))
     avg_mood = mood_r.scalar()
     sleep_r = await db.execute(select(func.avg(SleepLog.hours)).where(SleepLog.user_id == current_user.id, SleepLog.date >= since_7))
     avg_sleep = sleep_r.scalar()
-    water_r = await db.execute(select(func.avg(WaterLog.glasses)).where(WaterLog.user_id == current_user.id, WaterLog.date >= since_7))
-    avg_water = water_r.scalar()
+    water_r = await db.execute(
+        select(WaterLog.glasses, WaterLog.goal).where(
+            WaterLog.user_id == current_user.id, WaterLog.date >= since_7
+        )
+    )
+    water_logs = water_r.all()
+    water_scores = [
+        min(100, round((glasses / (goal or 8)) * 100))
+        for glasses, goal in water_logs
+    ]
 
     components = {
         "mood": round((float(avg_mood) / 5) * 100) if avg_mood is not None else None,
         "sleep": min(100, round((float(avg_sleep) / 8) * 100)) if avg_sleep is not None else None,
-        "water": min(100, round((float(avg_water) / 8) * 100)) if avg_water is not None else None,
+        "water": round(sum(water_scores) / len(water_scores)) if water_scores else None,
     }
     available_scores = [score for score in components.values() if score is not None]
     overall = round(sum(available_scores) / len(available_scores)) if available_scores else None
