@@ -9,6 +9,7 @@ _here = Path(__file__).parent.parent.parent  # project root
 _env_file = str(_here / "backend" / ".env") if ((_here / "backend" / ".env").exists()) else str(_here / ".env")
 
 class Settings(BaseSettings):
+    ENVIRONMENT: str = "development"
     DATABASE_URL: str = "sqlite+aiosqlite:///./studentos.db"
     REDIS_URL: str = "redis://localhost:6379/0"
     SECRET_KEY: str = "studentos-super-secret-key-change-in-production"
@@ -31,6 +32,14 @@ class Settings(BaseSettings):
     SMTP_STARTTLS: bool = True
     SEED_DEMO_DATA: bool = False
 
+    @field_validator("SECRET_KEY")
+    @classmethod
+    def validate_secret_key(cls, value: str) -> str:
+        if os.getenv("ENVIRONMENT", "development").lower() == "production":
+            if value == "studentos-super-secret-key-change-in-production" or len(value) < 32:
+                raise ValueError("Production requires a unique SECRET_KEY of at least 32 characters.")
+        return value
+
     @field_validator("DATABASE_URL")
     @classmethod
     def normalize_database_url(cls, value: str) -> str:
@@ -38,7 +47,9 @@ class Settings(BaseSettings):
         if value.startswith("postgres://"):
             return value.replace("postgres://", "postgresql+asyncpg://", 1)
         if value.startswith("postgresql://"):
-            return value.replace("postgresql://", "postgresql+asyncpg://", 1)
+            value = value.replace("postgresql://", "postgresql+asyncpg://", 1)
+        if os.getenv("ENVIRONMENT", "development").lower() == "production" and value.startswith("sqlite"):
+            raise ValueError("Production must use a persistent PostgreSQL DATABASE_URL.")
         return value
 
     class Config:
