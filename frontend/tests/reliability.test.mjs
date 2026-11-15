@@ -86,7 +86,7 @@ test('mobile sidebar opens as a translucent left drawer and closes with its X bu
   assert.match(styles, /transform: translateX\(-105%\) !important/)
   assert.match(styles, /\.app-sidebar\.mobile-open/)
   assert.match(styles, /backdrop-filter: blur\(20px\)/)
-  assert.match(styles, /data-theme="dark" \.app-sidebar/)
+  assert.match(styles, /:root\[data-theme="dark"\] \.app-sidebar/)
 })
 
 test('wellness trends are based on saved history instead of fabricated chart values', async () => {
