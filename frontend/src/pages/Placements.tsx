@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Briefcase, Upload, FileText, Clock, Star, Building2, Plus, X, Loader2, Sparkles, CheckCircle2 } from 'lucide-react'
+import { Briefcase, Upload, FileText, Clock, Star, Building2, Plus, X, Loader2, CheckCircle2 } from 'lucide-react'
 import { api } from '../services/api'
 
 const statusColors: Record<string, string> = {
@@ -185,7 +185,7 @@ export default function Placements() {
                   required
                   value={newApp.company}
                   onChange={(e) => setNewApp({ ...newApp, company: e.target.value })}
-                  placeholder="e.g. Google"
+                  placeholder="Company name"
                   className="w-full bg-dark-lighter border border-dark-border rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-primary"
                 />
               </div>
@@ -195,7 +195,7 @@ export default function Placements() {
                   required
                   value={newApp.role}
                   onChange={(e) => setNewApp({ ...newApp, role: e.target.value })}
-                  placeholder="e.g. Software Engineer Intern"
+                  placeholder="Job title / role"
                   className="w-full bg-dark-lighter border border-dark-border rounded-xl px-3.5 py-2.5 text-sm text-white focus:outline-none focus:border-primary"
                 />
               </div>
