@@ -34,10 +34,9 @@ async def _generate_text(
         from google import genai
         from google.genai import types
 
-        config: dict[str, Any] = {
-            "temperature": 0.35,
-            "max_output_tokens": 8192,
-        }
+        config: dict[str, Any] = {"max_output_tokens": 8192}
+        if not settings.GEMINI_MODEL.startswith("gemini-3"):
+            config["temperature"] = 0.35
         if system_hint:
             config["system_instruction"] = system_hint
         if json_response:
@@ -101,7 +100,7 @@ async def ask_gemini_json(prompt: str, system_hint: str = "") -> dict | list:
         json_response=True,
         thinking_level="low",
     )
-    cleaned = re.sub(r"^\\s*\\x60{3}(?:json)?\\s*|\\s*\\x60{3}\\s*$", "", output, flags=re.IGNORECASE).strip()
+    cleaned = re.sub(r"^\s*\x60{3}(?:json)?\s*|\s*\x60{3}\s*$", "", output, flags=re.IGNORECASE).strip()
 
     try:
         return json.loads(cleaned)
