@@ -125,9 +125,20 @@ async def create_offer(req: OfferCreate, current_user: User = Depends(get_curren
         status=req.status or "pending",
     )
     db.add(offer)
+    await db.flush()
+    if joining_at and joining_at > datetime.now(timezone.utc):
+        await schedule_email_reminder(
+            db,
+            user_id=current_user.id,
+            title=f"Joining reminder: {req.company}",
+            message=f"Your joining date for {req.role} at {req.company} is {joining_at.astimezone(INDIA_TZ).strftime('%d %b %Y at %I:%M %p')}.",
+            remind_at=joining_at - timedelta(days=1),
+            entity_type="offer",
+            entity_id=offer.id,
+        )
     await db.commit()
     await db.refresh(offer)
-    return {"id": offer.id, "message": "Offer saved"}
+    return {"id": offer.id, "message": "Offer saved", "email_reminder": "scheduled when a future joining date is supplied"}
 
 
 @router.get("/offers")
