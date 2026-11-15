@@ -1,9 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, status, Request
+from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from datetime import datetime, timedelta, timezone
 import asyncio
 import secrets
+import hmac
+from urllib.parse import urlencode
 import smtplib
 import ssl
 from email.message import EmailMessage
@@ -11,7 +14,7 @@ import httpx
 import jwt as pyjwt
 from backend.core.database import get_db
 from backend.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token, get_current_user, oauth2_scheme
-from backend.users.models import User
+from backend.users.models import User, OAuthIdentity
 from backend.auth.models import OTP, OTPPurpose
 from backend.auth.schemas import LoginRequest, RegisterRequest, TokenResponse, GoogleLoginRequest, OTPRequest, OTPVerifyRequest, PasswordResetRequest
 from backend.core.config import settings
@@ -207,6 +210,403 @@ async def google_login(request: Request, req: GoogleLoginRequest, db: AsyncSessi
     except Exception as exc:
         await db.rollback()
         raise HTTPException(status_code=400, detail="Google sign-in could not be completed. Please try again.") from exc
+
+
+
+def _oauth_state(provider: str) -> str:
+    nonce = secrets.token_urlsafe(32)
+    return pyjwt.encode(
+        {
+            "provider": provider,
+            "nonce": nonce,
+            "exp": datetime.now(timezone.utc) + timedelta(minutes=10),
+        },
+        settings.SECRET_KEY,
+        algorithm=settings.ALGORITHM,
+    )
+
+
+def _validate_oauth_state(provider: str, state: str | None, cookie_state: str | None) -> dict:
+    if not state or not cookie_state or not hmac.compare_digest(state, cookie_state):
+        raise HTTPException(status_code=400, detail="OAuth state validation failed")
+    try:
+        payload = pyjwt.decode(state, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])
+    except pyjwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=400, detail="OAuth state is invalid or expired") from exc
+    if payload.get("provider") != provider or not payload.get("nonce"):
+        raise HTTPException(status_code=400, detail="OAuth state does not match this provider")
+    return payload
+
+
+def _oauth_callback_url(request: Request, provider: str) -> str:
+    return str(request.url_for(f"{provider}_callback"))
+
+
+def _oauth_finish(*, access_token: str | None = None, refresh_token: str | None = None, error: str | None = None) -> RedirectResponse:
+    frontend = (settings.FRONTEND_URL.split(",")[0].strip() or "http://localhost:5173").rstrip("/")
+    values = {}
+    if access_token and refresh_token:
+        values = {"access_token": access_token, "refresh_token": refresh_token}
+    elif error:
+        values = {"error": error}
+    response = RedirectResponse(f"{frontend}/auth/callback#{urlencode(values)}", status_code=302)
+    response.headers["Cache-Control"] = "no-store"
+    response.headers["Pragma"] = "no-cache"
+    return response
+
+
+def _clear_oauth_cookie(response: RedirectResponse, provider: str) -> RedirectResponse:
+    response.delete_cookie(
+        key=f"studentos_oauth_state_{provider}",
+        path=f"/api/v1/auth/{provider}",
+        secure=True,
+        httponly=True,
+        samesite="lax",
+    )
+    return response
+
+
+async def _complete_oauth_login(
+    *,
+    provider: str,
+    provider_user_id: str,
+    email: str,
+    name: str,
+    avatar: str | None,
+    db: AsyncSession,
+) -> TokenResponse:
+    normalized_email = email.strip().lower()
+    if not normalized_email or "@" not in normalized_email or not provider_user_id:
+        raise HTTPException(status_code=401, detail="The identity provider did not return a verified email address.")
+
+    identity_result = await db.execute(
+        select(OAuthIdentity).where(
+            OAuthIdentity.provider == provider,
+            OAuthIdentity.provider_user_id == provider_user_id,
+        )
+    )
+    identity = identity_result.scalar_one_or_none()
+    user = await db.get(User, identity.user_id) if identity else None
+
+    if not user:
+        email_result = await db.execute(
+            select(User).where(func.lower(User.email) == normalized_email)
+        )
+        user = email_result.scalar_one_or_none()
+
+    if user and user.is_active is False:
+        raise HTTPException(status_code=403, detail="This StudentOS account is disabled.")
+
+    if not identity:
+        if user:
+            linked_result = await db.execute(
+                select(OAuthIdentity).where(
+                    OAuthIdentity.provider == provider,
+                    OAuthIdentity.user_id == user.id,
+                )
+            )
+            linked_identity = linked_result.scalar_one_or_none()
+            if linked_identity and linked_identity.provider_user_id != provider_user_id:
+                raise HTTPException(
+                    status_code=409,
+                    detail=f"This StudentOS account is already linked to a different {provider.title()} account.",
+                )
+        else:
+            user = User(
+                email=normalized_email,
+                name=(name or normalized_email.split("@")[0]).strip()[:255],
+                role="student",
+                password_hash="",
+                avatar=avatar,
+                is_verified=True,
+            )
+            db.add(user)
+            await db.flush()
+
+        identity = OAuthIdentity(
+            user_id=user.id,
+            provider=provider,
+            provider_user_id=provider_user_id,
+        )
+        db.add(identity)
+    elif not user:
+        raise HTTPException(status_code=401, detail="The linked StudentOS account could not be found.")
+
+    if user.email.lower() != normalized_email:
+        raise HTTPException(status_code=409, detail="The provider account email no longer matches the linked StudentOS account.")
+    user.is_verified = True
+    user.last_login = datetime.now(timezone.utc)
+    if not user.avatar and avatar:
+        user.avatar = avatar
+
+    await db.commit()
+    await db.refresh(user)
+    return TokenResponse(
+        access_token=create_access_token({"sub": str(user.id), "role": user.role}),
+        refresh_token=create_refresh_token({"sub": str(user.id)}),
+    )
+
+
+@router.get("/providers")
+async def get_login_providers():
+    return {
+        "google": bool(settings.GOOGLE_CLIENT_ID),
+        "github": bool(settings.GITHUB_CLIENT_ID and settings.GITHUB_CLIENT_SECRET),
+        "microsoft": bool(settings.MICROSOFT_CLIENT_ID and settings.MICROSOFT_CLIENT_SECRET),
+    }
+
+
+@router.get("/github/authorize", name="github_authorize")
+async def github_authorize(request: Request):
+    if not settings.GITHUB_CLIENT_ID or not settings.GITHUB_CLIENT_SECRET:
+        raise HTTPException(status_code=503, detail="GitHub sign-in is not configured yet.")
+    callback_url = _oauth_callback_url(request, "github")
+    state = _oauth_state("github")
+    auth_url = "https://github.com/login/oauth/authorize?" + urlencode({
+        "client_id": settings.GITHUB_CLIENT_ID,
+        "redirect_uri": callback_url,
+        "scope": "read:user user:email",
+        "state": state,
+    })
+    response = RedirectResponse(auth_url, status_code=302)
+    response.set_cookie(
+        key="studentos_oauth_state_github",
+        value=state,
+        max_age=600,
+        path="/api/v1/auth/github",
+        secure=request.url.scheme == "https",
+        httponly=True,
+        samesite="lax",
+    )
+    return response
+
+
+@router.get("/github/callback", name="github_callback")
+async def github_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    response: RedirectResponse
+    try:
+        state_payload = _validate_oauth_state(
+            "github", state, request.cookies.get("studentos_oauth_state_github")
+        )
+        if error or not code:
+            raise HTTPException(status_code=400, detail="GitHub sign-in was cancelled or denied.")
+
+        callback_url = _oauth_callback_url(request, "github")
+        async with httpx.AsyncClient(timeout=15) as client:
+            token_response = await client.post(
+                "https://github.com/login/oauth/access_token",
+                headers={"Accept": "application/json"},
+                data={
+                    "client_id": settings.GITHUB_CLIENT_ID,
+                    "client_secret": settings.GITHUB_CLIENT_SECRET,
+                    "code": code,
+                    "redirect_uri": callback_url,
+                    "state": state,
+                },
+            )
+            token_response.raise_for_status()
+            token_data = token_response.json()
+            github_access_token = token_data.get("access_token")
+            if not github_access_token:
+                raise HTTPException(status_code=401, detail="GitHub did not issue an access token.")
+
+            headers = {
+                "Authorization": f"Bearer {github_access_token}",
+                "Accept": "application/vnd.github+json",
+                "X-GitHub-Api-Version": "2022-11-28",
+                "User-Agent": "StudentOS",
+            }
+            profile_response = await client.get("https://api.github.com/user", headers=headers)
+            profile_response.raise_for_status()
+            profile = profile_response.json()
+            emails_response = await client.get("https://api.github.com/user/emails", headers=headers)
+            emails_response.raise_for_status()
+            emails = emails_response.json()
+
+        primary_email = next(
+            (
+                item.get("email")
+                for item in emails
+                if item.get("primary") is True and item.get("verified") is True
+            ),
+            None,
+        )
+        if not primary_email:
+            raise HTTPException(
+                status_code=401,
+                detail="Add and verify a primary email address in GitHub before signing in to StudentOS.",
+            )
+
+        tokens = await _complete_oauth_login(
+            provider="github",
+            provider_user_id=str(profile.get("id") or ""),
+            email=primary_email,
+            name=profile.get("name") or profile.get("login") or primary_email.split("@")[0],
+            avatar=profile.get("avatar_url"),
+            db=db,
+        )
+        response = _oauth_finish(
+            access_token=tokens.access_token,
+            refresh_token=tokens.refresh_token,
+        )
+    except HTTPException as exc:
+        await db.rollback()
+        response = _oauth_finish(error=exc.detail)
+    except Exception:
+        await db.rollback()
+        response = _oauth_finish(error="GitHub sign-in could not be completed. Please try again.")
+    return _clear_oauth_cookie(response, "github")
+
+
+@router.get("/microsoft/authorize", name="microsoft_authorize")
+async def microsoft_authorize(request: Request):
+    if not settings.MICROSOFT_CLIENT_ID or not settings.MICROSOFT_CLIENT_SECRET:
+        raise HTTPException(status_code=503, detail="Microsoft sign-in is not configured yet.")
+    tenant = settings.MICROSOFT_TENANT_ID or "common"
+    callback_url = _oauth_callback_url(request, "microsoft")
+    state = _oauth_state("microsoft")
+    auth_url = f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/authorize?" + urlencode({
+        "client_id": settings.MICROSOFT_CLIENT_ID,
+        "response_type": "code",
+        "redirect_uri": callback_url,
+        "response_mode": "query",
+        "scope": "openid profile email User.Read",
+        "state": state,
+        "nonce": pyjwt.decode(state, settings.SECRET_KEY, algorithms=[settings.ALGORITHM])["nonce"],
+        "prompt": "select_account",
+    })
+    response = RedirectResponse(auth_url, status_code=302)
+    response.set_cookie(
+        key="studentos_oauth_state_microsoft",
+        value=state,
+        max_age=600,
+        path="/api/v1/auth/microsoft",
+        secure=request.url.scheme == "https",
+        httponly=True,
+        samesite="lax",
+    )
+    return response
+
+
+async def _verify_microsoft_id_token(id_token: str, expected_nonce: str) -> dict:
+    try:
+        header = pyjwt.get_unverified_header(id_token)
+    except pyjwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail="Microsoft returned an invalid identity token.") from exc
+    kid = header.get("kid")
+    if not kid:
+        raise HTTPException(status_code=401, detail="Microsoft identity token has no signing key.")
+
+    async with httpx.AsyncClient(timeout=15) as client:
+        discovery = await client.get(
+            "https://login.microsoftonline.com/common/v2.0/.well-known/openid-configuration"
+        )
+        discovery.raise_for_status()
+        jwks_response = await client.get(discovery.json()["jwks_uri"])
+        jwks_response.raise_for_status()
+        jwks = jwks_response.json()
+
+    key_data = next((key for key in jwks.get("keys", []) if key.get("kid") == kid), None)
+    if not key_data:
+        raise HTTPException(status_code=401, detail="Microsoft signing key could not be verified.")
+    public_key = pyjwt.algorithms.RSAAlgorithm.from_jwk(key_data)
+    try:
+        claims = pyjwt.decode(
+            id_token,
+            public_key,
+            algorithms=["RS256"],
+            audience=settings.MICROSOFT_CLIENT_ID,
+            options={"verify_iss": False},
+        )
+    except pyjwt.InvalidTokenError as exc:
+        raise HTTPException(status_code=401, detail="Microsoft identity token validation failed.") from exc
+
+    tenant_id = claims.get("tid")
+    if not tenant_id or claims.get("iss") != f"https://login.microsoftonline.com/{tenant_id}/v2.0":
+        raise HTTPException(status_code=401, detail="Microsoft identity token issuer is invalid.")
+    if not hmac.compare_digest(str(claims.get("nonce") or ""), expected_nonce):
+        raise HTTPException(status_code=401, detail="Microsoft identity token nonce validation failed.")
+    if not claims.get("oid") and not claims.get("sub"):
+        raise HTTPException(status_code=401, detail="Microsoft identity token has no user identifier.")
+    return claims
+
+
+@router.get("/microsoft/callback", name="microsoft_callback")
+async def microsoft_callback(
+    request: Request,
+    code: str | None = None,
+    state: str | None = None,
+    error: str | None = None,
+    db: AsyncSession = Depends(get_db),
+):
+    response: RedirectResponse
+    try:
+        state_payload = _validate_oauth_state(
+            "microsoft", state, request.cookies.get("studentos_oauth_state_microsoft")
+        )
+        if error or not code:
+            raise HTTPException(status_code=400, detail="Microsoft sign-in was cancelled or denied.")
+
+        tenant = settings.MICROSOFT_TENANT_ID or "common"
+        callback_url = _oauth_callback_url(request, "microsoft")
+        async with httpx.AsyncClient(timeout=15) as client:
+            token_response = await client.post(
+                f"https://login.microsoftonline.com/{tenant}/oauth2/v2.0/token",
+                data={
+                    "client_id": settings.MICROSOFT_CLIENT_ID,
+                    "client_secret": settings.MICROSOFT_CLIENT_SECRET,
+                    "grant_type": "authorization_code",
+                    "code": code,
+                    "redirect_uri": callback_url,
+                    "scope": "openid profile email User.Read",
+                },
+            )
+            token_response.raise_for_status()
+            token_data = token_response.json()
+            id_token = token_data.get("id_token")
+            microsoft_access_token = token_data.get("access_token")
+            if not id_token or not microsoft_access_token:
+                raise HTTPException(status_code=401, detail="Microsoft did not return the required identity credentials.")
+
+            claims = await _verify_microsoft_id_token(id_token, state_payload["nonce"])
+            graph_response = await client.get(
+                "https://graph.microsoft.com/v1.0/me?$select=id,displayName,mail,userPrincipalName",
+                headers={"Authorization": f"Bearer {microsoft_access_token}"},
+            )
+            graph_response.raise_for_status()
+            profile = graph_response.json()
+
+        email = profile.get("mail") or claims.get("email") or claims.get("preferred_username")
+        if not email:
+            raise HTTPException(
+                status_code=401,
+                detail="Microsoft did not provide an email address for this account.",
+            )
+        tokens = await _complete_oauth_login(
+            provider="microsoft",
+            provider_user_id=str(claims.get("oid") or claims.get("sub") or profile.get("id") or ""),
+            email=email,
+            name=profile.get("displayName") or claims.get("name") or email.split("@")[0],
+            avatar=None,
+            db=db,
+        )
+        response = _oauth_finish(
+            access_token=tokens.access_token,
+            refresh_token=tokens.refresh_token,
+        )
+    except HTTPException as exc:
+        await db.rollback()
+        response = _oauth_finish(error=exc.detail)
+    except Exception:
+        await db.rollback()
+        response = _oauth_finish(error="Microsoft sign-in could not be completed. Please try again.")
+    return _clear_oauth_cookie(response, "microsoft")
 
 @router.post("/refresh", response_model=TokenResponse)
 @limiter.limit("10/minute")
