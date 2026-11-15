@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { BookOpen, Calendar, Clock, Plus, CheckCircle, AlertCircle, ChevronRight, Check, X, Sparkles } from 'lucide-react'
+import { BookOpen, Calendar, Clock, Plus, CheckCircle, AlertCircle, Check, X, Sparkles } from 'lucide-react'
 import { api } from '../services/api'
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
@@ -172,7 +172,7 @@ export default function Academics() {
   const latestSgpa = latestSemesterCredits > 0 ? latestSemesterPoints / latestSemesterCredits : 0
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto" aria-busy={loading}>
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
