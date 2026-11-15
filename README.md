@@ -85,12 +85,31 @@ For local development, use `ENVIRONMENT=development` and a local database.
 Production must use a persistent PostgreSQL `DATABASE_URL`, a unique
 `SECRET_KEY` of at least 32 characters, and `ENVIRONMENT=production`.
 
-### Password recovery email setup
+### Email delivery and scheduled reminders
 
-Password recovery requires SMTP credentials in the backend environment:
-`SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`,
-`SMTP_FROM_EMAIL`, and `SMTP_STARTTLS`. Configure these as private environment
-variables on the backend host; do not commit credentials to Git.
+Password recovery and scheduled email reminders use the same backend SMTP
+configuration. Set these as private environment variables on the backend host:
+
+| Variable | Gmail SMTP example |
+| --- | --- |
+| `SMTP_HOST` | `smtp.gmail.com` |
+| `SMTP_PORT` | `587` |
+| `SMTP_USERNAME` | Your sending Gmail address |
+| `SMTP_PASSWORD` | A Google App Password |
+| `SMTP_FROM_EMAIL` | Your verified sending address |
+| `SMTP_STARTTLS` | `true` |
+
+On Render, open the `studentos-backend` service, choose **Environment**, add
+the variables above, save, and redeploy the backend. For Gmail, enable
+2-Step Verification and create an [App Password](https://myaccount.google.com/apppasswords);
+do not use your normal Google password. Never commit SMTP credentials to Git.
+
+After deployment, open **Smart Notifications → Email Reminders** and select
+**Send test email**. The status endpoint reports which required variables are
+missing, and the test action verifies that the SMTP server can authenticate and
+send to the signed-in student's account email. Reminders saved before SMTP is
+configured remain queued and are processed by the backend worker after delivery
+is enabled.
 
 ### CI
 
