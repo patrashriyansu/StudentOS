@@ -1,8 +1,11 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFile } from 'node:fs/promises'
+import { dirname, join } from 'node:path'
+import { fileURLToPath } from 'node:url'
 
-const read = (path) => readFile(new URL(path, import.meta.url), 'utf8')
+const testDirectory = dirname(fileURLToPath(import.meta.url))
+const read = (path) => readFile(join(testDirectory, path), 'utf8')
 
 test('API failures are surfaced instead of converted into fake local successes', async () => {
   const source = await read('../src/services/api.ts')
