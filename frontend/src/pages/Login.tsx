@@ -1,12 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
-import { useDispatch, useSelector } from 'react-redux'
+import { useDispatch } from 'react-redux'
 import {
   AlertCircle, BookOpen, Briefcase, Code2, GraduationCap,
   HeartPulse, Loader2, Sparkles, TrendingUp,
 } from 'lucide-react'
 import { loginWithGoogle } from '../store/slices/authSlice'
-import { AppDispatch, RootState } from '../store'
+import { AppDispatch } from '../store'
 
 type GoogleCredentialResponse = { credential?: string }
 type GoogleIdentity = {
@@ -50,7 +50,6 @@ export default function Login() {
   const googleLoadingRef = useRef(false)
   const dispatch = useDispatch<AppDispatch>()
   const navigate = useNavigate()
-  const { loading } = useSelector((state: RootState) => state.auth)
 
   useEffect(() => {
     if (!googleClientId) return
