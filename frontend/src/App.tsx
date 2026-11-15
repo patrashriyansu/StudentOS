@@ -58,9 +58,9 @@ export default function App() {
   }, [dispatch])
 
   useEffect(() => {
-    const noIndexPaths = ['/login', '/register', '/forgot-password', '/auth/callback']
     const robots = document.querySelector<HTMLMetaElement>('meta[name="robots"]')
-    if (robots) robots.content = noIndexPaths.includes(location.pathname) ? 'noindex, nofollow' : 'index, follow'
+    if (robots) robots.content = location.pathname === '/' ? 'index, follow' : 'noindex, nofollow'
+    const noIndexPaths = ['/login', '/register', '/forgot-password', '/auth/callback']
 
     if (location.pathname === '/') {
       document.title = 'StudentOS | Your Student Academic, Coding & Career Workspace'
