@@ -226,18 +226,6 @@ def test_google_login_creates_account_and_returns_studentos_tokens(monkeypatch) 
 
     monkeypatch.setattr(auth_routes.settings, "GOOGLE_CLIENT_ID", "test-google-client-id")
 
-    async def fake_verify_google_id_token(id_token: str, client_id: str) -> dict:
-        assert id_token == "g" * 100
-        assert client_id == "test-google-client-id"
-        return {
-            "email": unique_email(),
-            "email_verified": True,
-            "name": "Google Student",
-            "sub": f"google-{uuid4().hex}",
-        }
-
-    monkeypatch.setattr(auth_routes, "verify_google_id_token", fake_verify_google_id_token)
-
     with TestClient(app) as client:
         wait_until_ready(client)
         email = unique_email()
@@ -277,3 +265,78 @@ def test_google_login_rejects_unverified_email(monkeypatch) -> None:
         response = client.post("/api/v1/auth/google", json={"id_token": "g" * 100})
         assert response.status_code == 403
         assert "verified" in response.json()["detail"].lower()
+
+
+
+def test_ai_chat_uses_provider_and_passes_chat_context(monkeypatch) -> None:
+    from backend.ai import routes as ai_routes
+
+    async def fake_ask_gemini(prompt: str, system_hint: str = "") -> str:
+        assert "Student question: Explain recursion" in prompt
+        assert "Context: Previous tutor message" in system_hint
+        return "Recursion is when a function calls itself."
+
+    monkeypatch.setattr(ai_routes, "ask_gemini", fake_ask_gemini)
+
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        tokens = register_user(client)
+        response = client.post(
+            "/api/v1/ai/chat",
+            headers=auth_headers(tokens["access_token"]),
+            json={
+                "message": "Explain recursion",
+                "mode": "beginner",
+                "context": "Previous tutor message: We are studying functions.",
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["response"].startswith("Recursion is")
+
+
+def test_ai_quiz_validates_generated_questions(monkeypatch) -> None:
+    from backend.ai import routes as ai_routes
+
+    async def fake_ask_gemini_json(prompt: str, system_hint: str = "") -> dict:
+        return {
+            "questions": [
+                {"question": "What is 2 + 2?", "options": ["3", "4", "5", "6"], "correct": 1, "explanation": "Two plus two equals four."},
+                {"question": "Which is a prime number?", "options": ["4", "6", "7", "8"], "correct": 2, "explanation": "Seven has exactly two positive divisors."},
+            ]
+        }
+
+    monkeypatch.setattr(ai_routes, "ask_gemini_json", fake_ask_gemini_json)
+
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        tokens = register_user(client)
+        response = client.post(
+            "/api/v1/ai/generate-quiz",
+            headers=auth_headers(tokens["access_token"]),
+            json={"topic": "Basic mathematics", "count": 2, "difficulty": "easy"},
+        )
+        assert response.status_code == 200, response.text
+        payload = response.json()
+        assert payload["total"] == 2
+        assert payload["questions"][0]["correct"] == 1
+        assert len(payload["questions"][0]["options"]) == 4
+
+
+def test_ai_quiz_rejects_malformed_provider_output_without_placeholder_questions(monkeypatch) -> None:
+    from backend.ai import routes as ai_routes
+
+    async def fake_ask_gemini_json(prompt: str, system_hint: str = "") -> dict:
+        return {"questions": [{"question": "Malformed", "options": ["A", "B"], "correct": 0}]}
+
+    monkeypatch.setattr(ai_routes, "ask_gemini_json", fake_ask_gemini_json)
+
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        tokens = register_user(client)
+        response = client.post(
+            "/api/v1/ai/generate-quiz",
+            headers=auth_headers(tokens["access_token"]),
+            json={"topic": "A topic", "count": 1, "difficulty": "easy"},
+        )
+        assert response.status_code == 502
+        assert "invalid quiz question" in response.json()["detail"].lower()

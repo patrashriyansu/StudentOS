@@ -79,17 +79,19 @@ async def get_google_public_keys() -> dict:
 
 
 async def verify_google_id_token(id_token: str, client_id: str) -> dict:
-    """Verify Google ID token signature and claims."""
+    """Verify Google ID token signature, audience, issuer and verified email."""
     keys = await get_google_public_keys()
-    unverified_header = pyjwt.get_unverified_header(id_token)
-    kid = unverified_header.get("kid")
-    if not kid:
-        raise HTTPException(status_code=400, detail="Invalid token header")
-    key_data = next((k for k in keys["keys"] if k["kid"] == kid), None)
-    if not key_data:
-        raise HTTPException(status_code=400, detail="Unable to find matching key")
-    public_key = pyjwt.algorithms.RSAAlgorithm.from_jwk(key_data)
     try:
+        header = pyjwt.get_unverified_header(id_token)
+        if header.get("alg") != "RS256":
+            raise HTTPException(status_code=400, detail="Unsupported Google token signing algorithm.")
+        kid = header.get("kid")
+        if not kid:
+            raise HTTPException(status_code=400, detail="Invalid Google token header.")
+        key_data = next((key for key in keys["keys"] if key.get("kid") == kid), None)
+        if not key_data:
+            raise HTTPException(status_code=400, detail="Unable to verify this Google token. Please retry.")
+        public_key = pyjwt.algorithms.RSAAlgorithm.from_jwk(key_data)
         payload = pyjwt.decode(
             id_token,
             public_key,
@@ -97,14 +99,19 @@ async def verify_google_id_token(id_token: str, client_id: str) -> dict:
             audience=client_id,
             issuer=["accounts.google.com", "https://accounts.google.com"],
         )
+    except HTTPException:
+        raise
     except pyjwt.ExpiredSignatureError:
-        raise HTTPException(status_code=401, detail="Token expired")
-    except pyjwt.InvalidTokenError as e:
-        raise HTTPException(status_code=400, detail=f"Invalid token: {e}")
+        raise HTTPException(status_code=401, detail="Your Google sign-in token has expired. Please try again.")
+    except pyjwt.InvalidTokenError:
+        raise HTTPException(status_code=400, detail="Google returned an invalid sign-in token.")
+    except (TypeError, ValueError, KeyError):
+        raise HTTPException(status_code=400, detail="Google returned an invalid sign-in token.")
+
     if payload.get("email_verified") is not True:
         raise HTTPException(status_code=403, detail="Your Google account email must be verified before signing in.")
     if not payload.get("email") or not payload.get("sub"):
-        raise HTTPException(status_code=400, detail="Invalid Google token: missing account details")
+        raise HTTPException(status_code=400, detail="Invalid Google token: missing account details.")
     return payload
 
 
