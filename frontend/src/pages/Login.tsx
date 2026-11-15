@@ -35,14 +35,6 @@ type ProviderStatus = { google: boolean; github: boolean; microsoft: boolean }
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim()
 const defaultProviders: ProviderStatus = { google: false, github: false, microsoft: false }
 
-const features = [
-  { icon: CalendarDays, label: 'Academics', detail: 'Timetable · Attendance · SGPA', tone: 'text-blue-600', tile: 'bg-blue-50' },
-  { icon: Code2, label: 'Coding', detail: 'LeetCode · Progress · Streak', tone: 'text-violet-600', tile: 'bg-violet-50' },
-  { icon: Briefcase, label: 'Placements', detail: 'Applications · Interviews · Offers', tone: 'text-orange-500', tile: 'bg-orange-50' },
-  { icon: TrendingUp, label: 'Productivity', detail: 'Tasks · Notes · Goals', tone: 'text-emerald-600', tile: 'bg-emerald-50' },
-  { icon: HeartPulse, label: 'Wellness', detail: 'Mood · Habits · Support', tone: 'text-rose-500', tile: 'bg-rose-50' },
-  { icon: Sparkles, label: 'AI Tools', detail: 'Study · Resume · Prep', tone: 'text-purple-500', tile: 'bg-purple-50' },
-]
 
 function GoogleMark() {
   return (
