@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from datetime import date, timedelta
@@ -6,7 +6,7 @@ from backend.core.database import get_db
 from backend.core.security import get_current_user
 from backend.users.models import User
 from backend.wellness.models import MoodLog, SleepLog, WaterLog, ExerciseLog, MeditationSession
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 
 router = APIRouter()
@@ -14,34 +14,34 @@ router = APIRouter()
 
 # ── Schemas ────────────────────────────────────────────────────────────────────
 class MoodEntry(BaseModel):
-    mood_score: int   # 1-5
-    note: Optional[str] = None
-    date: Optional[str] = None
+    mood_score: int = Field(..., ge=1, le=5)
+    note: Optional[str] = Field(default=None, max_length=1000)
+    date: Optional[date] = None
 
 class SleepEntry(BaseModel):
-    hours: float
-    quality: Optional[int] = None
+    hours: float = Field(..., gt=0, le=24)
+    quality: Optional[int] = Field(default=None, ge=1, le=5)
     bedtime: Optional[str] = None
     wake_time: Optional[str] = None
-    note: Optional[str] = None
-    date: Optional[str] = None
+    note: Optional[str] = Field(default=None, max_length=1000)
+    date: Optional[date] = None
 
 class WaterEntry(BaseModel):
-    glasses: int
-    goal: Optional[int] = 8
-    date: Optional[str] = None
+    glasses: int = Field(..., ge=0, le=50)
+    goal: int = Field(default=8, gt=0, le=50)
+    date: Optional[date] = None
 
 class ExerciseEntry(BaseModel):
-    duration_minutes: int
-    exercise_type: str
-    calories_burned: Optional[int] = None
-    note: Optional[str] = None
-    date: Optional[str] = None
+    duration_minutes: int = Field(..., gt=0, le=1440)
+    exercise_type: str = Field(..., min_length=1, max_length=100)
+    calories_burned: Optional[int] = Field(default=None, ge=0, le=10000)
+    note: Optional[str] = Field(default=None, max_length=1000)
+    date: Optional[date] = None
 
 class MeditationEntry(BaseModel):
-    duration_minutes: int
-    session_type: Optional[str] = "mindfulness"
-    date: Optional[str] = None
+    duration_minutes: int = Field(..., gt=0, le=1440)
+    session_type: Optional[str] = Field(default="mindfulness", max_length=50)
+    date: Optional[date] = None
 
 
 # ── Mood ───────────────────────────────────────────────────────────────────────
@@ -54,7 +54,7 @@ async def get_mood(current_user: User = Depends(get_current_user), db: AsyncSess
 
 @router.post("/mood")
 async def log_mood(req: MoodEntry, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    today = date.fromisoformat(req.date) if req.date else date.today()
+    today = req.date or date.today()
     # Upsert: update if already logged today
     result = await db.execute(select(MoodLog).where(MoodLog.user_id == current_user.id, MoodLog.date == today))
     log = result.scalar_one_or_none()
@@ -93,7 +93,7 @@ async def get_sleep(current_user: User = Depends(get_current_user), db: AsyncSes
 
 @router.post("/sleep")
 async def log_sleep(req: SleepEntry, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    today = date.fromisoformat(req.date) if req.date else date.today()
+    today = req.date or date.today()
     result = await db.execute(select(SleepLog).where(SleepLog.user_id == current_user.id, SleepLog.date == today))
     log = result.scalar_one_or_none()
     if log:
@@ -132,7 +132,7 @@ async def get_water(current_user: User = Depends(get_current_user), db: AsyncSes
 
 @router.post("/water")
 async def log_water(req: WaterEntry, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    today = date.fromisoformat(req.date) if req.date else date.today()
+    today = req.date or date.today()
     result = await db.execute(select(WaterLog).where(WaterLog.user_id == current_user.id, WaterLog.date == today))
     log = result.scalar_one_or_none()
     if log:
@@ -163,7 +163,7 @@ async def get_water_history(current_user: User = Depends(get_current_user), days
 # ── Exercise ───────────────────────────────────────────────────────────────────
 @router.post("/exercise")
 async def log_exercise(req: ExerciseEntry, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    today = date.fromisoformat(req.date) if req.date else date.today()
+    today = req.date or date.today()
     calories = req.calories_burned or req.duration_minutes * 7
     log = ExerciseLog(user_id=current_user.id, duration_minutes=req.duration_minutes, exercise_type=req.exercise_type, calories_burned=calories, note=req.note, date=today)
     db.add(log); await db.commit()
@@ -180,7 +180,7 @@ async def get_exercise_history(current_user: User = Depends(get_current_user), d
 # ── Meditation ─────────────────────────────────────────────────────────────────
 @router.post("/meditation")
 async def log_meditation(req: MeditationEntry, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    today = date.fromisoformat(req.date) if req.date else date.today()
+    today = req.date or date.today()
     log = MeditationSession(user_id=current_user.id, duration_minutes=req.duration_minutes, session_type=req.session_type, date=today)
     db.add(log); await db.commit()
     return {"message": "Meditation logged", "duration_minutes": req.duration_minutes}
@@ -220,31 +220,89 @@ async def get_wellness_summary(current_user: User = Depends(get_current_user), d
         }
     }
 
+@router.get("/history")
+async def get_wellness_history(
+    days: int = Query(default=7, ge=1, le=90),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    """Return date-by-date wellness metrics calculated only from saved logs."""
+    today = date.today()
+    since = today - timedelta(days=days - 1)
+
+    mood_result = await db.execute(select(MoodLog).where(
+        MoodLog.user_id == current_user.id, MoodLog.date >= since, MoodLog.date <= today
+    ))
+    sleep_result = await db.execute(select(SleepLog).where(
+        SleepLog.user_id == current_user.id, SleepLog.date >= since, SleepLog.date <= today
+    ))
+    water_result = await db.execute(select(WaterLog).where(
+        WaterLog.user_id == current_user.id, WaterLog.date >= since, WaterLog.date <= today
+    ))
+
+    moods = {row.date: row for row in mood_result.scalars().all()}
+    sleeps = {row.date: row for row in sleep_result.scalars().all()}
+    waters = {row.date: row for row in water_result.scalars().all()}
+    history = []
+
+    for offset in range(days - 1, -1, -1):
+        entry_date = today - timedelta(days=offset)
+        mood_log = moods.get(entry_date)
+        sleep_log = sleeps.get(entry_date)
+        water_log = waters.get(entry_date)
+        components = []
+        if mood_log:
+            components.append(min(100, round((mood_log.mood_score / 5) * 100)))
+        if sleep_log:
+            components.append(min(100, round((sleep_log.hours / 8) * 100)))
+        if water_log:
+            goal = water_log.goal or 8
+            components.append(min(100, round((water_log.glasses / goal) * 100)))
+
+        history.append({
+            "date": entry_date.isoformat(),
+            "mood_score": mood_log.mood_score if mood_log else None,
+            "sleep_hours": sleep_log.hours if sleep_log else None,
+            "water_glasses": water_log.glasses if water_log else None,
+            "water_goal": water_log.goal if water_log else None,
+            "score": round(sum(components) / len(components)) if components else None,
+            "tracked_metrics": len(components),
+        })
+
+    return {"history": history, "days": days}
+
+
 @router.get("/score")
 async def get_wellness_score(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     today = date.today()
     since_7 = today - timedelta(days=7)
 
     mood_r = await db.execute(select(func.avg(MoodLog.mood_score)).where(MoodLog.user_id == current_user.id, MoodLog.date >= since_7))
-    avg_mood = float(mood_r.scalar() or 3)
-    mood_score = round((avg_mood / 5) * 100)
-
+    avg_mood = mood_r.scalar()
     sleep_r = await db.execute(select(func.avg(SleepLog.hours)).where(SleepLog.user_id == current_user.id, SleepLog.date >= since_7))
-    avg_sleep = float(sleep_r.scalar() or 6)
-    sleep_score = min(100, round((avg_sleep / 8) * 100))
-
+    avg_sleep = sleep_r.scalar()
     water_r = await db.execute(select(func.avg(WaterLog.glasses)).where(WaterLog.user_id == current_user.id, WaterLog.date >= since_7))
-    avg_water = float(water_r.scalar() or 4)
-    water_score = min(100, round((avg_water / 8) * 100))
+    avg_water = water_r.scalar()
 
-    overall = round((mood_score + sleep_score + water_score) / 3)
+    components = {
+        "mood": round((float(avg_mood) / 5) * 100) if avg_mood is not None else None,
+        "sleep": min(100, round((float(avg_sleep) / 8) * 100)) if avg_sleep is not None else None,
+        "water": min(100, round((float(avg_water) / 8) * 100)) if avg_water is not None else None,
+    }
+    available_scores = [score for score in components.values() if score is not None]
+    overall = round(sum(available_scores) / len(available_scores)) if available_scores else None
+    recommendations = []
+    if components["water"] is None or components["water"] < 75:
+        recommendations.append("Track your water intake and work toward your daily goal.")
+    if components["sleep"] is None or components["sleep"] < 75:
+        recommendations.append("Aim for a consistent 7-9 hours of sleep.")
+    if components["mood"] is None:
+        recommendations.append("Log your mood to see how you are feeling over time.")
+    elif components["mood"] < 60:
+        recommendations.append("Consider taking a break and reaching out to someone you trust.")
     return {
         "overall_score": overall,
-        "components": {"mood": mood_score, "sleep": sleep_score, "water": water_score},
-        "trend": "improving" if overall >= 60 else "needs_attention",
-        "recommendations": [
-            "Drink at least 8 glasses of water daily" if water_score < 75 else "Great hydration!",
-            "Aim for 7-9 hours of sleep" if sleep_score < 75 else "Good sleep habits!",
-            "Track your mood daily for better insights" if mood_score < 60 else "Mood looks stable!",
-        ]
+        "components": components,
+        "trend": "not_enough_data" if overall is None else ("improving" if overall >= 60 else "needs_attention"),
+        "recommendations": recommendations,
     }
