@@ -184,12 +184,12 @@ export default function Login() {
             ))}
           </div>
 
-          <div className="pointer-events-none absolute -bottom-2 right-0 hidden h-[46%] w-[46%] lg:block xl:h-[52%] xl:w-[48%]">
+          <div className="pointer-events-none absolute bottom-0 right-0 z-[5] hidden h-[48%] w-[48%] md:block lg:h-[62%] lg:w-[58%] xl:h-[68%] xl:w-[62%]">
             <img
               src="/images/studentos-login-hero.webp"
-              alt=""
+              alt="Student holding a laptop"
               aria-hidden="true"
-              className="h-full w-full object-contain object-bottom"
+              className="h-full w-full object-contain object-bottom drop-shadow-xl"
             />
           </div>
         </section>
