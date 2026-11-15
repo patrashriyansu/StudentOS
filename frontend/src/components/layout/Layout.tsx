@@ -152,8 +152,8 @@ export default function Layout() {
 
           <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '10px 4px' }} />
 
-          {secondNav.map(({ to, icon, label, badge }) => (
-            <NavItem key={label} to={to} icon={icon} label={label} badge={label === 'Notifications' ? unreadCount : badge} />
+          {secondNav.map(({ to, icon, label }) => (
+            <NavItem key={label} to={to} icon={icon} label={label} badge={label === 'Notifications' ? unreadCount : undefined} />
           ))}
         </nav>
 
