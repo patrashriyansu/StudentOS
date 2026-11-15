@@ -29,7 +29,7 @@ export default function AIAssistant() {
   const [chat, setChat] = useState<{ role: 'ai' | 'user'; content: string }[]>([
     {
       role: 'ai',
-      content: "Hello! I'm your AI Academic Copilot. Ask me any concept doubt, request code explanations, or generate practice quizzes!",
+      content: "Hello! I'm your StudentOS Chatbot. Ask a question, get a concept explained, or create quizzes and flashcards for your studies.",
     },
   ])
   const [chatLoading, setChatLoading] = useState(false)
@@ -164,12 +164,12 @@ export default function AIAssistant() {
   }
 
   return (
-    <div className="space-y-6 max-w-7xl mx-auto">
+    <div className="space-y-6 max-w-7xl mx-auto ai-chat-page">
       {/* Header */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Bot className="text-primary" /> AI Academic Copilot
+            <Bot className="text-primary" /> Chatbot
           </h1>
           <p className="text-dark-muted">Instant concept tutoring, smart summaries, adaptive quizzes & flashcards</p>
           <div className="mt-2 flex items-center gap-2 text-xs">
@@ -183,7 +183,7 @@ export default function AIAssistant() {
           )}
           {aiStatusError && <p className="mt-1 text-xs text-rose-300">{aiStatusError}</p>}
         </div>
-        <div className="flex gap-1 glass rounded-xl p-1">
+        <div className="ai-tool-tabs flex gap-1 glass rounded-xl p-1">
           {(['chat', 'summarize', 'quiz', 'flashcards'] as const).map((t) => (
             <button
               key={t}
@@ -200,12 +200,12 @@ export default function AIAssistant() {
 
       {/* Tab: Chat */}
       {tab === 'chat' && (
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          <div className="lg:col-span-2 glass rounded-2xl flex flex-col h-[650px] border border-dark-border">
+        <div className="ai-chat-layout grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <div className="ai-chat-panel lg:col-span-2 glass rounded-2xl flex flex-col h-[650px] border border-dark-border">
             {/* Mode Selector */}
-            <div className="px-6 py-3 border-b border-dark-border flex items-center justify-between text-xs">
+            <div className="ai-chat-mode px-6 py-3 border-b border-dark-border flex items-center justify-between text-xs">
               <span className="text-dark-muted">Tutoring Mode:</span>
-              <div className="flex gap-1.5">
+              <div className="ai-chat-mode-options flex gap-1.5">
                 {[
                   { id: 'default', label: 'General' },
                   { id: 'exam', label: 'Exam Prep' },
@@ -226,7 +226,7 @@ export default function AIAssistant() {
             </div>
 
             {/* Chat Body */}
-            <div className="flex-1 overflow-y-auto p-6 space-y-4">
+            <div className="ai-chat-messages flex-1 overflow-y-auto p-6 space-y-4">
               {chat.map((c, i) => (
                 <div key={i} className={`flex gap-3 ${c.role === 'user' ? 'justify-end' : ''}`}>
                   {c.role === 'ai' && (
@@ -259,7 +259,7 @@ export default function AIAssistant() {
             </div>
 
             {/* Chat Input */}
-            <div className="p-4 border-t border-dark-border">
+            <div className="ai-chat-composer p-4 border-t border-dark-border">
               <div className="flex gap-2">
                 <input
                   value={message}
@@ -280,7 +280,7 @@ export default function AIAssistant() {
           </div>
 
           {/* Right Sidebar: Suggestions & Actions */}
-          <div className="space-y-6">
+          <div className="space-y-6 ai-tool-panel">
             <div className="glass rounded-2xl p-6 border border-dark-border">
               <h3 className="font-semibold text-sm mb-3">Popular Doubt Prompts</h3>
               <div className="space-y-2">
@@ -298,7 +298,7 @@ export default function AIAssistant() {
 
             <div className="glass rounded-2xl p-6 border border-dark-border">
               <h3 className="font-semibold text-sm mb-3">Quick AI Generators</h3>
-              <div className="space-y-2.5">
+              <div className="space-y-2.5 ai-generator-list">
                 <button
                   onClick={() => setTab('quiz')}
                   className="w-full flex items-center gap-3 p-3 rounded-xl bg-dark-lighter border border-dark-border hover:border-primary/50 transition-all text-left"
@@ -327,7 +327,7 @@ export default function AIAssistant() {
 
       {/* Tab: Summarize */}
       {tab === 'summarize' && (
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 ai-summary-layout">
           <div className="glass rounded-2xl p-6 border border-dark-border flex flex-col justify-between h-[520px]">
             <div>
               <h3 className="font-semibold text-base mb-2">Input Academic Text</h3>
