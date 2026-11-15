@@ -47,7 +47,7 @@ function StatCard({ icon: Icon, iconColor, label, value, unit, trendLabel, trend
       border: '1px solid rgba(255,255,255,0.07)',
       display: 'flex', alignItems: 'center', justifyContent: 'space-between',
       position: 'relative', overflow: 'hidden', flex: 1,
-    }}>
+    }} className="dashboard-stat-card">
       <div style={{ position: 'absolute', top: -30, right: 70, width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,255,255,0.03)', pointerEvents: 'none' }} />
       <div style={{ flex: 1, minWidth: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
@@ -79,10 +79,11 @@ function HubTile({ icon: Icon, label, sub, color, to }: { icon: any; label: stri
   const navigate = useNavigate()
   return (
     <button onClick={() => navigate(to)}
+      className="dashboard-hub-tile"
       style={{
         display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
-        borderRadius: 12, background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: 12, background: 'var(--app-subtle)',
+        border: '1px solid var(--app-border)',
         cursor: 'pointer', textAlign: 'left', width: '100%',
         transition: 'background 0.15s',
       }}
@@ -93,8 +94,8 @@ function HubTile({ icon: Icon, label, sub, color, to }: { icon: any; label: stri
         <Icon size={17} style={{ color }} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{label}</div>
-        <div style={{ fontSize: 11, color: '#6B7280', marginTop: 1 }}>{sub}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--app-text)' }}>{label}</div>
+        <div style={{ fontSize: 11, color: 'var(--app-muted)', marginTop: 1 }}>{sub}</div>
       </div>
       <span style={{ color: '#4B5563', fontSize: 18, lineHeight: 1 }}>›</span>
     </button>
@@ -208,19 +209,19 @@ export default function Dashboard() {
   /* panel style shorthand */
   const panel: React.CSSProperties = {
     borderRadius: 16, padding: 20,
-    background: '#0E0E24',
-    border: '1px solid rgba(255,255,255,0.07)',
+    background: 'var(--app-panel)',
+    border: '1px solid var(--app-border)',
   }
   const panelHead: React.CSSProperties = {
     display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14,
   }
-  const h3: React.CSSProperties = { fontSize: 14, fontWeight: 700, color: '#fff', margin: 0 }
+  const h3: React.CSSProperties = { fontSize: 14, fontWeight: 700, color: 'var(--app-text)', margin: 0 }
 
   return (
-    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 1400 }}>
+    <div className="dashboard-root" style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 1400 }}>
 
       {/* ── Hero ─────────────────────────────────────────── */}
-      <div style={{
+      <div className="dashboard-hero" style={{
         borderRadius: 20, padding: '26px 32px',
         background: 'linear-gradient(135deg,#0C0829 0%,#160A40 50%,#0A1030 100%)',
         border: '1px solid rgba(108,99,255,0.18)',
@@ -246,7 +247,7 @@ export default function Dashboard() {
 
         <div>
           <div style={{ display:'flex', alignItems:'baseline', gap:10, flexWrap:'wrap' }}>
-            <span style={{ fontSize:28, fontWeight:800, color:'#fff' }}>👋 {greeting()},</span>
+            <span style={{ fontSize:28, fontWeight:800, color:'var(--app-text)' }}>👋 {greeting()},</span>
             <span style={{
               fontSize:28, fontWeight:800,
               background:'linear-gradient(135deg,#A78BFA,#EC4899)',
@@ -255,21 +256,21 @@ export default function Dashboard() {
               {user?.name?.split(' ')[0] || 'Student'}!
             </span>
           </div>
-          <div style={{ display:'flex', alignItems:'center', gap:6, color:'rgba(255,255,255,0.45)', fontSize:13, marginTop:6 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:6, color:'var(--app-muted)', fontSize:13, marginTop:6 }}>
             <Sparkles size={13} style={{ color:'#A78BFA' }} />
             Your AI-powered student operating system
           </div>
         </div>
 
-        <div style={{
+        <div className="dashboard-date-chip" style={{
           display:'flex', alignItems:'center', gap:12,
-          background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)',
+          background:'var(--app-panel)', border:'1px solid var(--app-border)',
           borderRadius:14, padding:'12px 20px', flexShrink:0,
         }}>
           <Calendar size={18} style={{ color:'#A78BFA' }} />
           <div>
-            <div style={{ fontSize:13, fontWeight:600, color:'#fff' }}>{dateLabel}</div>
-            <div style={{ fontSize:11, color:'#6B7280', marginTop:3 }}>5th Semester • ITER, SOA</div>
+            <div style={{ fontSize:13, fontWeight:600, color:'var(--app-text)' }}>{dateLabel}</div>
+            <div style={{ fontSize:11, color:'var(--app-muted)', marginTop:3 }}>5th Semester • ITER, SOA</div>
           </div>
         </div>
       </div>
@@ -314,7 +315,7 @@ export default function Dashboard() {
       <div style={{ display:'grid', gridTemplateColumns:'5fr 4fr 3fr', gap:14 }}>
 
         {/* My Hubs */}
-        <div style={panel}>
+        <div className="dashboard-panel" style={panel}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
             <h3 style={h3}>My Hubs</h3>
             <button onClick={() => navigate('/')} style={{ fontSize:12, color:'#6C63FF', background:'none', border:'none', cursor:'pointer' }}>View All →</button>
@@ -351,7 +352,7 @@ export default function Dashboard() {
         </div>
 
         {/* Today's Tasks */}
-        <div style={panel}>
+        <div className="dashboard-panel" style={panel}>
           <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
             <div style={{ display:'flex', alignItems:'center', gap:7 }}>
               <CheckCircle2 size={15} style={{ color:'#6C63FF' }} />
@@ -402,7 +403,7 @@ export default function Dashboard() {
         </div>
 
         {/* Upcoming Exams */}
-        <div style={panel}>
+        <div className="dashboard-panel" style={panel}>
           <div style={panelHead}>
             <Calendar size={15} style={{ color:'#6C63FF' }} />
             <h3 style={h3}>Upcoming Exams</h3>
@@ -449,7 +450,7 @@ export default function Dashboard() {
       <div style={{ display:'grid', gridTemplateColumns:'5fr 4fr 3fr', gap:14 }}>
 
         {/* Academic Overview */}
-        <div style={panel}>
+        <div className="dashboard-panel" style={panel}>
           <div style={panelHead}>
             <GraduationCap size={15} style={{ color:'#6C63FF' }} />
             <h3 style={h3}>Academic Overview</h3>
@@ -502,7 +503,7 @@ export default function Dashboard() {
         </div>
 
         {/* LeetCode Progress */}
-        <div style={panel}>
+        <div className="dashboard-panel" style={panel}>
           <div style={panelHead}>
             <Code size={15} style={{ color:'#F59E0B' }} />
             <h3 style={h3}>LeetCode Progress</h3>
@@ -550,7 +551,7 @@ export default function Dashboard() {
         </div>
 
         {/* Attendance Trend */}
-        <div style={panel}>
+        <div className="dashboard-panel" style={panel}>
           <div style={panelHead}>
             <TrendingUp size={15} style={{ color:'#10B981' }} />
             <h3 style={h3}>Attendance Trend</h3>

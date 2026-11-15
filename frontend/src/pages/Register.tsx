@@ -84,10 +84,11 @@ export default function Register() {
   }
 
   return (
-    <div className="min-h-screen flex bg-dark overflow-hidden">
+    <div className="register-page min-h-screen flex overflow-hidden">
+      <div className="register-background" aria-hidden="true" />
       {/* ── LEFT PANEL — Branding ── */}
-      <div className="hidden lg:flex lg:w-[42%] relative flex-col justify-between p-12 overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-br from-[#06061a] via-[#0d0d2b] to-[#120828]" />
+      <div className="register-visual hidden lg:flex lg:w-[42%] relative flex-col justify-between p-12 overflow-hidden">
+        <div className="register-visual-backdrop absolute inset-0" />
         <div className="absolute top-[-80px] left-[-80px] w-[420px] h-[420px] rounded-full bg-primary/20 blur-[120px]" />
         <div className="absolute bottom-[-60px] right-[-40px] w-[360px] h-[360px] rounded-full bg-secondary/25 blur-[100px]" />
         <div
@@ -139,10 +140,9 @@ export default function Register() {
       </div>
 
       {/* ── RIGHT PANEL — Registration Form ── */}
-      <div className="flex-1 flex items-start justify-center relative overflow-y-auto py-8 px-4">
+      <div className="register-form-panel flex-1 flex items-start justify-center relative overflow-y-auto py-8 px-4">
         <div className="absolute inset-0 lg:hidden bg-gradient-to-br from-primary/10 via-transparent to-secondary/10" />
         <div className="absolute top-20 right-10 w-52 h-52 bg-primary/15 rounded-full blur-[80px] lg:hidden" />
-        <div className="absolute inset-0 hidden lg:block bg-[#090914]" />
 
         <div className="relative z-10 w-full max-w-md py-6">
           {/* Mobile logo */}
@@ -158,7 +158,7 @@ export default function Register() {
           <form
             onSubmit={handleSubmit}
             noValidate
-            className="bg-[#111122] border border-white/[0.07] rounded-2xl p-7 shadow-2xl shadow-black/50 space-y-4"
+            className="register-card border rounded-2xl p-7 shadow-2xl space-y-4"
           >
             <div>
               <h2 className="text-xl font-bold text-white">Create your account</h2>

@@ -2,47 +2,346 @@
 @tailwind components;
 @tailwind utilities;
 
-/* ── Base ──────────────────────────────────────────────────── */
 * { box-sizing: border-box; }
+
+:root {
+  color-scheme: light;
+  --app-bg: #f3f5fc;
+  --app-text: #17213f;
+  --app-muted: #64708a;
+  --app-sidebar-bg: rgba(255,255,255,0.94);
+  --app-topbar-bg: rgba(255,255,255,0.94);
+  --app-panel: rgba(255,255,255,0.92);
+  --app-panel-muted: #f7f8fd;
+  --app-input: #f1f3fa;
+  --app-border: #e1e6f1;
+  --app-sidebar-active: linear-gradient(135deg,rgba(108,99,255,0.13),rgba(168,85,247,0.08));
+  --app-sidebar-muted: #68748e;
+  --app-shadow: 0 16px 45px rgba(42,56,100,0.08);
+  --app-subtle: #f0f2f9;
+}
+
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --app-bg: #080818;
+  --app-text: #ffffff;
+  --app-muted: #9ca3af;
+  --app-sidebar-bg: #0b0b1e;
+  --app-topbar-bg: #0b0b1e;
+  --app-panel: #0e0e24;
+  --app-panel-muted: #141430;
+  --app-input: #2a2a3e;
+  --app-border: #2a2a3e;
+  --app-sidebar-active: linear-gradient(135deg,rgba(108,99,255,0.22),rgba(168,85,247,0.12));
+  --app-sidebar-muted: #9ca3af;
+  --app-shadow: 0 18px 50px rgba(0,0,0,0.24);
+  --app-subtle: rgba(255,255,255,0.05);
+}
+
+html, body, #root { min-height: 100%; }
 
 body {
   margin: 0;
   font-family: 'Inter', system-ui, -apple-system, sans-serif;
-  background: #070714;
-  color: #ffffff;
+  background: var(--app-bg);
+  color: var(--app-text);
   -webkit-font-smoothing: antialiased;
 }
 
-/* ── Scrollbar ─────────────────────────────────────────────── */
-::-webkit-scrollbar { width: 5px; height: 5px; }
+/* Scrollbars follow the selected theme. */
+::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: rgba(108,99,255,0.3); border-radius: 4px; }
+::-webkit-scrollbar-thumb { background: rgba(108,99,255,0.32); border-radius: 5px; }
 ::-webkit-scrollbar-thumb:hover { background: #6C63FF; }
 
-/* ── Glass cards ───────────────────────────────────────────── */
+/* Reusable surfaces used across feature pages. */
 .glass {
-  background: rgba(18, 18, 42, 0.85);
+  background: var(--app-panel);
   backdrop-filter: blur(14px);
-  border: 1px solid rgba(108, 99, 255, 0.12);
+  border: 1px solid var(--app-border);
+  box-shadow: var(--app-shadow);
 }
 .glass-hover:hover {
-  background: rgba(42, 42, 70, 0.6);
+  background: var(--app-panel-muted);
   border-color: rgba(108,99,255,0.35);
 }
-
-/* ── Gradient text ─────────────────────────────────────────── */
 .gradient-text {
   background: linear-gradient(135deg, #6C63FF 0%, #A855F7 100%);
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
   background-clip: text;
 }
+.hub-card:hover { box-shadow: 0 8px 30px rgba(108,99,255,0.15); }
 
-/* ── Card glow on hover ────────────────────────────────────── */
-.hub-card:hover {
-  box-shadow: 0 8px 30px rgba(108, 99, 255, 0.15);
+/* Persistent appearance selector. */
+.theme-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--app-border);
+  border-radius: 12px;
+  background: var(--app-panel);
+  color: var(--app-muted);
+  flex-shrink: 0;
+}
+.theme-control-label {
+  padding: 0 7px 0 8px;
+  color: var(--app-muted);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .02em;
+}
+.theme-choice {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--app-muted);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.theme-choice:hover { background: var(--app-subtle); color: var(--app-text); }
+.theme-choice-active {
+  background: rgba(108,99,255,0.12);
+  border-color: rgba(108,99,255,0.24);
+  color: #6559e8;
+}
+:root[data-theme="dark"] .theme-choice-active { color: #c4b5fd; }
+.theme-control-compact .theme-control-label { padding: 0 4px 0 6px; }
+.theme-control-compact .theme-choice { width: 30px; padding: 0; }
+
+/* Application shell and shared dashboard styling. */
+.app-shell { background: var(--app-bg); color: var(--app-text); }
+.app-sidebar { background: var(--app-sidebar-bg); border-color: var(--app-border); }
+.app-topbar { background: var(--app-topbar-bg); border-color: var(--app-border); }
+.app-content { background: var(--app-bg); color: var(--app-text); }
+.dashboard-root { color: var(--app-text); }
+.dashboard-panel {
+  background: var(--app-panel);
+  border: 1px solid var(--app-border);
+  box-shadow: var(--app-shadow);
+}
+.dashboard-hero { box-shadow: var(--app-shadow); }
+.dashboard-hub-tile {
+  background: var(--app-subtle);
+  border: 1px solid var(--app-border);
+  color: var(--app-text);
 }
 
-/* ── Smooth transitions ────────────────────────────────────── */
-* { transition-property: color, background-color, border-color, opacity, transform;
-    transition-duration: 150ms; transition-timing-function: ease; }
+/* Registration page: a bright campus-library image with a readable form card. */
+.register-page {
+  position: relative;
+  min-height: 100vh;
+  overflow: hidden;
+  background: var(--app-bg);
+  color: var(--app-text);
+}
+.register-background {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(90deg, rgba(246,248,255,0.78) 0%, rgba(246,248,255,0.60) 43%, rgba(246,248,255,0.84) 100%),
+    url('/images/studentos-campus-hero.webp');
+  background-size: cover;
+  background-position: center;
+}
+.register-visual { isolation: isolate; }
+.register-visual-backdrop {
+  background: linear-gradient(135deg,rgba(236,240,255,0.32),rgba(247,241,255,0.20));
+}
+.register-visual h2 { color: #17213f; text-shadow: 0 1px 18px rgba(255,255,255,0.24); }
+.register-visual p, .register-visual .text-slate-400 { color: #53627f; }
+.register-form-panel { background: transparent; }
+.register-card {
+  background: rgba(255,255,255,0.88);
+  border: 1px solid rgba(255,255,255,0.92);
+  color: #17213f;
+  box-shadow: 0 24px 70px rgba(47,62,110,0.16);
+  backdrop-filter: blur(22px);
+}
+.register-card .text-white { color: #17213f !important; }
+.register-card .text-dark-muted { color: #68748e !important; }
+.register-card input {
+  color: #18213d;
+  background: rgba(243,245,251,0.94);
+  border-color: #dce2ef;
+}
+.register-card input::placeholder { color: #8791a7; }
+.register-card input:focus { background: #fff; }
+.register-card .bg-dark-lighter { background: #f0f2f9; }
+.register-card .border-dark-border { border-color: #dce2ef; }
+.register-card button[aria-label="Show password"],
+.register-card button[aria-label="Hide password"] { color: #68748e; }
+.register-card button[aria-label="Show password"]:hover,
+.register-card button[aria-label="Hide password"]:hover { color: #3c4b6a; }
+.register-card .text-red-300 { color: #b4233a; }
+.register-card .text-red-400 { color: #c24154; }
+.register-card .text-dark-muted a { color: #6559e8; }
+
+:root[data-theme="dark"] .register-background {
+  background-image:
+    linear-gradient(90deg,rgba(7,8,27,0.88) 0%,rgba(8,8,24,0.78) 48%,rgba(8,8,24,0.90) 100%),
+    url('/images/studentos-campus-hero.webp');
+}
+:root[data-theme="dark"] .register-visual h2 { color: #fff; }
+:root[data-theme="dark"] .register-visual p,
+:root[data-theme="dark"] .register-visual .text-slate-400 { color: #a7b0c4; }
+:root[data-theme="dark"] .register-card {
+  background: rgba(17,17,34,0.91);
+  border-color: rgba(255,255,255,0.08);
+  color: #fff;
+}
+:root[data-theme="dark"] .register-card .text-white { color: #fff !important; }
+:root[data-theme="dark"] .register-card .text-dark-muted { color: #9ca3af !important; }
+:root[data-theme="dark"] .register-card input {
+  color: #fff;
+  background: #2a2a3e;
+  border-color: #2a2a3e;
+}
+:root[data-theme="dark"] .register-card input::placeholder { color: #9ca3af; }
+:root[data-theme="dark"] .register-card .bg-dark-lighter { background: #2a2a3e; }
+:root[data-theme="dark"] .register-card .border-dark-border { border-color: #2a2a3e; }
+
+/* Light theme: translate the app's shared dark utility palette to light surfaces. */
+:root[data-theme="light"] body { background: var(--app-bg); color: var(--app-text); }
+:root[data-theme="light"] .bg-dark { background-color: var(--app-bg) !important; }
+:root[data-theme="light"] .bg-dark-card { background-color: var(--app-panel) !important; }
+:root[data-theme="light"] .bg-dark-lighter { background-color: var(--app-input) !important; }
+:root[data-theme="light"] .border-dark-border { border-color: var(--app-border) !important; }
+:root[data-theme="light"] .text-dark-muted { color: var(--app-muted) !important; }
+:root[data-theme="light"] .text-slate-300,
+:root[data-theme="light"] .text-slate-400,
+:root[data-theme="light"] .text-gray-300,
+:root[data-theme="light"] .text-gray-400 { color: var(--app-muted) !important; }
+:root[data-theme="light"] .text-white:not(.bg-gradient-to-r):not([class*="bg-gradient-to-r"]) {
+  color: var(--app-text) !important;
+}
+:root[data-theme="light"] .glass {
+  background: var(--app-panel) !important;
+  border-color: var(--app-border) !important;
+  box-shadow: var(--app-shadow);
+}
+:root[data-theme="light"] input:not([type="checkbox"]),
+:root[data-theme="light"] textarea,
+:root[data-theme="light"] select {
+  color: var(--app-text);
+}
+:root[data-theme="light"] input::placeholder,
+:root[data-theme="light"] textarea::placeholder { color: #8791a7; }
+:root[data-theme="light"] [class*="bg-[#111122]"],
+:root[data-theme="light"] [class*="bg-[#141430]"],
+:root[data-theme="light"] [class*="bg-[#0E0E24]"] {
+  background: var(--app-panel) !important;
+  border-color: var(--app-border) !important;
+}
+:root[data-theme="light"] [class*="text-[#fff]"],
+:root[data-theme="light"] [class*="text-[#ffffff]"] { color: var(--app-text) !important; }
+:root[data-theme="light"] .dashboard-hero {
+  background: linear-gradient(135deg,#e9edff 0%,#f5edff 52%,#e8f4ff 100%) !important;
+  border-color: #dce4fb !important;
+}
+:root[data-theme="light"] .dashboard-root .dashboard-hero [style*="color: rgb(255, 255, 255)"] {
+  color: #17213f !important;
+}
+:root[data-theme="light"] .dashboard-root .dashboard-panel {
+  background: var(--app-panel) !important;
+  border-color: var(--app-border) !important;
+}
+:root[data-theme="light"] .dashboard-root .dashboard-hub-tile {
+  background: #f7f8fd !important;
+  border-color: var(--app-border) !important;
+}
+:root[data-theme="light"] .dashboard-root .dashboard-hub-tile [style*="color: rgb(255, 255, 255)"] {
+  color: var(--app-text) !important;
+}
+:root[data-theme="light"] .app-shell input,
+:root[data-theme="light"] .app-shell textarea,
+:root[data-theme="light"] .app-shell select {
+  background: var(--app-input) !important;
+  border-color: var(--app-border) !important;
+  color: var(--app-text) !important;
+}
+:root[data-theme="light"] .app-shell input::placeholder,
+:root[data-theme="light"] .app-shell textarea::placeholder { color: #8791a7 !important; }
+:root[data-theme="light"] .app-sidebar,
+:root[data-theme="light"] .app-topbar {
+  background: var(--app-sidebar-bg) !important;
+  border-color: var(--app-border) !important;
+}
+:root[data-theme="light"] .app-sidebar .app-brand-name,
+:root[data-theme="light"] .app-topbar .app-user-name { color: var(--app-text) !important; }
+
+/* Keep the global transition gentle without animating layout. */
+body, button, input, textarea, select, .glass, .theme-choice {
+  transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
+}
+
+
+/* Light-mode polish for dashboard widgets and legacy inline-styled feature panels. */
+:root[data-theme="light"] .dashboard-stat-card {
+  background: linear-gradient(135deg,#485b9d 0%,#645aa4 100%) !important;
+  border-color: rgba(65,80,145,0.15) !important;
+}
+:root[data-theme="light"] .dashboard-stat-card > div:first-child {
+  background: rgba(255,255,255,0.08) !important;
+}
+:root[data-theme="light"] .dashboard-date-chip {
+  background: rgba(255,255,255,0.88) !important;
+  border-color: var(--app-border) !important;
+}
+:root[data-theme="light"] .dashboard-date-chip [style*="color: rgb(255, 255, 255)"] {
+  color: var(--app-text) !important;
+}
+:root[data-theme="light"] .dashboard-root .dashboard-panel h3 {
+  color: var(--app-text) !important;
+}
+
+/* Several feature widgets use inline dark surface colours; map those surfaces to the active palette. */
+:root[data-theme="light"] [style*="background: rgb(8, 8, 24)"],
+:root[data-theme="light"] [style*="background: #080818"],
+:root[data-theme="light"] [style*="background: rgb(7, 7, 20)"] {
+  background: var(--app-bg) !important;
+}
+:root[data-theme="light"] [style*="background: rgb(14, 14, 36)"],
+:root[data-theme="light"] [style*="background: #0E0E24"],
+:root[data-theme="light"] [style*="background: rgb(17, 17, 34)"],
+:root[data-theme="light"] [style*="background: #111122"],
+:root[data-theme="light"] [style*="background: rgb(20, 20, 48)"],
+:root[data-theme="light"] [style*="background: #141430"] {
+  background: var(--app-panel) !important;
+  border-color: var(--app-border) !important;
+}
+:root[data-theme="light"] [style*="background: rgb(11, 11, 30)"],
+:root[data-theme="light"] [style*="background: #0B0B1E"] {
+  background: var(--app-sidebar-bg) !important;
+  border-color: var(--app-border) !important;
+}
+:root[data-theme="light"] #root main [style*="color: rgb(255, 255, 255)"]:not(button):not(button *):not(.dashboard-stat-card *):not([style*="background: linear-gradient"]) {
+  color: var(--app-text) !important;
+}
+:root[data-theme="light"] #root main [style*="color: rgb(156, 163, 175)"] {
+  color: var(--app-muted) !important;
+}
+
+/* Mobile registration keeps the campus photo visible behind the frosted form. */
+@media (max-width: 1023px) {
+  .register-background {
+    background-position: 58% center;
+    background-image:
+      linear-gradient(180deg,rgba(246,248,255,0.70),rgba(246,248,255,0.90)),
+      url('/images/studentos-campus-hero.webp');
+  }
+  :root[data-theme="dark"] .register-background {
+    background-image:
+      linear-gradient(180deg,rgba(7,8,27,0.78),rgba(8,8,24,0.92)),
+      url('/images/studentos-campus-hero.webp');
+  }
+}
