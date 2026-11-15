@@ -210,7 +210,7 @@ async def get_wellness_summary(current_user: User = Depends(get_current_user), d
     return {
         "today": {
             "mood": today_mood.mood_score if today_mood else None,
-            "water_glasses": today_water.glasses if today_water else 0,
+            "water_glasses": today_water.glasses if today_water else None,
             "water_goal": today_water.goal if today_water else 8,
             "sleep_hours": today_sleep.hours if today_sleep else None,
         },
