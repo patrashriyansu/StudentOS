@@ -1,18 +1,22 @@
 import { useState, useEffect } from 'react'
-import { CheckCheck, Calendar, Award, Bell, AlertTriangle, Plus, Trash2, Mail, MailWarning } from 'lucide-react'
+import { CheckCheck, Calendar, Award, Bell, AlertTriangle, Plus, Trash2, Mail, MailWarning, Send } from 'lucide-react'
 import { api } from '../services/api'
 
 export default function Notifications() {
   const [filter, setFilter] = useState<'all' | 'unread'>('all')
   const [notifications, setNotifications] = useState<any[]>([])
   const [reminders, setReminders] = useState<any[]>([])
-  const [emailConfigured, setEmailConfigured] = useState(false)
+  const [emailStatus, setEmailStatus] = useState<'checking' | 'configured' | 'missing' | 'unavailable'>('checking')
+  const [missingEmailSettings, setMissingEmailSettings] = useState<string[]>([])
   const [reminderTitle, setReminderTitle] = useState('')
   const [reminderMessage, setReminderMessage] = useState('')
   const [remindAt, setRemindAt] = useState('')
   const [repeatInterval, setRepeatInterval] = useState<'none' | 'daily' | 'weekly'>('none')
   const [savingReminder, setSavingReminder] = useState(false)
   const [reminderError, setReminderError] = useState('')
+  const [testingEmail, setTestingEmail] = useState(false)
+  const [emailTestMessage, setEmailTestMessage] = useState('')
+  const [emailTestError, setEmailTestError] = useState('')
 
   const loadNotifications = async () => {
     const [notificationsResult, remindersResult, statusResult] = await Promise.allSettled([
@@ -22,7 +26,14 @@ export default function Notifications() {
     ])
     if (notificationsResult.status === 'fulfilled') setNotifications(notificationsResult.value.data || [])
     if (remindersResult.status === 'fulfilled') setReminders(remindersResult.value.data || [])
-    if (statusResult.status === 'fulfilled') setEmailConfigured(Boolean(statusResult.value.data?.email_configured))
+    if (statusResult.status === 'fulfilled') {
+      const status = statusResult.value.data
+      setEmailStatus(status?.email_configured ? 'configured' : 'missing')
+      setMissingEmailSettings(Array.isArray(status?.missing_settings) ? status.missing_settings : [])
+    } else {
+      setEmailStatus('unavailable')
+      setMissingEmailSettings([])
+    }
   }
 
   const handleCreateReminder = async (event: React.FormEvent) => {
@@ -58,6 +69,20 @@ export default function Notifications() {
     }
   }
 
+  const handleTestEmail = async () => {
+    setTestingEmail(true)
+    setEmailTestMessage('')
+    setEmailTestError('')
+    try {
+      const response = await api.post('/notifications/reminders/test')
+      setEmailTestMessage(`Test email sent to ${response.data?.to || 'your account email'}.`)
+    } catch (err: any) {
+      setEmailTestError(err?.response?.data?.detail || 'Could not send the test email.')
+    } finally {
+      setTestingEmail(false)
+    }
+  }
+
   useEffect(() => {
     loadNotifications()
   }, [])
@@ -82,6 +107,13 @@ export default function Notifications() {
 
   const unreadCount = notifications.filter((n) => !n.read).length
   const displayed = filter === 'unread' ? notifications.filter((n) => !n.read) : notifications
+  const emailConfigured = emailStatus === 'configured'
+  const emailStatusLabel = {
+    checking: 'Checking email delivery',
+    configured: 'Email delivery configured',
+    missing: 'SMTP setup required',
+    unavailable: 'Email status unavailable',
+  }[emailStatus]
 
   return (
     <div className="max-w-4xl mx-auto space-y-6">
@@ -110,16 +142,47 @@ export default function Notifications() {
             <h2 className="font-semibold flex items-center gap-2"><Mail size={17} className="text-primary" /> Email Reminders</h2>
             <p className="text-xs text-dark-muted mt-1">Plan reminders for classes, deadlines, exams and anything else you need to remember.</p>
           </div>
-          <span className={`text-xs rounded-full px-3 py-1 ${emailConfigured ? 'bg-emerald-500/15 text-emerald-400' : 'bg-amber-500/15 text-amber-300'}`}>
-            {emailConfigured ? 'Email delivery configured' : 'Waiting for SMTP setup'}
-          </span>
+          <div className="flex items-center gap-2">
+            <span className={`text-xs rounded-full px-3 py-1 ${
+              emailStatus === 'configured'
+                ? 'bg-emerald-500/15 text-emerald-400'
+                : emailStatus === 'checking' || emailStatus === 'unavailable'
+                ? 'bg-dark-lighter text-dark-muted'
+                : 'bg-amber-500/15 text-amber-300'
+            }`}>
+              {emailStatusLabel}
+            </span>
+            {emailConfigured && (
+              <button
+                type="button"
+                onClick={handleTestEmail}
+                disabled={testingEmail}
+                className="flex items-center gap-1.5 rounded-lg border border-dark-border px-3 py-1.5 text-xs text-white hover:border-primary disabled:opacity-50"
+              >
+                <Send size={13} /> {testingEmail ? 'Sending…' : 'Send test email'}
+              </button>
+            )}
+          </div>
         </div>
-        {!emailConfigured && (
+        {emailStatus === 'missing' && (
           <div className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200">
             <MailWarning size={16} className="shrink-0 mt-0.5" />
-            <span>Reminders can be saved now, but emails will be sent only after the backend SMTP settings are configured.</span>
+            <div className="space-y-2">
+              <p>Reminders are being saved, but email delivery is paused because the backend is missing these settings:</p>
+              <p className="font-mono text-amber-100">{missingEmailSettings.length ? missingEmailSettings.join(', ') : 'SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM_EMAIL'}</p>
+              <p>Open your <a href="https://dashboard.render.com/" target="_blank" rel="noreferrer" className="underline">Render dashboard</a>, select <strong>studentos-backend</strong>, then open <strong>Environment</strong> and add the SMTP values. For Gmail, use an <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="underline">App Password</a>, not your normal account password.</p>
+              <p>Required: SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM_EMAIL and SMTP_STARTTLS. Save the variables and redeploy the backend.</p>
+            </div>
           </div>
         )}
+        {emailStatus === 'unavailable' && (
+          <div role="alert" className="flex items-start gap-2 rounded-xl border border-amber-500/20 bg-amber-500/5 p-3 text-xs text-amber-200">
+            <MailWarning size={16} className="shrink-0 mt-0.5" />
+            <span>StudentOS could not read the email delivery status. Check that the backend is online, then refresh this page.</span>
+          </div>
+        )}
+        {emailTestMessage && <p role="status" className="text-xs text-emerald-300">{emailTestMessage}</p>}
+        {emailTestError && <p role="alert" className="text-xs text-rose-300">{emailTestError}</p>}
         <form onSubmit={handleCreateReminder} className="grid grid-cols-1 md:grid-cols-2 gap-3">
           <input
             required
