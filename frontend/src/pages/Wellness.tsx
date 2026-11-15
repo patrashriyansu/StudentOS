@@ -13,9 +13,12 @@ const moodOptions = [
 
 export default function Wellness() {
   const [tab, setTab] = useState<'overview' | 'mood' | 'water' | 'sleep'>('overview')
-  const [water, setWater] = useState(6)
+  const [water, setWater] = useState(0)
   const [sleep, setSleep] = useState(7.5)
   const [mood, setMood] = useState(3)
+  const [hasWater, setHasWater] = useState(false)
+  const [hasSleep, setHasSleep] = useState(false)
+  const [hasMood, setHasMood] = useState(false)
   const [moodNote, setMoodNote] = useState('')
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
   const [wellnessScore, setWellnessScore] = useState<any>(null)
@@ -26,9 +29,18 @@ export default function Wellness() {
     api.get('/wellness/summary')
       .then((res) => {
         if (res.data?.today) {
-          if (res.data.today.water_glasses) setWater(res.data.today.water_glasses)
-          if (res.data.today.mood) setMood(res.data.today.mood)
-          if (res.data.today.sleep_hours) setSleep(res.data.today.sleep_hours)
+          if (res.data.today.water_glasses != null) {
+            setWater(res.data.today.water_glasses)
+            setHasWater(true)
+          }
+          if (res.data.today.mood != null) {
+            setMood(res.data.today.mood)
+            setHasMood(true)
+          }
+          if (res.data.today.sleep_hours != null) {
+            setSleep(res.data.today.sleep_hours)
+            setHasSleep(true)
+          }
         }
       })
       .catch(() => {})
@@ -76,6 +88,7 @@ export default function Wellness() {
   const handleLogMood = async () => {
     try {
       await api.post('/wellness/mood', { mood_score: mood, note: moodNote })
+      setHasMood(true)
       notify('Mood logged successfully! Keep tracking daily.')
       void refreshAnalytics().catch(console.error)
     } catch (err) {
@@ -88,6 +101,7 @@ export default function Wellness() {
     try {
       await api.post('/wellness/water', { glasses, goal: 8 })
       setWater(glasses)
+      setHasWater(true)
       notify(`${glasses} glasses recorded! Stay hydrated.`)
       void refreshAnalytics().catch(console.error)
     } catch (err) {
@@ -99,6 +113,7 @@ export default function Wellness() {
   const handleLogSleep = async () => {
     try {
       await api.post('/wellness/sleep', { hours: sleep, quality: 4 })
+      setHasSleep(true)
       notify(`Logged ${sleep} hours of sleep!`)
       void refreshAnalytics().catch(console.error)
     } catch (err) {
@@ -142,19 +157,19 @@ export default function Wellness() {
           {
             icon: Smile,
             label: 'Today Mood',
-            value: moodOptions.find((m) => m.value === mood)?.label || 'Good',
+            value: hasMood ? (moodOptions.find((m) => m.value === mood)?.label || 'Not logged') : 'Not logged',
             color: 'from-purple-500 to-pink-500',
           },
           {
             icon: Droplets,
             label: 'Hydration',
-            value: `${water}/8 glasses`,
+            value: hasWater ? `${water}/8 glasses` : 'Not logged',
             color: 'from-blue-500 to-cyan-500',
           },
           {
             icon: Moon,
             label: 'Last Sleep',
-            value: `${sleep} hrs`,
+            value: hasSleep ? `${sleep} hrs` : 'Not logged',
             color: 'from-indigo-500 to-purple-500',
           },
           {
