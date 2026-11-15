@@ -551,7 +551,7 @@ export default function Academics() {
                     </div>
                   ) : (
                     [...entries].sort((a, b) => (a.start_time || '').localeCompare(b.start_time || '')).map((e) => (
-                      <div key={i} className="bg-dark-lighter rounded-xl p-3 border border-dark-border hover:border-primary/40 transition-all">
+                      <div key={e.id} className="bg-dark-lighter rounded-xl p-3 border border-dark-border hover:border-primary/40 transition-all">
                         <p className="text-xs font-semibold text-white truncate">{e.subject_name}</p>
                         <p className="text-xs text-dark-muted flex items-center gap-1 mt-1">
                           <Clock size={11} /> {e.start_time?.slice(0, 5)} - {e.end_time?.slice(0, 5)}
