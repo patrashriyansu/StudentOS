@@ -5,7 +5,7 @@ from datetime import date, datetime, timezone, timedelta, time as dt_time
 from zoneinfo import ZoneInfo
 from backend.core.database import get_db
 from backend.core.security import get_current_user
-from backend.users.models import User
+from backend.users.models import User, EmailReminder
 from backend.academics.models import Subject, AttendanceRecord, Timetable, Assignment, Note, Exam, StudySession, Grade
 from backend.notifications.service import INDIA_TZ, schedule_email_reminder, to_utc_datetime
 from pydantic import BaseModel
@@ -220,7 +220,19 @@ async def update_assignment_status(assignment_id: int, status: str, current_user
     result = await db.execute(select(Assignment).where(Assignment.id == assignment_id, Assignment.user_id == current_user.id))
     assignment = result.scalar_one_or_none()
     if not assignment: raise HTTPException(status_code=404)
-    assignment.status = status; await db.commit()
+    assignment.status = status
+    if status == "submitted":
+        reminder_result = await db.execute(
+            select(EmailReminder).where(
+                EmailReminder.user_id == current_user.id,
+                EmailReminder.entity_type == "assignment",
+                EmailReminder.entity_id == assignment.id,
+                EmailReminder.is_active.is_(True),
+            )
+        )
+        for reminder in reminder_result.scalars().all():
+            reminder.is_active = False
+    await db.commit()
     return {"message": "Status updated"}
 
 # --- Notes ---
