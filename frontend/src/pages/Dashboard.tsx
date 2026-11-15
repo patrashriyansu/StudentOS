@@ -245,7 +245,7 @@ export default function Dashboard() {
           <rect x="30"  y="60" width="20" height="50" />
         </svg>
 
-        <div>
+        <div className="dashboard-hero-copy">
           <div style={{ display:'flex', alignItems:'baseline', gap:10, flexWrap:'wrap' }}>
             <span style={{ fontSize:28, fontWeight:800, color:'var(--app-text)' }}>👋 {greeting()},</span>
             <span style={{
@@ -329,7 +329,7 @@ export default function Dashboard() {
             <HubTile icon={Wallet}     label="Finance Hub"  sub="Expenses, Budget, Savings"          color="#A855F7" to="/expenses" />
           </div>
           {/* Chatbot quick access banner */}
-          <div style={{
+          <div className="dashboard-chatbot-banner" style={{
             display:'flex', alignItems:'center', gap:14, padding:'13px 16px',
             borderRadius:12, background:'linear-gradient(135deg,rgba(108,99,255,0.12),rgba(168,85,247,0.08))',
             border:'1px solid rgba(108,99,255,0.22)',
@@ -346,7 +346,7 @@ export default function Dashboard() {
               background:'linear-gradient(135deg,#6C63FF,#A855F7)',
               color:'#fff', fontSize:12, fontWeight:600, border:'none', whiteSpace:'nowrap',
             }}>
-              Chat with AI →
+              Open Chatbot →
             </button>
           </div>
         </div>
