@@ -103,6 +103,24 @@ export default function Profile() {
                     className="bg-dark-lighter border border-dark-border rounded-xl p-2.5 text-xs text-white"
                   />
                 </div>
+                <input
+                  value={profileData.github_url || ''}
+                  onChange={(e) => setProfileData({ ...profileData, github_url: e.target.value })}
+                  placeholder="GitHub URL (https://github.com/username)"
+                  className="w-full bg-dark-lighter border border-dark-border rounded-xl p-2.5 text-xs text-white"
+                />
+                <input
+                  value={profileData.linkedin_url || ''}
+                  onChange={(e) => setProfileData({ ...profileData, linkedin_url: e.target.value })}
+                  placeholder="LinkedIn URL (https://linkedin.com/in/username)"
+                  className="w-full bg-dark-lighter border border-dark-border rounded-xl p-2.5 text-xs text-white"
+                />
+                <input
+                  value={profileData.portfolio_url || ''}
+                  onChange={(e) => setProfileData({ ...profileData, portfolio_url: e.target.value })}
+                  placeholder="Portfolio URL"
+                  className="w-full bg-dark-lighter border border-dark-border rounded-xl p-2.5 text-xs text-white"
+                />
               </div>
             ) : (
               <p className="mt-4 text-sm text-slate-300 leading-relaxed">{profileData.bio}</p>
@@ -115,18 +133,25 @@ export default function Profile() {
             { icon: Github, label: 'GitHub', url: profileData.github_url },
             { icon: Linkedin, label: 'LinkedIn', url: profileData.linkedin_url },
             { icon: Globe, label: 'Portfolio', url: profileData.portfolio_url },
-          ].map(({ icon: Icon, label, url }) => (
-            <a
-              key={label}
-              href={url || '#'}
-              target="_blank"
-              rel="noreferrer"
-              className="flex items-center gap-2 text-xs bg-dark-lighter border border-dark-border px-4 py-2 rounded-xl hover:border-primary/50 text-dark-muted hover:text-white transition-all"
-            >
-              <Icon size={14} />
-              {label}
-            </a>
-          ))}
+          ]
+            .filter(({ url }) => !!url)
+            .map(({ icon: Icon, label, url }) => (
+              <a
+                key={label}
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                className="flex items-center gap-2 text-xs bg-dark-lighter border border-dark-border px-4 py-2 rounded-xl hover:border-primary/50 text-dark-muted hover:text-white transition-all"
+              >
+                <Icon size={14} />
+                {label}
+              </a>
+            ))}
+          {!profileData.github_url && !profileData.linkedin_url && !profileData.portfolio_url && (
+            <p className="text-xs text-dark-muted">
+              Click <strong>Edit Profile</strong> to add your GitHub, LinkedIn or Portfolio links.
+            </p>
+          )}
         </div>
       </div>
 

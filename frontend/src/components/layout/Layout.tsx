@@ -19,14 +19,14 @@ const S = {
 }
 
 const mainNav = [
-  { to: '/',           icon: LayoutDashboard, label: 'Dashboard'    },
-  { to: '/ai',         icon: BookOpen,         label: 'Study Hub'    },
+  { to: '/',           icon: LayoutDashboard, label: 'Dashboard',    exact: true },
+  { to: '/productivity', icon: BookOpen,       label: 'Study Hub'    },
   { to: '/academics',  icon: GraduationCap,    label: 'Academic Hub' },
   { to: '/coding',     icon: Code,             label: 'Coding Hub'   },
   { to: '/placements', icon: Briefcase,        label: 'Placement Hub'},
   { to: '/wellness',   icon: Heart,            label: 'Wellness Hub' },
   { to: '/expenses',   icon: Wallet,           label: 'Finance Hub'  },
-  { to: '/ai',         icon: Sparkles,         label: 'AI Copilot', exact: true },
+  { to: '/ai',         icon: Sparkles,         label: 'AI Copilot'   },
 ]
 
 const secondNav = [
@@ -100,10 +100,11 @@ export default function Layout() {
         position: 'fixed',
         top: 0, bottom: 0, left: 0,
         zIndex: 50,
-        transform: sidebarOpen ? 'translateX(0)' : undefined,
         overflowY: 'auto',
+        transition: 'transform 0.25s ease',
+        transform: sidebarOpen ? 'translateX(0)' : undefined,
       }}
-        className={`lg-static ${sidebarOpen ? '' : 'hidden-mobile'}`}
+        className={`${sidebarOpen ? '' : 'max-lg:hidden'}`}
       >
         {/* Logo */}
         <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -168,7 +169,9 @@ export default function Layout() {
       </aside>
 
       {/* ── Right: topbar + content ─────────────── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', marginLeft: 240, minWidth: 0, overflow: 'hidden' }}>
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}
+        className="lg:ml-[240px]"
+      >
 
         {/* Top Bar */}
         <header style={{

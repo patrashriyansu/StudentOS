@@ -51,7 +51,7 @@ export default function App() {
       <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
       <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
-        <Route index element={<Navigate to="/dashboard" replace />} />
+        <Route index element={<Dashboard />} />
         <Route path="dashboard" element={<Dashboard />} />
         <Route path="academics" element={<Academics />} />
         <Route path="coding" element={<Coding />} />

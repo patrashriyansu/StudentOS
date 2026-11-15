@@ -73,10 +73,10 @@ export default function Coding() {
       {/* Top Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
-          { icon: Code, label: 'Problems Solved (All-time)', value: profile.total_problems_solved, color: 'from-primary to-secondary' },
-          { icon: Activity, label: 'Contests Attended', value: profile.total_contests, color: 'from-emerald-500 to-teal-500' },
-          { icon: Flame, label: 'Current Streak', value: `${profile.current_streak} days`, color: 'from-red-500 to-pink-500' },
-          { icon: Trophy, label: 'Max Rating', value: profile.rating, color: 'from-yellow-500 to-orange-500' },
+          { icon: Code, label: 'Problems Solved (All-time)', value: profile.total_problems_solved ?? 0, color: 'from-primary to-secondary' },
+          { icon: Activity, label: 'Contests Attended', value: profile.total_contests ?? 0, color: 'from-emerald-500 to-teal-500' },
+          { icon: Flame, label: 'Current Streak', value: `${profile.current_streak ?? 0} days`, color: 'from-red-500 to-pink-500' },
+          { icon: Trophy, label: 'Max Rating', value: profile.rating ?? 0, color: 'from-yellow-500 to-orange-500' },
         ].map(({ icon: Icon, label, value, color }) => (
           <div key={label} className="glass rounded-xl p-5 hover:border-primary/40 transition-all">
             <div className="flex items-center justify-between mb-3">

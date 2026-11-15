@@ -128,7 +128,9 @@ export default function Wellness() {
           {
             icon: Activity,
             label: 'Vitality Score',
-            value: wellnessScore ? `${wellnessScore.overall_score}/100` : '—',
+            value: wellnessScore
+              ? `${wellnessScore.overall_score ?? wellnessScore.score ?? Math.round((mood / 4) * 30 + Math.min(water, 8) / 8 * 30 + Math.min(sleep, 8) / 8 * 40)}/100`
+              : `${Math.round((mood / 4) * 30 + Math.min(water, 8) / 8 * 30 + Math.min(sleep, 8) / 8 * 40)}/100`,
             color: 'from-emerald-500 to-teal-500',
           },
         ].map(({ icon: Icon, label, value, color }) => (
