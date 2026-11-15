@@ -4,7 +4,7 @@ import { useAuth } from '../../hooks/useAuth'
 import {
   LayoutDashboard, BookOpen, Code, Briefcase, Bot, Heart,
   Wallet, Bell, BarChart3, User, LogOut, Menu, X,
-  GraduationCap, Settings, Search, Sparkles, Zap,
+  GraduationCap, Settings, Search, Sparkles,
 } from 'lucide-react'
 
 const S = {
@@ -141,31 +141,6 @@ export default function Layout() {
           ))}
         </nav>
 
-        {/* Pro Upgrade Card */}
-        <div style={{ padding: '12px 12px 14px' }}>
-          <div style={{
-            borderRadius: 14, padding: '14px 16px',
-            background: 'linear-gradient(135deg,#1E1060,#3B1A6B)',
-            border: '1px solid rgba(139,92,246,0.35)',
-          }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
-              <div style={{ width: 28, height: 28, borderRadius: 8, background: 'rgba(139,92,246,0.4)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-                <Zap size={14} color="#C4B5FD" />
-              </div>
-              <span style={{ fontSize: 13, fontWeight: 700, color: '#fff' }}>StudentOS Pro</span>
-            </div>
-            <p style={{ fontSize: 11, color: '#C4B5FD', marginBottom: 12, lineHeight: 1.5, margin: '0 0 12px' }}>
-              Unlock AI tools, advanced analytics &amp; more.
-            </p>
-            <button style={{
-              width: '100%', padding: '7px 12px', borderRadius: 8, cursor: 'pointer',
-              background: 'linear-gradient(135deg,#6C63FF,#A855F7)',
-              color: '#fff', fontSize: 12, fontWeight: 600, border: 'none',
-            }}>
-              Upgrade Now →
-            </button>
-          </div>
-        </div>
       </aside>
 
       {/* ── Right: topbar + content ─────────────── */}
