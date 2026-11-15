@@ -195,20 +195,13 @@ export default function Login() {
       <div className="pointer-events-none absolute right-[16%] top-[18%] h-[520px] w-[520px] rounded-full bg-[#e7e4ff]/80 blur-3xl" />
       <div className="pointer-events-none absolute bottom-[-320px] left-[26%] h-[620px] w-[900px] rounded-full bg-[#fff0f3]/80 blur-3xl" />
 
-      <header className="relative z-20 flex h-[78px] items-center justify-between border-b border-white/80 bg-white/55 px-5 backdrop-blur-xl sm:px-8 lg:px-[5.2%]">
+      <header className="relative z-20 flex h-[78px] items-center justify-start border-b border-white/80 bg-white/55 px-5 backdrop-blur-xl sm:px-8 lg:px-[5.2%]">
         <Link to="/login" className="inline-flex items-center gap-2.5" aria-label="StudentOS home">
           <GraduationCap size={42} strokeWidth={2.1} className="text-[#111b48]" />
           <span className="text-[25px] font-extrabold tracking-tight text-[#101943]">
             Student<span className="text-[#3158ed]">OS</span>
           </span>
         </Link>
-        <nav className="hidden items-center gap-9 text-[15px] font-semibold text-[#17224b] md:flex" aria-label="Main navigation">
-          <a href="#home" className="border-b-2 border-[#3158ed] pb-1 text-[#1745df]">Home</a>
-          <a href="#features" className="pb-1 transition hover:text-[#3158ed]">Features</a>
-          <a href="#about" className="pb-1 transition hover:text-[#3158ed]">About</a>
-          <a href="#login-form" className="rounded-xl bg-gradient-to-r from-[#3158ed] to-[#263bd7] px-6 py-3 text-sm font-bold text-white shadow-lg shadow-blue-500/20 transition hover:-translate-y-0.5">Get Started</a>
-        </nav>
-        <a href="#login-form" className="rounded-xl bg-gradient-to-r from-[#3158ed] to-[#263bd7] px-4 py-2.5 text-sm font-bold text-white shadow-md shadow-blue-500/20 md:hidden">Get Started</a>
       </header>
 
       <div className="relative z-10 mx-auto grid min-h-[calc(100svh-78px)] max-w-[1780px] grid-cols-1 items-center gap-5 px-4 py-8 sm:px-8 lg:grid-cols-[minmax(450px,0.88fr)_minmax(0,1.35fr)] lg:gap-0 lg:px-[5.1%] lg:py-0">
@@ -319,7 +312,7 @@ export default function Login() {
           <div className="pointer-events-none absolute left-[24%] top-[20%] h-[450px] w-[450px] rounded-full border border-white/90" />
           <div className="pointer-events-none absolute bottom-[4%] left-[20%] h-[220px] w-[540px] rounded-full bg-[#fff0e9]/60 blur-3xl" />
 
-          <img src="/images/studentos-login-hero.webp" alt="Student holding a laptop"
+          <img src="/images/studentos-login-student.webp" alt="StudentOS student mascot holding a laptop and giving a thumbs up"
             className="pointer-events-none relative z-[2] h-[82%] max-h-[820px] w-full object-contain object-bottom drop-shadow-[0_24px_36px_rgba(39,50,99,0.18)]" />
 
           <div className="absolute left-[31%] top-[5%] z-[4] rounded-[25px] border border-white/90 bg-white/75 px-5 py-4 shadow-[0_12px_30px_rgba(73,86,170,0.12)] backdrop-blur-xl">
