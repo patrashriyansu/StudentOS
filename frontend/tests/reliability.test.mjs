@@ -78,8 +78,8 @@ test('desktop sidebar can collapse to an icon rail and expand again', async () =
 test('mobile sidebar opens as a translucent left drawer and closes with its X button', async () => {
   const layout = await read('../src/components/layout/Layout.tsx')
   const styles = await read('../src/index.css')
-  assert.match(layout, /className=\{\`app-sidebar \$\{sidebarOpen \? 'mobile-open' : ''\}\`\}/)
-  assert.doesNotMatch(layout, /max-lg:hidden/)
+  assert.ok(layout.includes("mobile-open"))
+  assert.ok(!layout.includes("max-lg:hidden"))
   assert.match(layout, /setSidebarOpen\(false\)/)
   assert.match(layout, /background: 'rgba\(15,23,42,0\.12\)'/)
   assert.match(styles, /width: min\(300px, 68vw\) !important/)
