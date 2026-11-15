@@ -1,7 +1,7 @@
 export interface User {
   id: number; email: string; name: string; role: string; avatar?: string; xp_points: number; level: number; streak_days: number; created_at: string;
 }
-export interface AuthState { user: User | null; token: string | null; refreshToken: string | null; isAuthenticated: boolean; loading: boolean; }
+export interface AuthState { user: User | null; token: string | null; refreshToken: string | null; isAuthenticated: boolean; loading: boolean; initialized: boolean; }
 export interface Subject { id: number; name: string; code?: string; faculty?: string; total_classes: number; attended_classes: number; credits: number; semester?: number; attendance: number; }
 export interface TimetableEntry { id: number; day_of_week: number; subject_name: string; faculty: string; room: string; start_time: string; end_time: string; }
 export interface Assignment { id: number; title: string; description?: string; subject: string; due_date: string; status: string; grade?: string; }

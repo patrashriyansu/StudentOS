@@ -19,7 +19,7 @@ export default function AIAssistant() {
   const [chat, setChat] = useState<{ role: 'ai' | 'user'; content: string }[]>([
     {
       role: 'ai',
-      content: "Hello Arjun! I'm your AI Academic Copilot. Ask me any concept doubt, request code explanations, or generate practice quizzes!",
+      content: "Hello! I'm your AI Academic Copilot. Ask me any concept doubt, request code explanations, or generate practice quizzes!",
     },
   ])
   const [chatLoading, setChatLoading] = useState(false)

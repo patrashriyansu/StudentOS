@@ -1,7 +1,7 @@
 from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float, Text, JSON, ForeignKey
 from sqlalchemy.orm import relationship
 from backend.core.database import Base
-from datetime import datetime, timezone
+from datetime import datetime, timezone, date
 
 class User(Base):
     __tablename__ = "users"
@@ -17,6 +17,7 @@ class User(Base):
     xp_points = Column(Integer, default=0)
     level = Column(Integer, default=1)
     streak_days = Column(Integer, default=0)
+    last_streak_date = Column(String(10), nullable=True)  # ISO date string "YYYY-MM-DD"
     last_login = Column(DateTime(timezone=True), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

@@ -23,7 +23,7 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "us-east-1"
     FRONTEND_URL: str = ""   # Set this to your Vercel URL in production
-    SEED_DEMO_DATA: bool = True
+    SEED_DEMO_DATA: bool = False
 
     @field_validator("DATABASE_URL")
     @classmethod

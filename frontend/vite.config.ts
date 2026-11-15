@@ -13,9 +13,20 @@ export default defineConfig({
   build: {
     outDir: 'dist',
     sourcemap: false,
+    chunkSizeWarningLimit: 1000,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          'react-core': ['react', 'react-dom', 'react-router-dom'],
+          'redux': ['@reduxjs/toolkit', 'react-redux'],
+          'charts': ['recharts', 'chart.js', 'react-chartjs-2'],
+          'forms': ['react-hook-form', '@hookform/resolvers', 'zod'],
+          'motion': ['framer-motion'],
+          'ui': ['lucide-react', 'react-hot-toast'],
+          'query': ['@tanstack/react-query'],
+          'utils': ['axios', 'date-fns'],
+        }
+      }
+    }
   },
-  define: {
-    // Make VITE_API_URL available in production builds
-    __API_URL__: JSON.stringify(process.env.VITE_API_URL || ''),
-  }
 })

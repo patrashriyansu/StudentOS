@@ -7,6 +7,9 @@ from contextlib import asynccontextmanager
 from backend.core.database import engine, Base
 from backend.core.config import settings
 from backend.core.seed import seed_data
+from slowapi import Limiter, _rate_limit_exceeded_handler
+from slowapi.util import get_remote_address
+from slowapi.errors import RateLimitExceeded
 
 # ── Import all models so SQLAlchemy registers them for table creation ──────────
 import backend.users.models          # noqa: F401
@@ -20,7 +23,12 @@ import backend.finance.models        # noqa: F401
 
 from backend.api import router as api_router
 
+limiter = Limiter(key_func=get_remote_address)
+
 logger = logging.getLogger("studentos.startup")
+
+configured_origins = [origin.strip() for origin in settings.FRONTEND_URL.split(",") if origin.strip()]
+allowed_origins = configured_origins or ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 
 async def initialize_database(app: FastAPI):
@@ -61,12 +69,13 @@ app = FastAPI(
     redoc_url="/redoc",
 )
 
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+
 app.add_middleware(
     CORSMiddleware,
-    # In production, set FRONTEND_URL (e.g. https://studentos.vercel.app) to restrict CORS.
-    # Wildcard "*" is used as fallback for local dev; credentials are disabled in that mode.
-    allow_origins=[settings.FRONTEND_URL] if settings.FRONTEND_URL else ["*"],
-    allow_credentials=bool(settings.FRONTEND_URL),  # True only when specific origin is set
+    allow_origins=allowed_origins,
+    allow_credentials=bool(configured_origins),
     allow_methods=["*"],
     allow_headers=["*"],
 )
@@ -86,6 +95,7 @@ async def health():
     }
 
 @app.get("/ready")
+@app.get("/api/v1/ready")
 async def ready():
     if not getattr(app.state, "db_ready", False):
         detail = getattr(app.state, "db_error", None) or "Database is still starting"

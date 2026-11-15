@@ -1,25 +1,70 @@
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, status, Request
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from datetime import datetime, timedelta, timezone
 import random
 import string
+import httpx
+import jwt as pyjwt
 from backend.core.database import get_db
 from backend.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token, get_current_user, oauth2_scheme
 from backend.users.models import User
 from backend.auth.models import OTP, OTPPurpose
 from backend.auth.schemas import LoginRequest, RegisterRequest, TokenResponse, GoogleLoginRequest, OTPRequest, OTPVerifyRequest, PasswordResetRequest
 from backend.core.config import settings
+from slowapi import Limiter
+from slowapi.util import get_remote_address
 
 router = APIRouter()
+limiter = Limiter(key_func=get_remote_address)
+
+GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/certs"
+_google_keys_cache: dict | None = None
+
+
+async def get_google_public_keys() -> dict:
+    global _google_keys_cache
+    if _google_keys_cache is None:
+        async with httpx.AsyncClient() as client:
+            resp = await client.get(GOOGLE_CERTS_URL)
+            resp.raise_for_status()
+            _google_keys_cache = resp.json()
+    return _google_keys_cache
+
+
+async def verify_google_id_token(id_token: str, client_id: str) -> dict:
+    """Verify Google ID token signature and claims."""
+    keys = await get_google_public_keys()
+    unverified_header = pyjwt.get_unverified_header(id_token)
+    kid = unverified_header.get("kid")
+    if not kid:
+        raise HTTPException(status_code=400, detail="Invalid token header")
+    key_data = next((k for k in keys["keys"] if k["kid"] == kid), None)
+    if not key_data:
+        raise HTTPException(status_code=400, detail="Unable to find matching key")
+    public_key = pyjwt.algorithms.RSAAlgorithm.from_jwk(key_data)
+    try:
+        payload = pyjwt.decode(
+            id_token,
+            public_key,
+            algorithms=["RS256"],
+            audience=client_id,
+            issuer=["accounts.google.com", "https://accounts.google.com"],
+        )
+    except pyjwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token expired")
+    except pyjwt.InvalidTokenError as e:
+        raise HTTPException(status_code=400, detail=f"Invalid token: {e}")
+    return payload
 
 
 @router.post("/register", response_model=TokenResponse, status_code=201)
-async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def register(request: Request, req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     email = req.email.strip().lower()
     result = await db.execute(select(User).where(func.lower(User.email) == email))
     if result.scalar_one_or_none():
-        raise HTTPException(status_code=400, detail="Email already registered")
+        raise HTTPException(status_code=409, detail="Email already registered")
     user = User(
         email=email,
         password_hash=hash_password(req.password),
@@ -35,7 +80,8 @@ async def register(req: RegisterRequest, db: AsyncSession = Depends(get_db)):
     )
 
 @router.post("/login", response_model=TokenResponse)
-async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("10/minute")
+async def login(request: Request, req: LoginRequest, db: AsyncSession = Depends(get_db)):
     email = req.email.strip().lower()
     result = await db.execute(select(User).where(func.lower(User.email) == email))
     user = result.scalar_one_or_none()
@@ -49,18 +95,21 @@ async def login(req: LoginRequest, db: AsyncSession = Depends(get_db)):
     )
 
 @router.post("/google", response_model=TokenResponse)
-async def google_login(req: GoogleLoginRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def google_login(request: Request, req: GoogleLoginRequest, db: AsyncSession = Depends(get_db)):
+    if not settings.GOOGLE_CLIENT_ID:
+        raise HTTPException(status_code=503, detail="Google login not configured")
     try:
-        import jwt as pyjwt
-        payload = pyjwt.decode(req.id_token, options={"verify_signature": False})
+        payload = await verify_google_id_token(req.id_token, settings.GOOGLE_CLIENT_ID)
         email = payload.get("email")
         name = payload.get("name", "Google User")
+        google_sub = payload.get("sub")
         if not email:
-            raise HTTPException(status_code=400, detail="Invalid Google token")
+            raise HTTPException(status_code=400, detail="Invalid Google token: missing email")
         result = await db.execute(select(User).where(User.email == email))
         user = result.scalar_one_or_none()
         if not user:
-            user = User(email=email, name=name, role="student", password_hash="", google_id=payload.get("sub"))
+            user = User(email=email, name=name, role="student", password_hash="", google_id=google_sub)
             db.add(user)
             await db.commit()
             await db.refresh(user)
@@ -68,23 +117,30 @@ async def google_login(req: GoogleLoginRequest, db: AsyncSession = Depends(get_d
             access_token=create_access_token({"sub": str(user.id), "role": user.role}),
             refresh_token=create_refresh_token({"sub": str(user.id)})
         )
-    except Exception:
-        raise HTTPException(status_code=400, detail="Invalid Google token")
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=400, detail=f"Invalid Google token: {e}")
 
 @router.post("/refresh", response_model=TokenResponse)
-async def refresh_token(refresh_token: str = Depends(oauth2_scheme)):
-    payload = decode_token(refresh_token)
+@limiter.limit("10/minute")
+async def refresh_token(request: Request, refresh_token: str = Depends(oauth2_scheme), db: AsyncSession = Depends(get_db)):
+    payload = decode_token(refresh_token, expected_type="refresh")
     user_id = payload.get("sub")
     if not user_id:
         raise HTTPException(status_code=401, detail="Invalid refresh token")
-    user = await get_current_user(refresh_token)
+    result = await db.execute(select(User).where(User.id == int(user_id), User.is_active == True))
+    user = result.scalar_one_or_none()
+    if not user:
+        raise HTTPException(status_code=401, detail="User not found")
     return TokenResponse(
         access_token=create_access_token({"sub": user_id, "role": user.role}),
         refresh_token=create_refresh_token({"sub": user_id})
     )
 
 @router.post("/send-otp")
-async def send_otp(req: OTPRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("3/minute")
+async def send_otp(request: Request, req: OTPRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()
     if not user:
@@ -98,10 +154,11 @@ async def send_otp(req: OTPRequest, db: AsyncSession = Depends(get_db)):
     )
     db.add(otp)
     await db.commit()
-    return {"message": "OTP sent", "code": code}
+    return {"message": "OTP sent"}
 
 @router.post("/verify-otp")
-async def verify_otp(req: OTPVerifyRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("5/minute")
+async def verify_otp(request: Request, req: OTPVerifyRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()
     if not user:
@@ -123,12 +180,26 @@ async def verify_otp(req: OTPVerifyRequest, db: AsyncSession = Depends(get_db)):
     return {"message": "OTP verified"}
 
 @router.post("/reset-password")
-async def reset_password(req: PasswordResetRequest, db: AsyncSession = Depends(get_db)):
+@limiter.limit("3/minute")
+async def reset_password(request: Request, req: PasswordResetRequest, db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).where(User.email == req.email))
     user = result.scalar_one_or_none()
     if not user:
         raise HTTPException(status_code=404, detail="User not found")
+    result = await db.execute(
+        select(OTP).where(
+            OTP.user_id == user.id,
+            OTP.code == req.code,
+            OTP.purpose == OTPPurpose.PASSWORD_RESET,
+            OTP.is_used == False,
+            OTP.expires_at > datetime.now(timezone.utc)
+        )
+    )
+    otp = result.scalar_one_or_none()
+    if not otp:
+        raise HTTPException(status_code=400, detail="Invalid or expired reset code")
     user.password_hash = hash_password(req.new_password)
+    otp.is_used = True
     await db.commit()
     return {"message": "Password reset successful"}
 

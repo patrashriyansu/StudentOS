@@ -11,7 +11,7 @@ services:
       - key: SECRET_KEY
         generateValue: true
       - key: DATABASE_URL
-        value: sqlite+aiosqlite:///./studentos.db
+        sync: false
       - key: PYTHONPATH
         value: .
       - key: GEMINI_API_KEY
@@ -21,7 +21,7 @@ services:
       - key: PYTHON_VERSION
         value: "3.12.0"
       - key: FRONTEND_URL
-        value: "https://frontend-kappa-six-cdsrakqjdt.vercel.app"
+        value: "https://studentos-app.web.app"
       - key: SEED_DEMO_DATA
         value: "false"
 

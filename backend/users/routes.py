@@ -1,10 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
+from datetime import date
 from backend.core.database import get_db
 from backend.core.security import get_current_user
-from backend.users.models import User, UserProfile, UserActivity
+from backend.users.models import User, UserProfile, UserActivity, UserBadge
 from backend.users.schemas import UserProfileUpdate, UserResponse
+from datetime import datetime, timezone, date, timedelta
 
 router = APIRouter()
 
@@ -64,3 +66,110 @@ async def list_users(db: AsyncSession = Depends(get_db), current_user: User = De
     result = await db.execute(select(User).limit(100))
     users = result.scalars().all()
     return [UserResponse(id=u.id, email=u.email, name=u.name, role=u.role, avatar=u.avatar, xp_points=u.xp_points, level=u.level, streak_days=u.streak_days, created_at=u.created_at.isoformat()) for u in users]
+
+
+@router.get("/badges")
+async def get_badges(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    result = await db.execute(
+        select(UserBadge).where(UserBadge.user_id == current_user.id)
+        .order_by(UserBadge.earned_at.desc())
+    )
+    badges = result.scalars().all()
+    return [
+        {
+            "id": b.id,
+            "badge_name": b.badge_name,
+            "badge_icon": b.badge_icon,
+            "earned_at": b.earned_at.isoformat(),
+        }
+        for b in badges
+    ]
+
+@router.post("/ping")
+async def daily_ping(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Call on every app visit. Increments streak if new day, resets if >1 day gap."""
+    today = date.today().isoformat()  # "YYYY-MM-DD"
+    last = current_user.last_streak_date
+
+    if last == today:
+        # Already pinged today — no change
+        return {
+            "streak_days": current_user.streak_days or 0,
+            "last_streak_date": last,
+            "message": "already_pinged"
+        }
+
+    if last is None:
+        # First ever ping
+        current_user.streak_days = 1
+    else:
+        from datetime import date as _date
+        last_date = _date.fromisoformat(last)
+        today_date = _date.fromisoformat(today)
+        diff = (today_date - last_date).days
+        if diff == 1:
+            # Consecutive day — increment
+            current_user.streak_days = (current_user.streak_days or 0) + 1
+        else:
+            # Missed one or more days — reset to 1
+            current_user.streak_days = 1
+
+    current_user.last_streak_date = today
+    await db.commit()
+    return {
+        "streak_days": current_user.streak_days,
+        "last_streak_date": current_user.last_streak_date,
+        "message": "updated"
+    }
+
+@router.get("/streak")
+async def get_streak(current_user: User = Depends(get_current_user)):
+    """Return current streak info without modifying it."""
+    return {
+        "streak_days": current_user.streak_days or 0,
+        "last_streak_date": current_user.last_streak_date,
+    }
+
+@router.post("/ping")
+async def daily_ping(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Call on every app visit. Increments streak if new day, resets if >1 day gap."""
+    today = date.today().isoformat()  # "YYYY-MM-DD"
+    last = current_user.last_streak_date
+
+    if last == today:
+        # Already pinged today — no change
+        return {
+            "streak_days": current_user.streak_days,
+            "last_streak_date": last,
+            "message": "already_pinged"
+        }
+
+    if last is None:
+        # First ever ping
+        current_user.streak_days = 1
+    else:
+        last_date = date.fromisoformat(last)
+        today_date = date.fromisoformat(today)
+        diff = (today_date - last_date).days
+        if diff == 1:
+            # Consecutive day — increment
+            current_user.streak_days = (current_user.streak_days or 0) + 1
+        else:
+            # Missed one or more days — reset to 1
+            current_user.streak_days = 1
+
+    current_user.last_streak_date = today
+    await db.commit()
+    return {
+        "streak_days": current_user.streak_days,
+        "last_streak_date": current_user.last_streak_date,
+        "message": "updated"
+    }
+
+@router.get("/streak")
+async def get_streak(current_user: User = Depends(get_current_user)):
+    """Return current streak info without updating it."""
+    return {
+        "streak_days": current_user.streak_days or 0,
+        "last_streak_date": current_user.last_streak_date,
+    }

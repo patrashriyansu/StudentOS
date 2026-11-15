@@ -25,7 +25,7 @@ export default function Academics() {
         api.get('/academics/timetable'),
         api.get('/academics/assignments'),
         api.get('/academics/exams'),
-        api.get('/academics/cgpa').catch(() => ({ data: { cgpa: 8.42, total_credits: 24, grades: [] } })),
+        api.get('/academics/cgpa').catch(() => ({ data: { cgpa: 0, total_credits: 0, grades: [] } })),
       ])
       setSubjects(subjRes.data || [])
       setTimetable(ttRes.data || [])
@@ -210,97 +210,120 @@ export default function Academics() {
         </div>
       )}
 
-      {/* Attendance Tab */}
       {tab === 'attendance' && (
         <div className="space-y-6">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {subjects.map((s) => {
-              const total = s.total_classes || 0
-              const attended = s.attended_classes || 0
-              const pct = total > 0 ? Math.round((attended / total) * 100) : 0
-              const color = pct >= 75 ? 'bg-emerald-500' : pct >= 65 ? 'bg-amber-500' : 'bg-rose-500'
-              const badgeColor =
-                pct >= 75
-                  ? 'bg-emerald-500/20 text-emerald-400'
-                  : pct >= 65
-                  ? 'bg-amber-500/20 text-amber-400'
-                  : 'bg-rose-500/20 text-rose-400'
+          {subjects.length === 0 ? (
+            <div className="glass rounded-xl p-12 text-center border border-dark-border">
+              <BookOpen size={40} className="text-dark-muted mx-auto mb-3" />
+              <p className="text-base font-semibold">No subjects added yet</p>
+              <p className="text-xs text-dark-muted mt-1">Click <strong>Add Subject</strong> above to start tracking your attendance.</p>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                {subjects.map((s) => {
+                  const total = s.total_classes || 0
+                  const attended = s.attended_classes || 0
+                  const pct = total > 0 ? Math.round((attended / total) * 100) : 0
+                  const color = pct >= 75 ? 'bg-emerald-500' : pct >= 65 ? 'bg-amber-500' : 'bg-rose-500'
+                  const badgeColor =
+                    pct >= 75
+                      ? 'bg-emerald-500/20 text-emerald-400'
+                      : pct >= 65
+                      ? 'bg-amber-500/20 text-amber-400'
+                      : 'bg-rose-500/20 text-rose-400'
 
-              return (
-                <div key={s.id || s.code} className="glass rounded-xl p-5 flex flex-col justify-between hover:border-primary/40 transition-all">
-                  <div>
-                    <div className="flex items-start justify-between mb-3">
+                  return (
+                    <div key={s.id || s.code} className="glass rounded-xl p-5 flex flex-col justify-between hover:border-primary/40 transition-all">
                       <div>
-                        <h4 className="font-semibold text-base">{s.name}</h4>
-                        <p className="text-xs text-dark-muted mt-0.5">
-                          {s.code || 'CS'} &middot; {s.faculty || 'Faculty'}
-                        </p>
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <h4 className="font-semibold text-base">{s.name}</h4>
+                            <p className="text-xs text-dark-muted mt-0.5">
+                              {s.code || 'CS'} &middot; {s.faculty || 'Faculty'}
+                            </p>
+                          </div>
+                          {total > 0 ? (
+                            <div className={`w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold ${badgeColor}`}>
+                              {pct}%
+                            </div>
+                          ) : (
+                            <div className="w-11 h-11 rounded-full flex items-center justify-center text-xs font-medium bg-dark-lighter text-dark-muted">
+                              N/A
+                            </div>
+                          )}
+                        </div>
+
+                        <div className="w-full bg-dark-lighter rounded-full h-2 mb-2 overflow-hidden">
+                          <div className={`h-2 rounded-full ${color}`} style={{ width: `${Math.min(100, pct)}%` }} />
+                        </div>
+
+                        <div className="flex justify-between text-xs text-dark-muted mb-4">
+                          <span>
+                            {total > 0 ? `${attended} / ${total} classes attended` : 'No classes recorded yet'}
+                          </span>
+                          <span>{s.credits || 3} credits</span>
+                        </div>
                       </div>
-                      <div className={`w-11 h-11 rounded-full flex items-center justify-center text-sm font-bold ${badgeColor}`}>
-                        {pct}%
+
+                      {/* Actions: Mark attendance & AI insight */}
+                      <div className="pt-3 border-t border-dark-border/60 flex items-center justify-between gap-2">
+                        <button
+                          onClick={() => getAIInsight(s.id)}
+                          className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
+                          title="Calculate safe skips / requirement"
+                        >
+                          <Sparkles size={12} /> AI Insight
+                        </button>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            onClick={() => handleMarkAttendance(s.id, 'present')}
+                            className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium transition-all"
+                            title="Mark Present today"
+                          >
+                            <Check size={12} /> Present
+                          </button>
+                          <button
+                            onClick={() => handleMarkAttendance(s.id, 'absent')}
+                            className="bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium transition-all"
+                            title="Mark Absent today"
+                          >
+                            <X size={12} /> Absent
+                          </button>
+                        </div>
                       </div>
                     </div>
+                  )
+                })}
+              </div>
 
-                    <div className="w-full bg-dark-lighter rounded-full h-2 mb-2 overflow-hidden">
-                      <div className={`h-2 rounded-full ${color}`} style={{ width: `${Math.min(100, pct)}%` }} />
-                    </div>
-
-                    <div className="flex justify-between text-xs text-dark-muted mb-4">
-                      <span>
-                        {attended} / {total} classes attended
-                      </span>
-                      <span>{s.credits || 3} credits</span>
-                    </div>
-                  </div>
-
-                  {/* Actions: Mark attendance & AI insight */}
-                  <div className="pt-3 border-t border-dark-border/60 flex items-center justify-between gap-2">
-                    <button
-                      onClick={() => getAIInsight(s.id)}
-                      className="text-xs text-primary hover:underline flex items-center gap-1 font-medium"
-                      title="Calculate safe skips / requirement"
-                    >
-                      <Sparkles size={12} /> AI Insight
-                    </button>
-                    <div className="flex items-center gap-1.5">
-                      <button
-                        onClick={() => handleMarkAttendance(s.id, 'present')}
-                        className="bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-400 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium transition-all"
-                        title="Mark Present today"
-                      >
-                        <Check size={12} /> Present
-                      </button>
-                      <button
-                        onClick={() => handleMarkAttendance(s.id, 'absent')}
-                        className="bg-rose-500/20 hover:bg-rose-500/30 text-rose-400 text-xs px-2.5 py-1 rounded-lg flex items-center gap-1 font-medium transition-all"
-                        title="Mark Absent today"
-                      >
-                        <X size={12} /> Absent
-                      </button>
-                    </div>
-                  </div>
+              <div className="glass rounded-xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+                <div>
+                  <h3 className="font-semibold text-lg mb-1">Overall Academic Attendance</h3>
+                  <p className="text-xs text-dark-muted">
+                    Maintain at least 75% attendance across all registered courses to remain eligible for examinations.
+                  </p>
                 </div>
-              )
-            })}
-          </div>
-
-          <div className="glass rounded-xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div>
-              <h3 className="font-semibold text-lg mb-1">Overall Academic Attendance</h3>
-              <p className="text-xs text-dark-muted">
-                Maintain at least 75% attendance across all registered courses to remain eligible for examinations.
-              </p>
-            </div>
-            <div className="flex items-center gap-4">
-              <div className="text-right">
-                <p className="text-3xl font-extrabold text-primary">{overallPercentage}%</p>
-                <p className="text-xs text-dark-muted">{totalAttended} / {totalClasses} classes attended</p>
+                <div className="flex items-center gap-4">
+                  {totalClasses > 0 ? (
+                    <>
+                      <div className="text-right">
+                        <p className="text-3xl font-extrabold text-primary">{overallPercentage}%</p>
+                        <p className="text-xs text-dark-muted">{totalAttended} / {totalClasses} classes attended</p>
+                      </div>
+                      <div className={`px-3 py-1.5 rounded-full text-xs font-semibold ${overallPercentage >= 75 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
+                        {overallPercentage >= 75 ? 'Eligible' : 'At Risk'}
+                      </div>
+                    </>
+                  ) : (
+                    <div className="px-3 py-1.5 rounded-full text-xs font-semibold bg-dark-lighter text-dark-muted">
+                      No attendance data yet
+                    </div>
+                  )}
+                </div>
               </div>
-              <div className={`px-3 py-1.5 rounded-full text-xs font-semibold ${overallPercentage >= 75 ? 'bg-emerald-500/20 text-emerald-400' : 'bg-rose-500/20 text-rose-400'}`}>
-                {overallPercentage >= 75 ? 'Eligible' : 'At Risk'}
-              </div>
-            </div>
-          </div>
+            </>
+          )}
         </div>
       )}
 

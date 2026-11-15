@@ -17,11 +17,7 @@ export default function Wellness() {
   const [mood, setMood] = useState(3)
   const [moodNote, setMoodNote] = useState('')
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
-  const [wellnessScore, setWellnessScore] = useState<any>({
-    overall_score: 78,
-    components: { mood: 80, sleep: 75, water: 80 },
-    trend: 'improving',
-  })
+  const [wellnessScore, setWellnessScore] = useState<any>(null)
 
   // Load wellness summary
   useEffect(() => {
@@ -132,7 +128,7 @@ export default function Wellness() {
           {
             icon: Activity,
             label: 'Vitality Score',
-            value: `${wellnessScore.overall_score || 78}/100`,
+            value: wellnessScore ? `${wellnessScore.overall_score}/100` : '—',
             color: 'from-emerald-500 to-teal-500',
           },
         ].map(({ icon: Icon, label, value, color }) => (
@@ -154,28 +150,34 @@ export default function Wellness() {
           <div className="lg:col-span-2 glass rounded-2xl p-6 border border-dark-border">
             <div className="flex items-center justify-between mb-4">
               <h3 className="font-semibold text-base">Wellness Vitality Score Trend</h3>
-              <span className="text-xs text-emerald-400 font-semibold uppercase tracking-wider">
-                Status: {wellnessScore.trend || 'Improving'}
-              </span>
+              {wellnessScore && (
+                <span className="text-xs text-emerald-400 font-semibold uppercase tracking-wider">
+                  Status: {wellnessScore.trend || 'Improving'}
+                </span>
+              )}
             </div>
-            <ResponsiveContainer width="100%" height={220}>
-              <LineChart
-                data={[
-                  { day: 'Mon', score: 72 },
-                  { day: 'Tue', score: 76 },
-                  { day: 'Wed', score: 70 },
-                  { day: 'Thu', score: 82 },
-                  { day: 'Fri', score: 78 },
-                  { day: 'Sat', score: 85 },
-                  { day: 'Sun', score: 80 },
-                ]}
-              >
-                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 12 }} />
-                <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 12 }} domain={[50, 100]} />
-                <Tooltip contentStyle={{ background: '#1A1A2E', border: '1px solid #2A2A3E', borderRadius: '12px' }} />
-                <Line type="monotone" dataKey="score" stroke="#A855F7" strokeWidth={2.5} dot={{ fill: '#A855F7', r: 4 }} />
-              </LineChart>
-            </ResponsiveContainer>
+            {wellnessScore ? (
+              <ResponsiveContainer width="100%" height={220}>
+                <LineChart
+                  data={[
+                    { day: 'Mon', score: 72 },
+                    { day: 'Tue', score: 76 },
+                    { day: 'Wed', score: 70 },
+                    { day: 'Thu', score: 82 },
+                    { day: 'Fri', score: 78 },
+                    { day: 'Sat', score: 85 },
+                    { day: 'Sun', score: 80 },
+                  ]}
+                >
+                  <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 12 }} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 12 }} domain={[50, 100]} />
+                  <Tooltip contentStyle={{ background: '#1A1A2E', border: '1px solid #2A2A3E', borderRadius: '12px' }} />
+                  <Line type="monotone" dataKey="score" stroke="#A855F7" strokeWidth={2.5} dot={{ fill: '#A855F7', r: 4 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <p className="text-sm text-dark-muted">Log your first entry to see your wellness score.</p>
+            )}
           </div>
 
           <div className="glass rounded-2xl p-6 border border-dark-border space-y-4">

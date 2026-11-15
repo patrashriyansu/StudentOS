@@ -4,11 +4,15 @@ export function getFriendlyApiError(error: unknown, fallback: string) {
   const err = error as AxiosError<any>
 
   if (err.code === 'ECONNABORTED') {
-    return 'The StudentOS server is taking too long to respond. It may be waking up, so please try again in a moment.'
+    return 'The request timed out. Try signing in with this email before registering again, in case your account was created.'
   }
 
   if (!err.response) {
     return 'Cannot reach the StudentOS server right now. Please check your connection and try again.'
+  }
+
+  if (err.response.status === 503) {
+    return 'The StudentOS server is not ready yet. Please wait a few minutes and try again.'
   }
 
   const detail = err.response.data?.detail

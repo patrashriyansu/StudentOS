@@ -5,9 +5,9 @@ import { useCallback } from 'react'
 
 export const useAuth = () => {
   const dispatch = useDispatch<AppDispatch>()
-  const { user, token, isAuthenticated, loading } = useSelector((s: RootState) => s.auth)
+  const { user, token, isAuthenticated, loading, initialized } = useSelector((s: RootState) => s.auth)
   return {
-    user, token, isAuthenticated, loading,
+    user, token, isAuthenticated, loading, initialized,
     login: useCallback((email: string, password: string) => dispatch(login({ email, password })), [dispatch]),
     register: useCallback((email: string, password: string, name: string, role: string) => dispatch(register({ email, password, name, role })), [dispatch]),
     logout: useCallback(() => dispatch(logout()), [dispatch]),

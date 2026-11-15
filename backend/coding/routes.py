@@ -20,7 +20,7 @@ async def get_coding_profile(current_user: User = Depends(get_current_user), db:
     profile = result.scalar_one_or_none()
     if not profile:
         profile = CodingProfile(user_id=current_user.id); db.add(profile); await db.commit(); await db.refresh(profile)
-    return {"leetcode_username": profile.leetcode_username, "codeforces_username": profile.codeforces_username, "codechef_username": profile.codechef_username, "total_problems_solved": profile.total_problems_solved, "total_contests": profile.total_contests, "current_streak": profile.current_streak, "max_streak": profile.max_streak, "rating": profile.rating}
+    return {"leetcode_username": profile.leetcode_username, "codeforces_username": profile.codeforces_username, "codechef_username": profile.codechef_username, "total_problems_solved": profile.total_problems_solved, "easy_solved": profile.easy_solved, "medium_solved": profile.medium_solved, "hard_solved": profile.hard_solved, "total_contests": profile.total_contests, "current_streak": profile.current_streak, "max_streak": profile.max_streak, "rating": profile.rating}
 
 @router.put("/profile")
 async def update_coding_profile(req: CodingUsername, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):

@@ -19,7 +19,7 @@ export default function Productivity() {
   const [pomodoro, setPomodoro] = useState(25 * 60)
   const [initialPomodoro, setInitialPomodoro] = useState(25 * 60)
   const [isRunning, setIsRunning] = useState(false)
-  const [pomodoroSubject, setPomodoroSubject] = useState('Data Structures')
+  const [pomodoroSubject, setPomodoroSubject] = useState('')
 
   // Load data
   const loadData = async () => {

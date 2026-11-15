@@ -1,5 +1,9 @@
 import { Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { useDispatch } from 'react-redux'
 import { useAuth } from './hooks/useAuth'
+import { AppDispatch } from './store'
+import { initializeAuth, logout } from './store/slices/authSlice'
 import Layout from './components/layout/Layout'
 import Login from './pages/Login'
 import Register from './pages/Register'
@@ -18,17 +22,34 @@ import Notifications from './pages/Notifications'
 import Projects from './pages/Projects'
 
 function ProtectedRoute({ children, roles }: { children: React.ReactNode; roles?: string[] }) {
-  const { isAuthenticated, user } = useAuth()
+  const { isAuthenticated, user, initialized } = useAuth()
+  if (!initialized) return <div className="min-h-screen bg-dark flex items-center justify-center text-dark-muted">Checking session...</div>
   if (!isAuthenticated) return <Navigate to="/login" replace />
   if (roles && user && !roles.includes(user.role)) return <Navigate to="/dashboard" replace />
   return <>{children}</>
 }
 
+function PublicRoute({ children }: { children: React.ReactNode }) {
+  const { isAuthenticated, initialized } = useAuth()
+  if (!initialized) return <div className="min-h-screen bg-dark flex items-center justify-center text-dark-muted">Checking session...</div>
+  if (isAuthenticated) return <Navigate to="/dashboard" replace />
+  return <>{children}</>
+}
+
 export default function App() {
+  const dispatch = useDispatch<AppDispatch>()
+
+  useEffect(() => {
+    dispatch(initializeAuth())
+    const handleAuthExpired = () => dispatch(logout())
+    window.addEventListener('studentos:auth-expired', handleAuthExpired)
+    return () => window.removeEventListener('studentos:auth-expired', handleAuthExpired)
+  }, [dispatch])
+
   return (
     <Routes>
-      <Route path="/login" element={<Login />} />
-      <Route path="/register" element={<Register />} />
+      <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
+      <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<Dashboard />} />

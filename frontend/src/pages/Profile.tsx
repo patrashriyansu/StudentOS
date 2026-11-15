@@ -7,13 +7,15 @@ export default function Profile() {
   const { user } = useAuth()
   const [editing, setEditing] = useState(false)
   const [profileData, setProfileData] = useState<any>({
-    bio: 'CS student passionate about full-stack engineering and AI.',
-    department: 'Computer Science',
-    college: 'IIT Delhi',
-    github_url: 'https://github.com/arjunsharma',
-    linkedin_url: 'https://linkedin.com/in/arjunsharma',
-    skills: ['Python', 'JavaScript', 'TypeScript', 'React', 'FastAPI', 'SQL', 'Docker'],
+    bio: '',
+    department: '',
+    college: '',
+    github_url: '',
+    linkedin_url: '',
+    portfolio_url: '',
+    skills: [],
   })
+  const [badges, setBadges] = useState<any[]>([])
 
   useEffect(() => {
     api.get('/users/profile')
@@ -21,6 +23,12 @@ export default function Profile() {
         if (res.data?.profile) {
           setProfileData(res.data.profile)
         }
+      })
+      .catch(() => {})
+
+    api.get('/users/badges')
+      .then((res) => {
+        if (Array.isArray(res.data)) setBadges(res.data)
       })
       .catch(() => {})
   }, [])
@@ -39,14 +47,14 @@ export default function Profile() {
       <div className="glass rounded-2xl p-8 border border-dark-border">
         <div className="flex flex-col sm:flex-row items-start gap-6">
           <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-3xl font-bold shrink-0">
-            {user?.name?.[0] || 'A'}
+            {user?.name?.[0]?.toUpperCase() || '?'}
           </div>
           <div className="flex-1 w-full">
             <div className="flex items-center justify-between">
               <div>
-                <h1 className="text-2xl font-bold">{user?.name || 'Arjun Sharma'}</h1>
+                <h1 className="text-2xl font-bold">{user?.name || 'Your Name'}</h1>
                 <p className="text-dark-muted capitalize text-sm">
-                  {profileData.department || 'Computer Science'} &middot; {profileData.college || 'IIT Delhi'}
+                  {[profileData.department, profileData.college].filter(Boolean).join(' · ')}
                 </p>
               </div>
               <button
@@ -62,13 +70,13 @@ export default function Profile() {
             </div>
             <div className="flex flex-wrap items-center gap-4 mt-4 text-xs text-dark-muted">
               <span className="flex items-center gap-1">
-                <Mail size={14} /> {user?.email || 'demo@studentos.app'}
+                <Mail size={14} /> {user?.email || ''}
               </span>
               <span className="flex items-center gap-1">
                 <Calendar size={14} /> Joined {user?.created_at?.slice(0, 10) || '2024'}
               </span>
               <span className="flex items-center gap-1 text-primary font-semibold">
-                <Award size={14} /> Level {user?.level || 3} ({user?.xp_points || 1250} XP)
+                <Award size={14} /> Level {user?.level ?? 1} ({user?.xp_points ?? 0} XP)
               </span>
             </div>
 
@@ -126,7 +134,7 @@ export default function Profile() {
         <div className="glass rounded-2xl p-6 border border-dark-border">
           <h3 className="font-semibold text-base mb-4">Mastered Technical Skills</h3>
           <div className="flex flex-wrap gap-2">
-            {(profileData.skills || ['Python', 'React', 'FastAPI', 'Data Structures', 'SQL', 'Docker']).map((s: string) => (
+            {(profileData.skills || []).map((s: string) => (
               <span key={s} className="px-3 py-1.5 rounded-lg bg-primary/15 text-primary text-xs font-semibold">
                 {s}
               </span>
@@ -137,21 +145,21 @@ export default function Profile() {
         <div className="glass rounded-2xl p-6 border border-dark-border">
           <h3 className="font-semibold text-base mb-4">Badges & Gamification Milestones</h3>
           <div className="space-y-3">
-            {[
-              { title: '12-Day Study Streak', desc: 'Maintained consecutive daily logins', color: 'from-yellow-500 to-orange-500' },
-              { title: '100+ Problems Solved', desc: 'Conquered core DSA problem sheets', color: 'from-primary to-secondary' },
-              { title: 'Consistent Hydration', desc: 'Met 8-glass goal for 5 days', color: 'from-emerald-500 to-teal-500' },
-            ].map((ach, i) => (
-              <div key={i} className="flex items-center gap-3.5 p-3 rounded-xl bg-dark-lighter border border-dark-border">
-                <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${ach.color} flex items-center justify-center shrink-0`}>
-                  <Sparkles size={16} />
+            {badges.length === 0 ? (
+              <p className="text-sm text-dark-muted text-center py-4">No badges yet. Keep using StudentOS to earn them!</p>
+            ) : (
+              badges.map((ach: any, i: number) => (
+                <div key={i} className="flex items-center gap-3.5 p-3 rounded-xl bg-dark-lighter border border-dark-border">
+                  <div className={`w-9 h-9 rounded-xl bg-gradient-to-br ${ach.color || 'from-primary to-secondary'} flex items-center justify-center shrink-0`}>
+                    <Sparkles size={16} />
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold">{ach.title}</p>
+                    <p className="text-xs text-dark-muted">{ach.desc}</p>
+                  </div>
                 </div>
-                <div>
-                  <p className="text-sm font-semibold">{ach.title}</p>
-                  <p className="text-xs text-dark-muted">{ach.desc}</p>
-                </div>
-              </div>
-            ))}
+              ))
+            )}
           </div>
         </div>
       </div>

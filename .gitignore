@@ -65,3 +65,9 @@ ENV/
 *.sqlite3
 .env
 !.env.example
+
+# Firebase cache (keep firebase.json and .firebaserc in git)
+.firebase/
+
+# Frontend production env (auto-injected by CI)
+frontend/.env.production

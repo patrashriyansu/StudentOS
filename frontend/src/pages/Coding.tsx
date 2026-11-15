@@ -6,13 +6,13 @@ import { api } from '../services/api'
 export default function Coding() {
   const [platform, setPlatform] = useState('leetcode')
   const [profile, setProfile] = useState<any>({
-    leetcode_username: 'arjun_sharma',
-    codeforces_username: 'arjun_cf',
+    leetcode_username: '',
+    codeforces_username: '',
     codechef_username: '',
-    total_problems_solved: 187,
-    total_contests: 18,
-    current_streak: 12,
-    rating: 1642,
+    total_problems_solved: 0,
+    total_contests: 0,
+    current_streak: 0,
+    rating: 0,
   })
   const [dsaTopics, setDsaTopics] = useState<any[]>([])
   const [editingPlatform, setEditingPlatform] = useState<string | null>(null)
@@ -28,6 +28,12 @@ export default function Coding() {
     api.get('/coding/dsa-progress')
       .then((res) => {
         if (Array.isArray(res.data) && res.data.length > 0) setDsaTopics(res.data)
+      })
+      .catch(() => {})
+
+    api.get('/coding/difficulty-stats')
+      .then((res) => {
+        if (Array.isArray(res.data) && res.data.length > 0) setDifficultyData(res.data)
       })
       .catch(() => {})
   }, [])
@@ -48,11 +54,11 @@ export default function Coding() {
     { id: 'codechef', name: 'CodeChef', color: '#A855F7', username: profile.codechef_username },
   ]
 
-  const difficultyData = [
-    { name: 'Easy', value: 75, color: '#10B981' },
-    { name: 'Medium', value: 92, color: '#F59E0B' },
-    { name: 'Hard', value: 20, color: '#EF4444' },
-  ]
+  const [difficultyData, setDifficultyData] = useState<any[]>([
+    { name: 'Easy', value: 0, color: '#10B981' },
+    { name: 'Medium', value: 0, color: '#F59E0B' },
+    { name: 'Hard', value: 0, color: '#EF4444' },
+  ])
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
@@ -67,10 +73,10 @@ export default function Coding() {
       {/* Top Stats */}
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {[
-          { icon: Code, label: 'Problems Solved', value: profile.total_problems_solved || 187, color: 'from-primary to-secondary' },
-          { icon: Activity, label: 'Contests Attended', value: profile.total_contests || 18, color: 'from-emerald-500 to-teal-500' },
-          { icon: Flame, label: 'Current Streak', value: `${profile.current_streak || 12} days`, color: 'from-red-500 to-pink-500' },
-          { icon: Trophy, label: 'Max Rating', value: profile.rating || 1642, color: 'from-yellow-500 to-orange-500' },
+          { icon: Code, label: 'Problems Solved (All-time)', value: profile.total_problems_solved, color: 'from-primary to-secondary' },
+          { icon: Activity, label: 'Contests Attended', value: profile.total_contests, color: 'from-emerald-500 to-teal-500' },
+          { icon: Flame, label: 'Current Streak', value: `${profile.current_streak} days`, color: 'from-red-500 to-pink-500' },
+          { icon: Trophy, label: 'Max Rating', value: profile.rating, color: 'from-yellow-500 to-orange-500' },
         ].map(({ icon: Icon, label, value, color }) => (
           <div key={label} className="glass rounded-xl p-5 hover:border-primary/40 transition-all">
             <div className="flex items-center justify-between mb-3">
@@ -88,16 +94,20 @@ export default function Coding() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         <div className="glass rounded-2xl p-6 border border-dark-border">
           <h3 className="font-semibold text-base mb-4">Difficulty Distribution</h3>
-          <ResponsiveContainer width="100%" height={230}>
-            <PieChart>
-              <Pie data={difficultyData} cx="50%" cy="50%" innerRadius={65} outerRadius={95} paddingAngle={5} dataKey="value">
-                {difficultyData.map((e, i) => (
-                  <Cell key={i} fill={e.color} />
-                ))}
-              </Pie>
-              <Tooltip contentStyle={{ background: '#1A1A2E', border: '1px solid #2A2A3E', borderRadius: '12px' }} />
-            </PieChart>
-          </ResponsiveContainer>
+          {difficultyData.every((d) => d.value === 0) ? (
+            <p className="text-sm text-dark-muted text-center py-16">No problems solved yet</p>
+          ) : (
+            <ResponsiveContainer width="100%" height={230}>
+              <PieChart>
+                <Pie data={difficultyData} cx="50%" cy="50%" innerRadius={65} outerRadius={95} paddingAngle={5} dataKey="value">
+                  {difficultyData.map((e, i) => (
+                    <Cell key={i} fill={e.color} />
+                  ))}
+                </Pie>
+                <Tooltip contentStyle={{ background: '#1A1A2E', border: '1px solid #2A2A3E', borderRadius: '12px' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          )}
           <div className="flex justify-center gap-6 mt-3">
             {difficultyData.map((d) => (
               <div key={d.name} className="flex items-center gap-2">
@@ -168,19 +178,10 @@ export default function Coding() {
       <div className="glass rounded-2xl p-6 border border-dark-border">
         <h3 className="font-semibold text-base mb-4">DSA Sheet Topic Breakdown</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 gap-x-6 gap-y-4">
-          {(dsaTopics.length > 0
-            ? dsaTopics
-            : [
-                { topic: 'Arrays', solved_problems: 42, total_problems: 50 },
-                { topic: 'Strings', solved_problems: 35, total_problems: 40 },
-                { topic: 'Linked Lists', solved_problems: 28, total_problems: 30 },
-                { topic: 'Stack & Queue', solved_problems: 22, total_problems: 25 },
-                { topic: 'Trees & BST', solved_problems: 38, total_problems: 45 },
-                { topic: 'Graphs', solved_problems: 30, total_problems: 50 },
-                { topic: 'Dynamic Programming', solved_problems: 35, total_problems: 60 },
-                { topic: 'Binary Search', solved_problems: 27, total_problems: 30 },
-              ]
-          ).map((t: any) => {
+          {dsaTopics.length === 0 ? (
+            <p className="col-span-2 text-sm text-dark-muted text-center py-6">No DSA progress tracked yet.</p>
+          ) : (
+            dsaTopics.map((t: any) => {
             const pct = Math.round(((t.solved_problems || 0) / (t.total_problems || 1)) * 100)
             return (
               <div key={t.topic} className="space-y-1.5">
@@ -195,7 +196,8 @@ export default function Coding() {
                 </div>
               </div>
             )
-          })}
+          })
+          )}
         </div>
       </div>
     </div>
