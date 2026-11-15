@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Droplets, Moon, Activity, Frown, Meh, Smile, Laugh, Check, Sparkles } from 'lucide-react'
+import { Droplets, Moon, Activity, Frown, Meh, Smile, Laugh, Check, Sparkles, Star } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { api } from '../services/api'
 
@@ -8,25 +8,39 @@ const moodOptions = [
   { icon: Meh, label: 'Okay', color: '#F59E0B', value: 2 },
   { icon: Smile, label: 'Good', color: '#10B981', value: 3 },
   { icon: Laugh, label: 'Great', color: '#6C63FF', value: 4 },
+  { icon: Star, label: 'Excellent', color: '#FBBF24', value: 5 },
 ]
 
 export default function Wellness() {
   const [tab, setTab] = useState<'overview' | 'mood' | 'water' | 'sleep'>('overview')
-  const [water, setWater] = useState(6)
+  const [water, setWater] = useState(0)
   const [sleep, setSleep] = useState(7.5)
   const [mood, setMood] = useState(3)
+  const [hasWater, setHasWater] = useState(false)
+  const [hasSleep, setHasSleep] = useState(false)
+  const [hasMood, setHasMood] = useState(false)
   const [moodNote, setMoodNote] = useState('')
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
   const [wellnessScore, setWellnessScore] = useState<any>(null)
+  const [trendData, setTrendData] = useState<{ day: string; score: number }[]>([])
 
   // Load wellness summary
   useEffect(() => {
     api.get('/wellness/summary')
       .then((res) => {
         if (res.data?.today) {
-          if (res.data.today.water_glasses) setWater(res.data.today.water_glasses)
-          if (res.data.today.mood) setMood(res.data.today.mood)
-          if (res.data.today.sleep_hours) setSleep(res.data.today.sleep_hours)
+          if (res.data.today.water_glasses != null) {
+            setWater(res.data.today.water_glasses)
+            setHasWater(true)
+          }
+          if (res.data.today.mood != null) {
+            setMood(res.data.today.mood)
+            setHasMood(true)
+          }
+          if (res.data.today.sleep_hours != null) {
+            setSleep(res.data.today.sleep_hours)
+            setHasSleep(true)
+          }
         }
       })
       .catch(() => {})
@@ -36,6 +50,18 @@ export default function Wellness() {
         if (res.data) setWellnessScore(res.data)
       })
       .catch(() => {})
+
+    api.get('/wellness/history', { params: { days: 7 } })
+      .then((res) => {
+        const history = Array.isArray(res.data?.history) ? res.data.history : []
+        setTrendData(history
+          .filter((entry: { score?: number | null }) => entry.score !== null && entry.score !== undefined)
+          .map((entry: { date: string; score: number }) => ({
+            day: new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' }),
+            score: entry.score,
+          })))
+      })
+      .catch(() => setTrendData([]))
   }, [])
 
   const notify = (msg: string) => {
@@ -43,11 +69,28 @@ export default function Wellness() {
     setTimeout(() => setSavedMessage(null), 3000)
   }
 
+  const refreshAnalytics = async () => {
+    const [scoreResponse, historyResponse] = await Promise.all([
+      api.get('/wellness/score'),
+      api.get('/wellness/history', { params: { days: 7 } }),
+    ])
+    setWellnessScore(scoreResponse.data)
+    const history = Array.isArray(historyResponse.data?.history) ? historyResponse.data.history : []
+    setTrendData(history
+      .filter((entry: { score?: number | null }) => entry.score !== null && entry.score !== undefined)
+      .map((entry: { date: string; score: number }) => ({
+        day: new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' }),
+        score: entry.score,
+      })))
+  }
+
   // Log Mood
   const handleLogMood = async () => {
     try {
       await api.post('/wellness/mood', { mood_score: mood, note: moodNote })
+      setHasMood(true)
       notify('Mood logged successfully! Keep tracking daily.')
+      void refreshAnalytics().catch(console.error)
     } catch (err) {
       console.error(err)
     }
@@ -55,10 +98,12 @@ export default function Wellness() {
 
   // Log Water
   const handleLogWater = async (glasses: number) => {
-    setWater(glasses)
     try {
       await api.post('/wellness/water', { glasses, goal: 8 })
+      setWater(glasses)
+      setHasWater(true)
       notify(`${glasses} glasses recorded! Stay hydrated.`)
+      void refreshAnalytics().catch(console.error)
     } catch (err) {
       console.error(err)
     }
@@ -68,7 +113,9 @@ export default function Wellness() {
   const handleLogSleep = async () => {
     try {
       await api.post('/wellness/sleep', { hours: sleep, quality: 4 })
+      setHasSleep(true)
       notify(`Logged ${sleep} hours of sleep!`)
+      void refreshAnalytics().catch(console.error)
     } catch (err) {
       console.error(err)
     }
@@ -110,27 +157,27 @@ export default function Wellness() {
           {
             icon: Smile,
             label: 'Today Mood',
-            value: moodOptions.find((m) => m.value === mood)?.label || 'Good',
+            value: hasMood ? (moodOptions.find((m) => m.value === mood)?.label || 'Not logged') : 'Not logged',
             color: 'from-purple-500 to-pink-500',
           },
           {
             icon: Droplets,
             label: 'Hydration',
-            value: `${water}/8 glasses`,
+            value: hasWater ? `${water}/8 glasses` : 'Not logged',
             color: 'from-blue-500 to-cyan-500',
           },
           {
             icon: Moon,
             label: 'Last Sleep',
-            value: `${sleep} hrs`,
+            value: hasSleep ? `${sleep} hrs` : 'Not logged',
             color: 'from-indigo-500 to-purple-500',
           },
           {
             icon: Activity,
             label: 'Vitality Score',
-            value: wellnessScore
-              ? `${wellnessScore.overall_score ?? wellnessScore.score ?? Math.round((mood / 4) * 30 + Math.min(water, 8) / 8 * 30 + Math.min(sleep, 8) / 8 * 40)}/100`
-              : `${Math.round((mood / 4) * 30 + Math.min(water, 8) / 8 * 30 + Math.min(sleep, 8) / 8 * 40)}/100`,
+            value: wellnessScore?.overall_score == null
+              ? 'Not enough data'
+              : `${wellnessScore.overall_score}/100`,
             color: 'from-emerald-500 to-teal-500',
           },
         ].map(({ icon: Icon, label, value, color }) => (
@@ -154,44 +201,33 @@ export default function Wellness() {
               <h3 className="font-semibold text-base">Wellness Vitality Score Trend</h3>
               {wellnessScore && (
                 <span className="text-xs text-emerald-400 font-semibold uppercase tracking-wider">
-                  Status: {wellnessScore.trend || 'Improving'}
+                  Status: {wellnessScore.trend === 'not_enough_data' ? 'Track your habits' : (wellnessScore.trend || 'Tracking')}
                 </span>
               )}
             </div>
-            {wellnessScore ? (
+            {trendData.length > 0 ? (
               <ResponsiveContainer width="100%" height={220}>
-                <LineChart
-                  data={[
-                    { day: 'Mon', score: 72 },
-                    { day: 'Tue', score: 76 },
-                    { day: 'Wed', score: 70 },
-                    { day: 'Thu', score: 82 },
-                    { day: 'Fri', score: 78 },
-                    { day: 'Sat', score: 85 },
-                    { day: 'Sun', score: 80 },
-                  ]}
-                >
+                <LineChart data={trendData}>
                   <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 12 }} />
-                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 12 }} domain={[50, 100]} />
+                  <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 12 }} domain={[0, 100]} />
                   <Tooltip contentStyle={{ background: '#1A1A2E', border: '1px solid #2A2A3E', borderRadius: '12px' }} />
                   <Line type="monotone" dataKey="score" stroke="#A855F7" strokeWidth={2.5} dot={{ fill: '#A855F7', r: 4 }} />
                 </LineChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-sm text-dark-muted">Log your first entry to see your wellness score.</p>
+              <p className="text-sm text-dark-muted">Log mood, sleep or water entries to build your personal trend.</p>
             )}
           </div>
 
           <div className="glass rounded-2xl p-6 border border-dark-border space-y-4">
             <h3 className="font-semibold text-base flex items-center gap-2">
-              <Sparkles size={16} className="text-primary" /> AI Health Recommendations
+              <Sparkles size={16} className="text-primary" /> Wellness Guidance
             </h3>
             <div className="space-y-3">
-              {[
-                'Maintain a consistent 11:00 PM sleep schedule to optimize memory consolidation.',
-                'Drink at least 2 more glasses of water in the afternoon study stretch.',
-                'Take a 5-minute eye rest break every 45 minutes of coding.',
-              ].map((tip, i) => (
+              {(wellnessScore?.recommendations?.length
+                ? wellnessScore.recommendations
+                : ['Keep logging your daily habits to receive guidance based on your wellness history.']
+              ).map((tip: string, i: number) => (
                 <div key={i} className="p-3 rounded-xl bg-dark-lighter border border-dark-border text-xs leading-relaxed text-slate-200">
                   {tip}
                 </div>

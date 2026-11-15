@@ -37,28 +37,66 @@ flutter run
 
 ---
 
+## 🌐 React Web Frontend
+
+The web application is in `frontend/` and is deployed at
+https://studentos-shriyansu.vercel.app/.
+
+```bash
+cd frontend
+npm ci
+npm run dev
+```
+
+Quality checks:
+
+```bash
+npm test
+npm run lint
+npm run build
+```
+
 ## 🔧 FastAPI Backend
 
-### Endpoints
-- `POST /auth/register` — Register
-- `POST /auth/login` — Login (JWT)
-- `GET /auth/me` — Current user
-- `GET /attendance/` — Get subjects
-- `POST /attendance/` — Add/update subject
-- `PUT /attendance/{subject}` — Mark attend/miss
-- `GET /attendance/predict/{subject}` — AI prediction
-- `GET /notes/` — All notes
-- `POST /notes/` — Create note
-- `POST /notes/{id}/summarize` — AI summarize
-- `POST /notes/{id}/quiz` — AI quiz generation
+The API is in `backend/`. All application endpoints use the `/api/v1` prefix.
+Interactive API documentation is available at `/docs` when the backend is running.
 
-### Run Backend
+Common endpoints:
+
+- `POST /api/v1/auth/register` — Register
+- `POST /api/v1/auth/login` — Login and issue JWT tokens
+- `POST /api/v1/auth/refresh` — Refresh an expired access token
+- `GET /api/v1/auth/me` — Current authenticated user
+- `POST /api/v1/auth/send-otp` — Send email verification/recovery code
+- `POST /api/v1/auth/reset-password` — Reset password using a recovery code
+- `GET /api/v1/wellness/history` — Data-backed wellness history
+
+Run the backend from the repository root:
+
 ```bash
-cd StudentOS/backend
-pip install -r requirements.txt
-cp .env.example .env   # Fill in your keys
-uvicorn app.main:app --reload --port 8000
+python -m venv .venv
+# Activate the virtual environment, then:
+pip install -r backend/requirements-render.txt
+cp backend/.env.example backend/.env
+uvicorn backend.main:app --reload --port 8000
 ```
+
+For local development, use `ENVIRONMENT=development` and a local database.
+Production must use a persistent PostgreSQL `DATABASE_URL`, a unique
+`SECRET_KEY` of at least 32 characters, and `ENVIRONMENT=production`.
+
+### Password recovery email setup
+
+Password recovery requires SMTP credentials in the backend environment:
+`SMTP_HOST`, `SMTP_PORT`, `SMTP_USERNAME`, `SMTP_PASSWORD`,
+`SMTP_FROM_EMAIL`, and `SMTP_STARTTLS`. Configure these as private environment
+variables on the backend host; do not commit credentials to Git.
+
+### CI
+
+Pull requests run frontend contract tests, linting, a production build, and
+backend regression tests through GitHub Actions. The legacy Google Cloud/Firebase
+deployment workflow is manual-only; configure its credentials before running it.
 
 ---
 

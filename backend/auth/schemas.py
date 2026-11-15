@@ -1,3 +1,4 @@
+from typing import Literal
 from pydantic import BaseModel, EmailStr, Field, field_validator
 
 ALLOWED_ROLES = {"student", "faculty", "recruiter", "mentor"}
@@ -51,16 +52,16 @@ class GoogleLoginRequest(BaseModel):
 
 class OTPRequest(BaseModel):
     email: EmailStr
-    purpose: str
+    purpose: Literal["email_verification", "password_reset"]
 
 class OTPVerifyRequest(BaseModel):
     email: EmailStr
-    code: str
-    purpose: str
+    code: str = Field(..., pattern=r"^\d{6}$")
+    purpose: Literal["email_verification", "password_reset"]
 
 class PasswordResetRequest(BaseModel):
     email: EmailStr
-    code: str
+    code: str = Field(..., pattern=r"^\d{6}$")
     new_password: str = Field(..., min_length=8)
 
     @field_validator('new_password')

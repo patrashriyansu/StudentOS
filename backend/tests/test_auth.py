@@ -17,6 +17,9 @@ from jose import jwt
 
 from backend.core.config import settings
 from backend.main import app
+from backend.auth.routes import limiter as auth_limiter
+
+auth_limiter.enabled = False
 
 
 def unique_email() -> str:
@@ -147,3 +150,71 @@ def test_token_errors_and_refresh_token_type() -> None:
 
         access_token_as_refresh = client.post("/api/v1/auth/refresh", headers=auth_headers(tokens["access_token"]))
         assert access_token_as_refresh.status_code == 401
+
+
+
+def test_password_reset_after_otp_verification(monkeypatch) -> None:
+    from backend.auth import routes as auth_routes
+
+    sent_codes: list[str] = []
+
+    async def fake_send_otp_email(email: str, code: str, purpose) -> None:
+        sent_codes.append(code)
+
+    monkeypatch.setattr(auth_routes, "email_delivery_configured", lambda: True)
+    monkeypatch.setattr(auth_routes, "send_otp_email", fake_send_otp_email)
+
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        email = unique_email()
+        register_user(client, email=email)
+
+        sent = client.post("/api/v1/auth/send-otp", json={"email": email, "purpose": "password_reset"})
+        assert sent.status_code == 200
+        assert len(sent_codes) == 1
+
+        code = sent_codes[0]
+        verified = client.post(
+            "/api/v1/auth/verify-otp",
+            json={"email": email, "code": code, "purpose": "password_reset"},
+        )
+        assert verified.status_code == 200
+
+        reset = client.post(
+            "/api/v1/auth/reset-password",
+            json={"email": email, "code": code, "new_password": "NewPassword2!"},
+        )
+        assert reset.status_code == 200
+
+        login = client.post("/api/v1/auth/login", json={"email": email, "password": "NewPassword2!"})
+        assert login.status_code == 200
+
+        reused = client.post(
+            "/api/v1/auth/reset-password",
+            json={"email": email, "code": code, "new_password": "AnotherPassword3!"},
+        )
+        assert reused.status_code == 400
+
+
+def test_avatar_upload_is_validated_and_persisted() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        tokens = register_user(client)
+        headers = auth_headers(tokens["access_token"])
+
+        invalid = client.post(
+            "/api/v1/users/upload-avatar",
+            headers=headers,
+            files={"file": ("avatar.txt", b"not an image", "text/plain")},
+        )
+        assert invalid.status_code == 415
+
+        uploaded = client.post(
+            "/api/v1/users/upload-avatar",
+            headers=headers,
+            files={"file": ("avatar.jpg", bytes([255, 216, 255, 217]), "image/jpeg")},
+        )
+        assert uploaded.status_code == 200
+        profile = client.get("/api/v1/auth/me", headers=headers)
+        assert profile.status_code == 200
+        assert profile.json()["avatar"].startswith("data:image/jpeg;base64,")

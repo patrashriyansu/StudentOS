@@ -40,15 +40,37 @@ async def update_profile(req: UserProfileUpdate, current_user: User = Depends(ge
     return {"message": "Profile updated"}
 
 @router.post("/upload-avatar")
-async def upload_avatar(file: UploadFile = File(...), current_user: User = Depends(get_current_user)):
-    content = await file.read()
+async def upload_avatar(
+    file: UploadFile = File(...),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    max_size = 2 * 1024 * 1024
+    content = await file.read(max_size + 1)
+    if not content:
+        raise HTTPException(status_code=400, detail="The uploaded image is empty.")
+    if len(content) > max_size:
+        raise HTTPException(status_code=413, detail="Avatar images must be 2 MB or smaller.")
+
+    signatures = {
+        "image/png": content.startswith(b"\x89PNG\r\n\x1a\n"),
+        "image/jpeg": content.startswith(b"\xff\xd8\xff"),
+        "image/webp": content[:4] == b"RIFF" and content[8:12] == b"WEBP",
+    }
+    detected_type = next((mime for mime, valid in signatures.items() if valid), None)
+    if not detected_type or (file.content_type and file.content_type != detected_type):
+        raise HTTPException(status_code=415, detail="Upload a valid PNG, JPEG or WebP image.")
+
     import base64
-    b64 = base64.b64encode(content).decode()
-    current_user.avatar = f"data:{file.content_type};base64,{b64}"
+    b64 = base64.b64encode(content).decode("ascii")
+    current_user.avatar = f"data:{detected_type};base64,{b64}"
+    await db.commit()
+    await db.refresh(current_user)
     return {"avatar": current_user.avatar}
 
+
 @router.get("/leaderboard")
-async def leaderboard(db: AsyncSession = Depends(get_db)):
+async def leaderboard(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(User).order_by(User.xp_points.desc()).limit(50))
     users = result.scalars().all()
     return [{"id": u.id, "name": u.name, "avatar": u.avatar, "xp_points": u.xp_points, "level": u.level, "streak_days": u.streak_days} for u in users]
@@ -125,50 +147,6 @@ async def daily_ping(current_user: User = Depends(get_current_user), db: AsyncSe
 @router.get("/streak")
 async def get_streak(current_user: User = Depends(get_current_user)):
     """Return current streak info without modifying it."""
-    return {
-        "streak_days": current_user.streak_days or 0,
-        "last_streak_date": current_user.last_streak_date,
-    }
-
-@router.post("/ping")
-async def daily_ping(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Call on every app visit. Increments streak if new day, resets if >1 day gap."""
-    today = date.today().isoformat()  # "YYYY-MM-DD"
-    last = current_user.last_streak_date
-
-    if last == today:
-        # Already pinged today — no change
-        return {
-            "streak_days": current_user.streak_days,
-            "last_streak_date": last,
-            "message": "already_pinged"
-        }
-
-    if last is None:
-        # First ever ping
-        current_user.streak_days = 1
-    else:
-        last_date = date.fromisoformat(last)
-        today_date = date.fromisoformat(today)
-        diff = (today_date - last_date).days
-        if diff == 1:
-            # Consecutive day — increment
-            current_user.streak_days = (current_user.streak_days or 0) + 1
-        else:
-            # Missed one or more days — reset to 1
-            current_user.streak_days = 1
-
-    current_user.last_streak_date = today
-    await db.commit()
-    return {
-        "streak_days": current_user.streak_days,
-        "last_streak_date": current_user.last_streak_date,
-        "message": "updated"
-    }
-
-@router.get("/streak")
-async def get_streak(current_user: User = Depends(get_current_user)):
-    """Return current streak info without updating it."""
     return {
         "streak_days": current_user.streak_days or 0,
         "last_streak_date": current_user.last_streak_date,
