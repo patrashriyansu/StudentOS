@@ -1,11 +1,12 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from backend.core.database import get_db
 from backend.core.security import get_current_user
 from backend.users.models import User
 from backend.placements.models import Resume, Application, Interview, Offer
+from backend.notifications.service import INDIA_TZ, schedule_email_reminder, to_utc_datetime
 from pydantic import BaseModel
 from typing import Optional
 import json
@@ -42,9 +43,24 @@ async def get_applications(current_user: User = Depends(get_current_user), db: A
 @router.post("/applications")
 async def create_application(req: ApplicationCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     app = Application(user_id=current_user.id, company=req.company, role=req.role, salary=req.salary, notes=req.notes)
-    if req.deadline: app.deadline = datetime.fromisoformat(req.deadline)
-    db.add(app); await db.commit(); await db.refresh(app)
-    return {"id": app.id, "message": "Application added"}
+    deadline_at = to_utc_datetime(req.deadline) if req.deadline else None
+    if deadline_at:
+        app.deadline = deadline_at
+    db.add(app)
+    await db.flush()
+    if deadline_at and deadline_at > datetime.now(timezone.utc):
+        await schedule_email_reminder(
+            db,
+            user_id=current_user.id,
+            title=f"Application deadline: {req.company}",
+            message=f"Your {req.role} application at {req.company} has a deadline on {deadline_at.astimezone(INDIA_TZ).strftime('%d %b %Y at %I:%M %p')}.",
+            remind_at=deadline_at - timedelta(days=1),
+            entity_type="application",
+            entity_id=app.id,
+        )
+    await db.commit()
+    await db.refresh(app)
+    return {"id": app.id, "message": "Application added", "email_reminder": "scheduled when a future deadline is supplied"}
 
 @router.put("/applications/{app_id}/status")
 async def update_application_status(app_id: int, status: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -66,11 +82,54 @@ async def get_interviews(current_user: User = Depends(get_current_user), db: Asy
 
 @router.post("/interviews")
 async def create_interview(req: InterviewCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    interview = Interview(user_id=current_user.id, company=req.company, role=req.role, interview_type=req.interview_type, scheduled_at=datetime.fromisoformat(req.scheduled_at))
-    db.add(interview); await db.commit(); await db.refresh(interview)
-    return {"id": interview.id, "message": "Interview scheduled"}
+    scheduled_at = to_utc_datetime(req.scheduled_at)
+    interview = Interview(user_id=current_user.id, company=req.company, role=req.role, interview_type=req.interview_type, scheduled_at=scheduled_at)
+    db.add(interview)
+    await db.flush()
+    if scheduled_at > datetime.now(timezone.utc):
+        await schedule_email_reminder(
+            db,
+            user_id=current_user.id,
+            title=f"Interview reminder: {req.company}",
+            message=f"Your {req.interview_type} interview for {req.role} at {req.company} is scheduled for {scheduled_at.astimezone(INDIA_TZ).strftime('%d %b %Y at %I:%M %p')}.",
+            remind_at=scheduled_at - timedelta(days=1),
+            entity_type="interview",
+            entity_id=interview.id,
+        )
+    await db.commit()
+    await db.refresh(interview)
+    return {"id": interview.id, "message": "Interview scheduled", "email_reminder": "scheduled when the interview is in the future"}
 
 # --- Offers ---
+
+
+class OfferCreate(BaseModel):
+    company: str
+    role: str
+    ctc: Optional[str] = ""
+    location: Optional[str] = ""
+    joining_date: Optional[str] = None
+    status: Optional[str] = "pending"
+
+
+@router.post("/offers")
+async def create_offer(req: OfferCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    joining_at = to_utc_datetime(req.joining_date) if req.joining_date else None
+    offer = Offer(
+        user_id=current_user.id,
+        company=req.company,
+        role=req.role,
+        ctc=req.ctc,
+        location=req.location,
+        joining_date=joining_at,
+        status=req.status or "pending",
+    )
+    db.add(offer)
+    await db.commit()
+    await db.refresh(offer)
+    return {"id": offer.id, "message": "Offer saved"}
+
+
 @router.get("/offers")
 async def get_offers(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Offer).where(Offer.user_id == current_user.id))
