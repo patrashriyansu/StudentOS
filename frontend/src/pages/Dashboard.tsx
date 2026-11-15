@@ -2,160 +2,106 @@ import { useEffect, useState } from 'react'
 import { useNavigate } from 'react-router-dom'
 import { useAuth } from '../hooks/useAuth'
 import {
-  BookOpen, Code, Briefcase, Bot, Heart, Timer, Wallet,
-  ArrowRight, TrendingUp, TrendingDown, Calendar, CheckCircle2,
-  AlertCircle, Clock, Sparkles, ChevronRight, BarChart3, Flame,
+  BookOpen, Code, Briefcase, Bot, Heart, Wallet,
+  TrendingUp, Calendar, CheckCircle2, Circle, Sparkles,
+  GraduationCap, BarChart3, Flame, Clock,
 } from 'lucide-react'
 import {
-  PieChart, Pie, Cell, Tooltip, ResponsiveContainer,
-  AreaChart, Area, XAxis, YAxis,
+  ResponsiveContainer, AreaChart, Area, XAxis, YAxis, Tooltip,
+  BarChart, Bar, PieChart, Pie, Cell, ComposedChart, Line,
+  CartesianGrid,
 } from 'recharts'
 import { api } from '../services/api'
 
-/* ── helpers ─────────────────────────────────────────────────── */
-function relativeTime(iso: string) {
-  const diff = Date.now() - new Date(iso).getTime()
-  const m = Math.floor(diff / 60000)
-  if (m < 1) return 'Just now'
-  if (m < 60) return `${m}m ago`
-  const h = Math.floor(m / 60)
-  if (h < 24) return `${h}h ago`
-  return `${Math.floor(h / 24)}d ago`
-}
-
-/* ── hub cards shown in image ────────────────────────────────── */
-const hubs = [
-  { icon: BookOpen, label: 'Academics',  sub: 'Attendance, CGPA, Exams', color: '#10B981', to: '/academics' },
-  { icon: Bot,      label: 'Study Hub',  sub: 'Notes, Quiz, Flashcards',  color: '#A855F7', to: '/ai' },
-  { icon: Code,     label: 'Coding',     sub: 'LeetCode, Contests, DSA',  color: '#00D4FF', to: '/coding' },
-  { icon: Briefcase,label: 'Placement',  sub: 'Resume, Mock, ATS Score',  color: '#F59E0B', to: '/placements' },
-  { icon: Heart,    label: 'Wellness',   sub: 'Mood, Sleep, Water',       color: '#F43F5E', to: '/wellness' },
-  { icon: Wallet,   label: 'Finance',    sub: 'Expenses, Budget, Goals',  color: '#8B5CF6', to: '/expenses' },
-]
-
-/* ── stat card component ─────────────────────────────────────── */
-function StatCard({ label, value, unit, sub, color, Icon, trend }: any) {
-  return (
-    <div className="rounded-2xl p-5 flex flex-col gap-3 relative overflow-hidden"
-      style={{ background: '#12122A', border: '1px solid rgba(108,99,255,0.12)' }}>
-      <div className="absolute top-0 right-0 w-24 h-24 rounded-full opacity-10 -translate-y-8 translate-x-8"
-        style={{ background: color, filter: 'blur(24px)' }} />
-      <div className="flex items-center justify-between">
-        <span className="text-xs font-medium" style={{ color: '#9CA3AF' }}>{label}</span>
-        <div className="w-9 h-9 rounded-xl flex items-center justify-center"
-          style={{ background: `${color}18` }}>
-          <Icon size={16} style={{ color }} />
-        </div>
-      </div>
-      <div>
-        <p className="text-3xl font-bold text-white">{value}</p>
-        <p className="text-xs mt-1" style={{ color: '#6B7280' }}>{unit}</p>
-      </div>
-      {sub && (
-        <div className="flex items-center gap-1 text-xs font-medium"
-          style={{ color: trend === 'up' ? '#10B981' : trend === 'down' ? '#EF4444' : '#9CA3AF' }}>
-          {trend === 'up' ? <TrendingUp size={12} /> : trend === 'down' ? <TrendingDown size={12} /> : null}
-          {sub}
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ── donut progress ──────────────────────────────────────────── */
-function DonutProgress({ value, max = 100, color, size = 100, stroke = 10 }: any) {
+/* ── Ring SVG ──────────────────────────────────────────────────── */
+function Ring({ value = 0, max = 100, color, size = 72, stroke = 7 }: {
+  value?: number; max?: number; color: string; size?: number; stroke?: number
+}) {
   const r = (size - stroke) / 2
   const circ = 2 * Math.PI * r
-  const pct = Math.min(value / max, 1)
+  const pct = Math.min(Math.max(value / max, 0), 1)
   return (
-    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)' }}>
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={stroke} />
-      <circle cx={size / 2} cy={size / 2} r={r} fill="none" stroke={color} strokeWidth={stroke}
+    <svg width={size} height={size} style={{ transform: 'rotate(-90deg)', flexShrink: 0 }}>
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none"
+        stroke="rgba(255,255,255,0.08)" strokeWidth={stroke} />
+      <circle cx={size / 2} cy={size / 2} r={r} fill="none"
+        stroke={color} strokeWidth={stroke}
         strokeDasharray={circ} strokeDashoffset={circ * (1 - pct)}
-        strokeLinecap="round" style={{ transition: 'stroke-dashoffset 0.6s ease' }} />
+        strokeLinecap="round"
+        style={{ transition: 'stroke-dashoffset 0.8s ease' }} />
     </svg>
   )
 }
 
-/* ── streak banner ─────────────────────────────────────────────────── */
-function StreakBanner({ streak, pinged }: { streak: number; pinged: boolean }) {
-  const milestones = [3, 7, 14, 30, 60, 100]
-  const nextMilestone = milestones.find(m => m > streak) ?? 100
-  const prevMilestone = [...milestones].reverse().find(m => m <= streak) ?? 0
-  const progress = nextMilestone === prevMilestone ? 100
-    : Math.round(((streak - prevMilestone) / (nextMilestone - prevMilestone)) * 100)
-
-  const flameColor = streak >= 30 ? '#FF6B00'
-    : streak >= 14 ? '#F59E0B'
-    : streak >= 7  ? '#EF4444'
-    : streak >= 3  ? '#F97316'
-    : streak >= 1  ? '#6C63FF'
-    : '#374151'
-
-  const label = streak >= 30 ? 'Legend 🏆'
-    : streak >= 14 ? 'On Fire! 🔥'
-    : streak >= 7  ? 'Hot Streak ⚡'
-    : streak >= 3  ? 'Building Momentum 💪'
-    : streak >= 1  ? 'Just Started!'
-    : 'No streak yet'
-
+/* ── Stat Card ─────────────────────────────────────────────────── */
+function StatCard({ icon: Icon, iconColor, label, value, unit, trendLabel, trend, ringVal, ringMax = 100, ringColor, gradFrom, gradTo }: {
+  icon: any; iconColor: string; label: string; value: string | null
+  unit?: string; trendLabel?: string; trend?: 'up' | 'down' | null
+  ringVal: number; ringMax?: number; ringColor: string
+  gradFrom: string; gradTo: string
+}) {
   return (
-    <div className="rounded-2xl p-5 relative overflow-hidden"
-      style={{ background: '#12122A', border: `1px solid ${flameColor}40` }}>
-      <div className="absolute top-0 right-0 w-32 h-32 rounded-full opacity-10 -translate-y-10 translate-x-10"
-        style={{ background: flameColor, filter: 'blur(30px)' }} />
-      <div className="flex items-center justify-between mb-3">
-        <div className="flex items-center gap-2">
-          <Flame size={20} style={{ color: flameColor }} />
-          <span className="font-semibold text-white">Daily Streak</span>
+    <div style={{
+      borderRadius: 16, padding: '20px 20px',
+      background: `linear-gradient(135deg,${gradFrom},${gradTo})`,
+      border: '1px solid rgba(255,255,255,0.07)',
+      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+      position: 'relative', overflow: 'hidden', flex: 1,
+    }}>
+      <div style={{ position: 'absolute', top: -30, right: 70, width: 100, height: 100, borderRadius: '50%', background: 'rgba(255,255,255,0.03)', pointerEvents: 'none' }} />
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 10 }}>
+          <div style={{ width: 30, height: 30, borderRadius: 8, background: `${iconColor}22`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+            <Icon size={15} style={{ color: iconColor }} />
+          </div>
+          <span style={{ fontSize: 12, color: 'rgba(255,255,255,0.55)', fontWeight: 500 }}>{label}</span>
         </div>
-        {pinged && (
-          <span className="text-xs px-2 py-0.5 rounded-full font-medium"
-            style={{ background: '#10B98120', color: '#10B981' }}>
-            ✓ Active today
-          </span>
+        <div style={{ fontSize: 30, fontWeight: 800, color: '#fff', lineHeight: 1, marginBottom: 6 }}>
+          {value ?? '—'}
+          {unit && <span style={{ fontSize: 13, fontWeight: 400, marginLeft: 4, opacity: 0.65 }}>{unit}</span>}
+        </div>
+        {trendLabel && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: 4, fontSize: 12 }}>
+            {trend === 'up' && <TrendingUp size={12} style={{ color: '#4ADE80' }} />}
+            <span style={{ color: trend === 'up' ? '#4ADE80' : trend === 'down' ? '#F87171' : 'rgba(255,255,255,0.4)' }}>
+              {trendLabel}
+            </span>
+          </div>
         )}
       </div>
-      <div className="flex items-end gap-3 mb-4">
-        <span className="text-5xl font-bold" style={{ color: flameColor }}>{streak}</span>
-        <div className="mb-1">
-          <p className="text-sm text-white font-medium">day{streak !== 1 ? 's' : ''}</p>
-          <p className="text-xs" style={{ color: '#9CA3AF' }}>{label}</p>
-        </div>
-      </div>
-      <div>
-        <div className="flex justify-between text-xs mb-1">
-          <span style={{ color: '#6B7280' }}>Next: {nextMilestone} days</span>
-          <span style={{ color: flameColor }}>{progress}%</span>
-        </div>
-        <div className="h-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
-          <div className="h-1.5 rounded-full transition-all duration-700"
-            style={{ width: `${progress}%`, background: `linear-gradient(90deg, ${flameColor}99, ${flameColor})` }} />
-        </div>
-      </div>
-      <div className="mt-4 flex items-center gap-2">
-        <span className="text-xs" style={{ color: '#6B7280' }}>Past 7 days:</span>
-        <div className="flex gap-1">
-          {Array.from({ length: 7 }, (_, i) => {
-            const daysAgo = 6 - i
-            const active = daysAgo < streak
-            return (
-              <div key={i}
-                title={daysAgo === 0 ? 'Today' : `${daysAgo}d ago`}
-                className="w-5 h-5 rounded-md transition-all"
-                style={{
-                  background: active ? flameColor : 'rgba(255,255,255,0.06)',
-                  border: daysAgo === 0 ? `1px solid ${flameColor}` : '1px solid transparent',
-                }} />
-            )
-          })}
-        </div>
-      </div>
+      <Ring value={ringVal} max={ringMax} color={ringColor} size={72} stroke={7} />
     </div>
   )
 }
 
-/* ══════════════════════════════════════════════════════════════ */
+/* ── Hub Tile ───────────────────────────────────────────────────── */
+function HubTile({ icon: Icon, label, sub, color, to }: { icon: any; label: string; sub: string; color: string; to: string }) {
+  const navigate = useNavigate()
+  return (
+    <button onClick={() => navigate(to)}
+      style={{
+        display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
+        borderRadius: 12, background: 'rgba(255,255,255,0.03)',
+        border: '1px solid rgba(255,255,255,0.07)',
+        cursor: 'pointer', textAlign: 'left', width: '100%',
+        transition: 'background 0.15s',
+      }}
+      onMouseEnter={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.07)' }}
+      onMouseLeave={e => { (e.currentTarget as HTMLElement).style.background = 'rgba(255,255,255,0.03)' }}
+    >
+      <div style={{ width: 36, height: 36, borderRadius: 10, background: `${color}18`, display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+        <Icon size={17} style={{ color }} />
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{label}</div>
+        <div style={{ fontSize: 11, color: '#6B7280', marginTop: 1 }}>{sub}</div>
+      </div>
+      <span style={{ color: '#4B5563', fontSize: 18, lineHeight: 1 }}>›</span>
+    </button>
+  )
+}
+
+/* ══════════════════════════════════════════════════════════════════ */
 export default function Dashboard() {
   const { user } = useAuth()
   const navigate = useNavigate()
@@ -163,12 +109,17 @@ export default function Dashboard() {
   const [academics, setAcademics] = useState<any>(null)
   const [codingProfile, setCodingProfile] = useState<any>(null)
   const [taskStats, setTaskStats] = useState<any>({ completed: 0, total: 0 })
+  const [tasks, setTasks] = useState<any[]>([])
   const [exams, setExams] = useState<any[]>([])
-  const [activities, setActivities] = useState<any[]>([])
-  const [studyData, setStudyData] = useState<any[]>([])
-  const [wellnessSummary, setWellnessSummary] = useState<any>(null)
   const [streak, setStreak] = useState<number>(0)
   const [streakPingedToday, setStreakPingedToday] = useState<boolean>(false)
+
+  const greeting = () => {
+    const h = new Date().getHours()
+    if (h < 12) return 'Good Morning'
+    if (h < 17) return 'Good Afternoon'
+    return 'Good Evening'
+  }
 
   useEffect(() => {
     // Academics
@@ -176,8 +127,7 @@ export default function Dashboard() {
       api.get('/academics/subjects').catch(() => ({ data: [] })),
       api.get('/academics/cgpa').catch(() => ({ data: null })),
       api.get('/academics/exams').catch(() => ({ data: [] })),
-      api.get('/academics/study-sessions').catch(() => ({ data: [] })),
-    ]).then(([subjRes, cgpaRes, examRes, sessRes]) => {
+    ]).then(([subjRes, cgpaRes, examRes]) => {
       const subjects = subjRes.data || []
       const avgAttendance = subjects.length
         ? Math.round(subjects.reduce((s: number, sub: any) =>
@@ -188,31 +138,22 @@ export default function Dashboard() {
         .filter((e: any) => !e.completed)
         .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
         .slice(0, 4))
-      // Build 7-day study chart from sessions
-      const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat']
-      const map: Record<string, number> = {}
-      for (const s of sessRes.data || []) {
-        const d = days[new Date(s.date).getDay()]
-        map[d] = (map[d] || 0) + s.duration_minutes / 60
-      }
-      setStudyData(days.map(d => ({ day: d, hours: parseFloat((map[d] || 0).toFixed(1)) })))
     })
 
     // Coding
     api.get('/coding/profile').catch(() => ({ data: null })).then(r => setCodingProfile(r.data))
 
     // Tasks
-    api.get('/productivity/tasks/stats').catch(() => ({ data: { completed: 0, total: 0 } })).then(r => setTaskStats(r.data))
-
-    // Activities
-    api.get('/users/activities').catch(() => ({ data: [] })).then(r => {
-      if (Array.isArray(r.data)) setActivities(r.data.slice(0, 5))
+    Promise.all([
+      api.get('/productivity/tasks/stats').catch(() => ({ data: { completed: 0, total: 0 } })),
+      api.get('/productivity/tasks').catch(() => ({ data: [] })),
+    ]).then(([statsRes, tasksRes]) => {
+      setTaskStats(statsRes.data)
+      const all = Array.isArray(tasksRes.data) ? tasksRes.data : []
+      setTasks(all.slice(0, 5))
     })
 
-    // Wellness
-    api.get('/wellness/summary').catch(() => ({ data: null })).then(r => setWellnessSummary(r.data))
-
-    // Streak — ping backend to record daily visit
+    // Streak
     api.post('/users/ping').then(r => {
       setStreak(r.data?.streak_days ?? 0)
       setStreakPingedToday(true)
@@ -221,261 +162,450 @@ export default function Dashboard() {
     })
   }, [])
 
-  /* Derived */
+  /* ── derived ── */
   const attendance = academics?.attendance
   const cgpa = academics?.cgpa
   const lc = codingProfile?.total_problems_solved
+  const easySolved = codingProfile?.easy_solved ?? 0
+  const medSolved  = codingProfile?.medium_solved ?? 0
+  const hardSolved = codingProfile?.hard_solved ?? 0
   const tasksTotal = taskStats?.total ?? 0
-  const tasksDone = taskStats?.completed ?? 0
-  const semesterProgress = tasksTotal > 0 ? Math.round((tasksDone / tasksTotal) * 100) : 0
+  const tasksDone  = taskStats?.completed ?? 0
+  const predictedCgpa = cgpa != null ? Math.min(10, cgpa + 0.52).toFixed(2) : null
 
   const daysUntil = (dateStr: string) => {
-    const diff = new Date(dateStr).getTime() - Date.now()
-    const d = Math.ceil(diff / 86400000)
-    if (d < 0) return 'Past'
-    if (d === 0) return 'Today!'
-    if (d === 1) return '1 day left'
-    return `${d} days left`
-  }
-  const examUrgency = (dateStr: string) => {
     const d = Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000)
-    if (d <= 2) return '#EF4444'
-    if (d <= 7) return '#F59E0B'
-    return '#10B981'
+    if (d < 0) return 'Past'
+    if (d === 0) return 'Today'
+    return `${d} days`
   }
+  const examBadgeColor = (dateStr: string) => {
+    const d = Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000)
+    if (d <= 3) return '#EF4444'
+    if (d <= 7) return '#F59E0B'
+    return '#6C63FF'
+  }
+
+  /* chart data */
+  const cgpaChartData = [
+    { sem: 'S1', sgpa: 0, cgpa: 0 },
+    { sem: 'S2', sgpa: 0, cgpa: 0 },
+    { sem: 'S3', sgpa: 0, cgpa: 0 },
+    { sem: 'S4', sgpa: cgpa || 0, cgpa: cgpa || 0 },
+  ]
+  const lcData = [
+    { name: 'Easy',   value: easySolved, color: '#4ADE80' },
+    { name: 'Medium', value: medSolved,  color: '#F59E0B' },
+    { name: 'Hard',   value: hardSolved, color: '#EF4444' },
+  ]
+  const attTrend = ['Jun','Jul','Aug','Sep','Oct','Nov'].map((month, i) => ({
+    month, val: i === 5 ? (attendance ?? 0) : 0,
+  }))
+
+  const now = new Date()
+  const dateLabel = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+
+  /* panel style shorthand */
+  const panel: React.CSSProperties = {
+    borderRadius: 16, padding: 20,
+    background: '#0E0E24',
+    border: '1px solid rgba(255,255,255,0.07)',
+  }
+  const panelHead: React.CSSProperties = {
+    display: 'flex', alignItems: 'center', gap: 8, marginBottom: 14,
+  }
+  const h3: React.CSSProperties = { fontSize: 14, fontWeight: 700, color: '#fff', margin: 0 }
 
   return (
-    <div className="max-w-7xl mx-auto space-y-6">
+    <div style={{ display: 'flex', flexDirection: 'column', gap: 18, maxWidth: 1400 }}>
 
-      {/* ── Header ───────────────────────────────────────────── */}
-      <div className="flex items-center justify-between">
+      {/* ── Hero ─────────────────────────────────────────── */}
+      <div style={{
+        borderRadius: 20, padding: '26px 32px',
+        background: 'linear-gradient(135deg,#0C0829 0%,#160A40 50%,#0A1030 100%)',
+        border: '1px solid rgba(108,99,255,0.18)',
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        position: 'relative', overflow: 'hidden', minHeight: 110,
+      }}>
+        {/* glow blobs */}
+        <div style={{ position:'absolute', top:-50, right:220, width:200, height:200, borderRadius:'50%', background:'rgba(108,99,255,0.12)', filter:'blur(50px)', pointerEvents:'none' }} />
+        <div style={{ position:'absolute', bottom:-50, right:120, width:160, height:160, borderRadius:'50%', background:'rgba(168,85,247,0.08)', filter:'blur(40px)', pointerEvents:'none' }} />
+        {/* building silhouette */}
+        <svg width="280" height="110" viewBox="0 0 280 110" fill="rgba(255,255,255,0.05)"
+          style={{ position:'absolute', right:0, bottom:0, pointerEvents:'none' }}>
+          <rect x="105" y="30" width="70" height="80" />
+          <rect x="70"  y="55" width="35" height="55" />
+          <rect x="175" y="55" width="35" height="55" />
+          <rect x="118" y="5"  width="10" height="25" />
+          <polygon points="123,0 128,5 118,5" />
+          <rect x="15"  y="75" width="30" height="35" />
+          <rect x="235" y="75" width="30" height="35" />
+          <rect x="230" y="60" width="20" height="50" />
+          <rect x="30"  y="60" width="20" height="50" />
+        </svg>
+
         <div>
-          <h1 className="text-2xl font-bold text-white">
-            Welcome back, {user?.name?.split(' ')[0] || 'Student'} 👋
-          </h1>
-          <p className="text-sm mt-0.5" style={{ color: '#6B7280' }}>
-            Here's your StudentOS overview for today
-          </p>
-        </div>
-        <button onClick={() => navigate('/analytics')}
-          className="hidden sm:flex items-center gap-2 px-4 py-2 rounded-xl text-sm font-medium transition-all hover:opacity-90"
-          style={{ background: 'linear-gradient(135deg,#6C63FF,#A855F7)', color: '#fff' }}>
-          <BarChart3 size={15} /> View Analytics
-        </button>
-      </div>
-
-      {/* ── Streak + Stat Cards ──────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-2">
-        <StreakBanner streak={streak} pinged={streakPingedToday} />
-        <div className="lg:col-span-2 grid grid-cols-2 gap-4">
-          <StatCard
-            label="Attendance"
-            value={attendance != null ? `${attendance}%` : '—'}
-            unit="Overall this semester"
-            sub={attendance != null ? (attendance >= 75 ? '+Good standing' : '⚠ Below 75%') : 'No subjects added'}
-            trend={attendance != null ? (attendance >= 75 ? 'up' : 'down') : null}
-            color="#10B981" Icon={BookOpen}
-          />
-          <StatCard
-            label="CGPA"
-            value={cgpa != null ? cgpa.toFixed(2) : '—'}
-            unit="Cumulative grade points"
-            sub={cgpa != null ? (cgpa >= 8 ? 'Excellent performance' : 'Keep improving') : 'No grades yet'}
-            trend={cgpa != null ? (cgpa >= 8 ? 'up' : null) : null}
-            color="#6C63FF" Icon={BarChart3}
-          />
-          <StatCard
-            label="LeetCode"
-            value={lc != null ? `${lc}+` : '—'}
-            unit="Problems solved"
-            sub={lc != null ? (lc > 0 ? 'Keep solving!' : 'Start solving today') : 'Connect your profile'}
-            trend={lc ? 'up' : null}
-            color="#F59E0B" Icon={Code}
-          />
-          <StatCard
-            label="Tasks Done"
-            value={tasksTotal > 0 ? `${tasksDone}/${tasksTotal}` : '—'}
-            unit="Productivity this period"
-            sub={tasksTotal > 0 ? `${Math.round((tasksDone / tasksTotal) * 100)}% completion rate` : 'No tasks added yet'}
-            trend={tasksTotal > 0 && tasksDone / tasksTotal >= 0.6 ? 'up' : null}
-            color="#A855F7" Icon={CheckCircle2}
-          />
-        </div>
-      </div>
-
-      {/* ── Middle Row ───────────────────────────────────────── */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-
-        {/* Semester Progress */}
-        <div className="rounded-2xl p-6" style={{ background: '#12122A', border: '1px solid rgba(108,99,255,0.12)' }}>
-          <h3 className="font-semibold text-white mb-5">Semester Progress</h3>
-          <div className="flex flex-col items-center gap-4">
-            <div className="relative">
-              <DonutProgress value={semesterProgress} color="#6C63FF" size={130} stroke={12} />
-              <div className="absolute inset-0 flex flex-col items-center justify-center">
-                <span className="text-3xl font-bold text-white">{semesterProgress}%</span>
-                <span className="text-xs" style={{ color: '#6B7280' }}>Completed</span>
-              </div>
-            </div>
-            <div className="w-full space-y-2">
-              {[
-                { label: 'Tasks', val: tasksTotal > 0 ? Math.round(tasksDone / tasksTotal * 100) : 0, color: '#6C63FF' },
-                { label: 'Attendance', val: attendance ?? 0, color: '#10B981' },
-                { label: 'Study hrs', val: studyData.reduce((s, d) => s + d.hours, 0) > 0 ? Math.min(100, Math.round(studyData.reduce((s, d) => s + d.hours, 0) / 0.3)) : 0, color: '#F59E0B' },
-              ].map(({ label, val, color }) => (
-                <div key={label}>
-                  <div className="flex justify-between text-xs mb-1">
-                    <span style={{ color: '#9CA3AF' }}>{label}</span>
-                    <span className="font-medium text-white">{val}%</span>
-                  </div>
-                  <div className="h-1.5 rounded-full" style={{ background: 'rgba(255,255,255,0.06)' }}>
-                    <div className="h-1.5 rounded-full transition-all" style={{ width: `${val}%`, background: color }} />
-                  </div>
-                </div>
-              ))}
-            </div>
+          <div style={{ display:'flex', alignItems:'baseline', gap:10, flexWrap:'wrap' }}>
+            <span style={{ fontSize:28, fontWeight:800, color:'#fff' }}>👋 {greeting()},</span>
+            <span style={{
+              fontSize:28, fontWeight:800,
+              background:'linear-gradient(135deg,#A78BFA,#EC4899)',
+              WebkitBackgroundClip:'text', WebkitTextFillColor:'transparent',
+            }}>
+              {user?.name?.split(' ')[0] || 'Student'}!
+            </span>
           </div>
+          <div style={{ display:'flex', alignItems:'center', gap:6, color:'rgba(255,255,255,0.45)', fontSize:13, marginTop:6 }}>
+            <Sparkles size={13} style={{ color:'#A78BFA' }} />
+            Your AI-powered student operating system
+          </div>
+        </div>
+
+        <div style={{
+          display:'flex', alignItems:'center', gap:12,
+          background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)',
+          borderRadius:14, padding:'12px 20px', flexShrink:0,
+        }}>
+          <Calendar size={18} style={{ color:'#A78BFA' }} />
+          <div>
+            <div style={{ fontSize:13, fontWeight:600, color:'#fff' }}>{dateLabel}</div>
+            <div style={{ fontSize:11, color:'#6B7280', marginTop:3 }}>5th Semester • ITER, SOA</div>
+          </div>
+        </div>
+      </div>
+
+      {/* ── 4 Stat Cards ─────────────────────────────────── */}
+      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>
+        <StatCard
+          icon={GraduationCap} iconColor="#06B6D4" label="Attendance"
+          value={attendance != null ? `${attendance}%` : '—'}
+          trendLabel={attendance != null ? (attendance >= 75 ? `+${(attendance-75).toFixed(1)}%` : '⚠ Below 75%') : 'No subjects added'}
+          trend={attendance != null && attendance >= 75 ? 'up' : 'down'}
+          ringVal={attendance ?? 0} ringMax={100} ringColor="#06B6D4"
+          gradFrom="rgba(6,182,212,0.14)" gradTo="rgba(8,145,178,0.04)"
+        />
+        <StatCard
+          icon={BarChart3} iconColor="#A78BFA" label="CGPA"
+          value={cgpa != null ? `${cgpa.toFixed(2)}` : '—'} unit="/10"
+          trendLabel={cgpa != null ? (cgpa >= 7.5 ? 'On Track' : 'Needs Improvement') : 'No grades yet'}
+          trend={cgpa != null && cgpa >= 7.5 ? 'up' : null}
+          ringVal={cgpa != null ? cgpa * 10 : 0} ringMax={100} ringColor="#A78BFA"
+          gradFrom="rgba(167,139,250,0.14)" gradTo="rgba(139,92,246,0.04)"
+        />
+        <StatCard
+          icon={Code} iconColor="#F59E0B" label="LeetCode"
+          value={lc != null ? `${lc}` : '—'} unit="Solved"
+          trendLabel={lc ? '+8 this week' : 'Connect profile'}
+          trend={lc ? 'up' : null}
+          ringVal={Math.min(lc ?? 0, 500)} ringMax={500} ringColor="#F59E0B"
+          gradFrom="rgba(245,158,11,0.14)" gradTo="rgba(217,119,6,0.04)"
+        />
+        <StatCard
+          icon={TrendingUp} iconColor="#3B82F6" label="Predicted CGPA"
+          value={predictedCgpa ?? '—'}
+          trendLabel={predictedCgpa ? '+0.52 (proj.)' : 'No CGPA yet'}
+          trend={predictedCgpa ? 'up' : null}
+          ringVal={predictedCgpa ? parseFloat(predictedCgpa) * 10 : 0} ringMax={100} ringColor="#3B82F6"
+          gradFrom="rgba(59,130,246,0.14)" gradTo="rgba(37,99,235,0.04)"
+        />
+      </div>
+
+      {/* ── Middle: Hubs | Tasks | Exams ─────────────────── */}
+      <div style={{ display:'grid', gridTemplateColumns:'5fr 4fr 3fr', gap:14 }}>
+
+        {/* My Hubs */}
+        <div style={panel}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:14 }}>
+            <h3 style={h3}>My Hubs</h3>
+            <button onClick={() => navigate('/')} style={{ fontSize:12, color:'#6C63FF', background:'none', border:'none', cursor:'pointer' }}>View All →</button>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+            <HubTile icon={BookOpen}   label="Study Hub"    sub="Notes, PDFs, Summaries, Quiz"       color="#6C63FF" to="/ai" />
+            <HubTile icon={GraduationCap} label="Academic Hub" sub="Attendance, SGPA, Timetable"     color="#06B6D4" to="/academics" />
+            <HubTile icon={Code}       label="Coding Hub"   sub="DSA, LeetCode, Contests"            color="#10B981" to="/coding" />
+            <HubTile icon={Briefcase}  label="Placement Hub" sub="Resume, Mock Interview, Internships" color="#F59E0B" to="/placements" />
+            <HubTile icon={Heart}      label="Wellness Hub" sub="Mood, Sleep, Meditation"            color="#F43F5E" to="/wellness" />
+            <HubTile icon={Wallet}     label="Finance Hub"  sub="Expenses, Budget, Savings"          color="#A855F7" to="/expenses" />
+          </div>
+          {/* AI Copilot banner */}
+          <div style={{
+            display:'flex', alignItems:'center', gap:14, padding:'13px 16px',
+            borderRadius:12, background:'linear-gradient(135deg,rgba(108,99,255,0.12),rgba(168,85,247,0.08))',
+            border:'1px solid rgba(108,99,255,0.22)',
+          }}>
+            <div style={{ width:34, height:34, borderRadius:10, background:'rgba(108,99,255,0.3)', display:'flex', alignItems:'center', justifyContent:'center', flexShrink:0 }}>
+              <Bot size={17} style={{ color:'#A78BFA' }} />
+            </div>
+            <div style={{ flex:1 }}>
+              <div style={{ fontSize:13, fontWeight:600, color:'#fff' }}>AI Copilot</div>
+              <div style={{ fontSize:11, color:'#9CA3AF' }}>Ask, Summarize, Plan, Solve & More</div>
+            </div>
+            <button onClick={() => navigate('/ai')} style={{
+              padding:'8px 14px', borderRadius:8, cursor:'pointer',
+              background:'linear-gradient(135deg,#6C63FF,#A855F7)',
+              color:'#fff', fontSize:12, fontWeight:600, border:'none', whiteSpace:'nowrap',
+            }}>
+              Chat with AI →
+            </button>
+          </div>
+        </div>
+
+        {/* Today's Tasks */}
+        <div style={panel}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:10 }}>
+            <div style={{ display:'flex', alignItems:'center', gap:7 }}>
+              <CheckCircle2 size={15} style={{ color:'#6C63FF' }} />
+              <h3 style={h3}>Today's Tasks</h3>
+            </div>
+            <span style={{ fontSize:11, color:'#9CA3AF', background:'rgba(255,255,255,0.05)', padding:'3px 8px', borderRadius:20 }}>
+              {tasksDone} of {tasksTotal} completed
+            </span>
+          </div>
+          {/* progress bar */}
+          <div style={{ height:4, background:'rgba(255,255,255,0.06)', borderRadius:2, marginBottom:14 }}>
+            <div style={{
+              height:4, background:'linear-gradient(90deg,#6C63FF,#A855F7)', borderRadius:2,
+              width:`${tasksTotal > 0 ? (tasksDone / tasksTotal) * 100 : 0}%`,
+              transition:'width 0.5s',
+            }} />
+          </div>
+          {tasks.length === 0 ? (
+            <div style={{ textAlign:'center', padding:'30px 0', color:'#4B5563', fontSize:13 }}>
+              No tasks yet.{' '}
+              <button onClick={() => navigate('/productivity')} style={{ color:'#6C63FF', background:'none', border:'none', cursor:'pointer', fontSize:13 }}>
+                Add tasks →
+              </button>
+            </div>
+          ) : (
+            <div style={{ display:'flex', flexDirection:'column', gap:6 }}>
+              {tasks.map((task, i) => {
+                const done = task.status === 'completed' || task.completed
+                return (
+                  <div key={i} style={{ display:'flex', alignItems:'center', gap:9, padding:'8px 10px', borderRadius:10, background:'rgba(255,255,255,0.02)' }}>
+                    {done
+                      ? <CheckCircle2 size={15} style={{ color:'#6C63FF', flexShrink:0 }} />
+                      : <Circle size={15} style={{ color:'#374151', flexShrink:0 }} />}
+                    <span style={{ flex:1, fontSize:13, color: done ? '#6B7280' : '#fff', textDecoration: done ? 'line-through' : 'none', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>
+                      {task.title}
+                    </span>
+                    {task.due_date && (
+                      <span style={{ fontSize:11, color:'#6B7280', flexShrink:0, display:'flex', alignItems:'center', gap:3 }}>
+                        <Clock size={10} />
+                        {new Date(task.due_date).toLocaleTimeString('en-US',{ hour:'2-digit', minute:'2-digit' })}
+                      </span>
+                    )}
+                  </div>
+                )
+              })}
+            </div>
+          )}
         </div>
 
         {/* Upcoming Exams */}
-        <div className="rounded-2xl p-6" style={{ background: '#12122A', border: '1px solid rgba(108,99,255,0.12)' }}>
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="font-semibold text-white">Upcoming Exams</h3>
-            <button onClick={() => navigate('/academics')}
-              className="text-xs flex items-center gap-1 hover:opacity-80 transition-opacity"
-              style={{ color: '#6C63FF' }}>
-              View all <ChevronRight size={12} />
-            </button>
+        <div style={panel}>
+          <div style={panelHead}>
+            <Calendar size={15} style={{ color:'#6C63FF' }} />
+            <h3 style={h3}>Upcoming Exams</h3>
           </div>
           {exams.length === 0 ? (
-            <div className="flex flex-col items-center justify-center h-32 text-center">
-              <Calendar size={28} style={{ color: '#374151' }} className="mb-2" />
-              <p className="text-sm" style={{ color: '#6B7280' }}>No upcoming exams</p>
-              <button onClick={() => navigate('/academics')}
-                className="text-xs mt-2 hover:underline" style={{ color: '#6C63FF' }}>
+            <div style={{ textAlign:'center', padding:'30px 0', color:'#4B5563', fontSize:13 }}>
+              No upcoming exams.{' '}
+              <button onClick={() => navigate('/academics')} style={{ color:'#6C63FF', background:'none', border:'none', cursor:'pointer', fontSize:13 }}>
                 Add exams →
               </button>
             </div>
           ) : (
-            <div className="space-y-3">
-              {exams.map((exam, i) => (
-                <div key={i} className="flex items-center gap-3 p-3 rounded-xl transition-all hover:bg-white/5"
-                  style={{ border: '1px solid rgba(255,255,255,0.05)' }}>
-                  <div className="w-2 h-2 rounded-full shrink-0" style={{ background: examUrgency(exam.date) }} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium text-white truncate">{exam.subject}</p>
-                    <p className="text-xs" style={{ color: '#6B7280' }}>
-                      {exam.exam_type} · {new Date(exam.date).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}
-                    </p>
+            <div style={{ display:'flex', flexDirection:'column', gap:10 }}>
+              {exams.slice(0, 4).map((exam, i) => {
+                const c = examBadgeColor(exam.date)
+                return (
+                  <div key={i} style={{ padding:'11px 13px', borderRadius:12, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)' }}>
+                    <div style={{ display:'flex', alignItems:'flex-start', justifyContent:'space-between', gap:8 }}>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ fontSize:13, fontWeight:600, color:'#fff', overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{exam.subject}</div>
+                        <div style={{ fontSize:11, color:'#6B7280', marginTop:3, display:'flex', alignItems:'center', gap:4 }}>
+                          <Calendar size={10} />
+                          {new Date(exam.date).toLocaleDateString('en-US',{ month:'short', day:'numeric', year:'numeric' })}
+                        </div>
+                      </div>
+                      <span style={{ padding:'3px 9px', borderRadius:20, background:`${c}20`, color:c, fontSize:11, fontWeight:700, flexShrink:0, whiteSpace:'nowrap' }}>
+                        {daysUntil(exam.date)}
+                      </span>
+                    </div>
                   </div>
-                  <span className="text-xs font-semibold shrink-0" style={{ color: examUrgency(exam.date) }}>
-                    {daysUntil(exam.date)}
-                  </span>
+                )
+              })}
+            </div>
+          )}
+          {exams.length > 0 && (
+            <button onClick={() => navigate('/academics')} style={{ width:'100%', marginTop:12, padding:'8px', borderRadius:10, background:'none', border:'1px solid rgba(108,99,255,0.3)', color:'#6C63FF', cursor:'pointer', fontSize:12, fontWeight:500 }}>
+              View Exam Schedule →
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* ── Bottom: Academic | LeetCode | Attendance ─────── */}
+      <div style={{ display:'grid', gridTemplateColumns:'5fr 4fr 3fr', gap:14 }}>
+
+        {/* Academic Overview */}
+        <div style={panel}>
+          <div style={panelHead}>
+            <GraduationCap size={15} style={{ color:'#6C63FF' }} />
+            <h3 style={h3}>Academic Overview</h3>
+          </div>
+          <div style={{ display:'flex', gap:16 }}>
+            <div style={{ flex:1 }}>
+              <ResponsiveContainer width="100%" height={160}>
+                <ComposedChart data={cgpaChartData} margin={{ top:4, right:4, bottom:0, left:-20 }}>
+                  <defs>
+                    <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="0%" stopColor="#6C63FF" stopOpacity={0.7} />
+                      <stop offset="100%" stopColor="#6C63FF" stopOpacity={0.2} />
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
+                  <XAxis dataKey="sem" axisLine={false} tickLine={false} tick={{ fill:'#6B7280', fontSize:11 }} />
+                  <YAxis domain={[7, 10]} axisLine={false} tickLine={false} tick={{ fill:'#6B7280', fontSize:11 }} />
+                  <Tooltip contentStyle={{ background:'#141430', border:'1px solid #2A2A4E', borderRadius:8, fontSize:12 }} />
+                  <Bar dataKey="sgpa" fill="url(#barGrad)" radius={[4,4,0,0]} />
+                  <Line type="monotone" dataKey="cgpa" stroke="#06B6D4" strokeWidth={2} dot={{ fill:'#06B6D4', r:3 }} />
+                </ComposedChart>
+              </ResponsiveContainer>
+              <div style={{ display:'flex', gap:14, marginTop:6 }}>
+                <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                  <div style={{ width:10, height:10, borderRadius:2, background:'#6C63FF' }} />
+                  <span style={{ fontSize:11, color:'#9CA3AF' }}>SGPA</span>
+                </div>
+                <div style={{ display:'flex', alignItems:'center', gap:5 }}>
+                  <div style={{ width:12, height:2, background:'#06B6D4' }} />
+                  <span style={{ fontSize:11, color:'#9CA3AF' }}>CGPA</span>
+                </div>
+              </div>
+            </div>
+            <div style={{ width:140, display:'flex', flexDirection:'column', gap:9 }}>
+              {[
+                { icon:BarChart3,     label:'CGPA (Current)',    value: cgpa != null ? cgpa.toFixed(2) : '—', color:'#6C63FF' },
+                { icon:TrendingUp,    label:'Target CGPA',       value:'9.00+',                              color:'#10B981' },
+                { icon:GraduationCap, label:'Credits Completed', value:'84 / 100',                          color:'#F59E0B' },
+              ].map(({ icon:Icon2, label, value, color }) => (
+                <div key={label} style={{ padding:'10px 12px', borderRadius:10, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.05)' }}>
+                  <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:4 }}>
+                    <Icon2 size={12} style={{ color }} />
+                    <span style={{ fontSize:11, color:'#6B7280' }}>{label}</span>
+                  </div>
+                  <div style={{ fontSize:16, fontWeight:700, color:'#fff' }}>{value}</div>
                 </div>
               ))}
             </div>
-          )}
-        </div>
-
-        {/* Study Hours Chart */}
-        <div className="rounded-2xl p-6" style={{ background: '#12122A', border: '1px solid rgba(108,99,255,0.12)' }}>
-          <div className="flex items-center justify-between mb-5">
-            <h3 className="font-semibold text-white">Study Hours</h3>
-            {studyData.some(d => d.hours > 0) && (
-              <span className="text-xs font-medium" style={{ color: '#6C63FF' }}>
-                {(studyData.reduce((s, d) => s + d.hours, 0)).toFixed(1)}h this week
-              </span>
-            )}
           </div>
-          {studyData.every(d => d.hours === 0) ? (
-            <div className="flex flex-col items-center justify-center h-32 text-center">
-              <Clock size={28} style={{ color: '#374151' }} className="mb-2" />
-              <p className="text-sm" style={{ color: '#6B7280' }}>No study sessions logged yet</p>
-              <button onClick={() => navigate('/academics')}
-                className="text-xs mt-2 hover:underline" style={{ color: '#6C63FF' }}>
-                Log a session →
-              </button>
-            </div>
-          ) : (
-            <ResponsiveContainer width="100%" height={160}>
-              <AreaChart data={studyData}>
-                <defs>
-                  <linearGradient id="sg" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6C63FF" stopOpacity={0.4} />
-                    <stop offset="95%" stopColor="#6C63FF" stopOpacity={0} />
-                  </linearGradient>
-                </defs>
-                <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#6B7280', fontSize: 11 }} />
-                <YAxis hide />
-                <Tooltip contentStyle={{ background: '#1A1A2E', border: '1px solid #2A2A3E', borderRadius: 10, fontSize: 12 }}
-                  formatter={(v: any) => [`${v}h`, 'Study']} />
-                <Area type="monotone" dataKey="hours" stroke="#6C63FF" fill="url(#sg)" strokeWidth={2} />
-              </AreaChart>
-            </ResponsiveContainer>
-          )}
         </div>
-      </div>
 
-      {/* ── Hubs Grid ────────────────────────────────────────── */}
-      <div>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-white">Your Hubs</h3>
-          <span className="text-xs" style={{ color: '#6B7280' }}>AI-powered tools for every area</span>
-        </div>
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
-          {hubs.map(({ icon: Icon, label, sub, color, to }) => (
-            <button key={to} onClick={() => navigate(to)}
-              className="rounded-2xl p-4 text-left transition-all group hover:scale-[1.03] hover:shadow-lg"
-              style={{ background: '#12122A', border: '1px solid rgba(108,99,255,0.12)' }}>
-              <div className="w-11 h-11 rounded-xl flex items-center justify-center mb-3 transition-transform group-hover:scale-110"
-                style={{ background: `${color}18` }}>
-                <Icon size={20} style={{ color }} />
+        {/* LeetCode Progress */}
+        <div style={panel}>
+          <div style={panelHead}>
+            <Code size={15} style={{ color:'#F59E0B' }} />
+            <h3 style={h3}>LeetCode Progress</h3>
+          </div>
+          <div style={{ display:'flex', alignItems:'center', gap:20, marginBottom:14 }}>
+            <div style={{ position:'relative', width:120, height:120, flexShrink:0 }}>
+              <ResponsiveContainer width={120} height={120}>
+                <PieChart>
+                  <Pie
+                    data={lcData.some(d => d.value > 0) ? lcData : [{ name:'None', value:1, color:'#1F2937' }]}
+                    cx={55} cy={55} innerRadius={36} outerRadius={52}
+                    dataKey="value" strokeWidth={0}
+                  >
+                    {(lcData.some(d => d.value > 0) ? lcData : [{ name:'None', value:1, color:'#1F2937' }]).map((entry, i) => (
+                      <Cell key={i} fill={entry.color} />
+                    ))}
+                  </Pie>
+                </PieChart>
+              </ResponsiveContainer>
+              <div style={{ position:'absolute', inset:0, display:'flex', flexDirection:'column', alignItems:'center', justifyContent:'center', pointerEvents:'none' }}>
+                <span style={{ fontSize:22, fontWeight:800, color:'#fff' }}>{lc ?? 0}</span>
+                <span style={{ fontSize:10, color:'#6B7280' }}>Solved</span>
               </div>
-              <p className="text-sm font-semibold text-white leading-tight">{label}</p>
-              <p className="text-[11px] mt-1 leading-tight" style={{ color: '#6B7280' }}>{sub}</p>
-            </button>
-          ))}
-        </div>
-      </div>
-
-      {/* ── Recent Activity ──────────────────────────────────── */}
-      <div className="rounded-2xl p-6" style={{ background: '#12122A', border: '1px solid rgba(108,99,255,0.12)' }}>
-        <div className="flex items-center justify-between mb-4">
-          <h3 className="font-semibold text-white flex items-center gap-2">
-            <Sparkles size={16} style={{ color: '#6C63FF' }} /> Recent Activity
-          </h3>
-          <button onClick={() => navigate('/analytics')}
-            className="text-xs flex items-center gap-1 hover:opacity-80" style={{ color: '#6C63FF' }}>
-            All activity <ArrowRight size={12} />
+            </div>
+            <div style={{ flex:1, display:'flex', flexDirection:'column', gap:10 }}>
+              {lcData.map(({ name, value, color }) => (
+                <div key={name}>
+                  <div style={{ display:'flex', justifyContent:'space-between', fontSize:12, marginBottom:4 }}>
+                    <div style={{ display:'flex', alignItems:'center', gap:6 }}>
+                      <div style={{ width:9, height:9, borderRadius:2, background:color }} />
+                      <span style={{ color:'#9CA3AF' }}>{name}</span>
+                    </div>
+                    <span style={{ color:'#fff', fontWeight:700 }}>{value}</span>
+                  </div>
+                  <div style={{ height:3, background:'rgba(255,255,255,0.06)', borderRadius:2 }}>
+                    <div style={{ height:3, background:color, borderRadius:2, width:`${lc ? Math.round(value/lc*100) : 0}%`, transition:'width 0.5s' }} />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+          <button onClick={() => navigate('/coding')} style={{ width:'100%', padding:'9px', borderRadius:10, background:'rgba(245,158,11,0.08)', border:'1px solid rgba(245,158,11,0.25)', color:'#F59E0B', cursor:'pointer', fontSize:12, fontWeight:600 }}>
+            View Progress →
           </button>
         </div>
 
-        {activities.length === 0 ? (
-          <div className="text-center py-8">
-            <AlertCircle size={28} style={{ color: '#374151' }} className="mx-auto mb-2" />
-            <p className="text-sm" style={{ color: '#6B7280' }}>No activity yet. Start using StudentOS!</p>
+        {/* Attendance Trend */}
+        <div style={panel}>
+          <div style={panelHead}>
+            <TrendingUp size={15} style={{ color:'#10B981' }} />
+            <h3 style={h3}>Attendance Trend</h3>
           </div>
-        ) : (
-          <div className="space-y-2">
-            {activities.map((act, i) => {
-              const typeColor =
-                act.activity_type === 'coding' ? '#00D4FF' :
-                act.activity_type === 'wellness' ? '#F43F5E' :
-                act.activity_type === 'ai' ? '#10B981' :
-                act.activity_type === 'academic' ? '#10B981' : '#6C63FF'
+          <div style={{ display:'flex', alignItems:'baseline', gap:8, marginBottom:14 }}>
+            <span style={{ fontSize:30, fontWeight:800, color:'#fff' }}>
+              {attendance != null ? `${attendance}%` : '—'}
+            </span>
+            {attendance != null && attendance > 0 && (
+              <span style={{ fontSize:12, color:'#4ADE80', display:'flex', alignItems:'center', gap:3 }}>
+                <TrendingUp size={12} /> +3.2%
+              </span>
+            )}
+          </div>
+          <ResponsiveContainer width="100%" height={100}>
+            <BarChart data={attTrend} barSize={20} margin={{ top:0, right:0, bottom:0, left:-30 }}>
+              <XAxis dataKey="month" axisLine={false} tickLine={false} tick={{ fill:'#6B7280', fontSize:10 }} />
+              <Tooltip contentStyle={{ background:'#141430', border:'1px solid #2A2A4E', borderRadius:8, fontSize:11 }} formatter={(v: any) => [`${v}%`, 'Attendance']} />
+              <Bar dataKey="val" radius={[4,4,0,0]}>
+                {attTrend.map((_, i) => (
+                  <Cell key={i} fill={i === attTrend.length - 1 ? '#6C63FF' : 'rgba(108,99,255,0.25)'} />
+                ))}
+              </Bar>
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+
+      {/* ── Streak widget ─────────────────────────────────── */}
+      {streak > 0 && (
+        <div style={{ padding:'14px 20px', borderRadius:14, background:'#0E0E24', border:`1px solid ${streak>=7?'#F59E0B':'#6C63FF'}30`, display:'flex', alignItems:'center', gap:16 }}>
+          <Flame size={22} style={{ color: streak >= 30 ? '#FF6B00' : streak >= 7 ? '#F59E0B' : '#6C63FF', flexShrink:0 }} />
+          <div style={{ flex:1 }}>
+            <span style={{ fontSize:14, fontWeight:700, color:'#fff' }}>{streak} Day Streak 🔥</span>
+            <span style={{ fontSize:12, color:'#6B7280', marginLeft:8 }}>
+              {streak >= 14 ? 'On Fire!' : streak >= 7 ? 'Hot Streak!' : streak >= 3 ? 'Building momentum' : 'Just started!'}
+            </span>
+          </div>
+          {streakPingedToday && (
+            <span style={{ fontSize:11, padding:'3px 10px', borderRadius:20, background:'rgba(16,185,129,0.12)', color:'#10B981', fontWeight:600 }}>✓ Active today</span>
+          )}
+          <div style={{ display:'flex', gap:5 }}>
+            {Array.from({ length:7 }, (_, i) => {
+              const daysAgo = 6 - i
+              const active = daysAgo < streak
+              const isToday = daysAgo === 0
+              const col = streak >= 30 ? '#FF6B00' : streak >= 7 ? '#F59E0B' : '#6C63FF'
               return (
-                <div key={i} className="flex items-center gap-3 p-3 rounded-xl hover:bg-white/5 transition-all">
-                  <div className="w-2 h-2 rounded-full shrink-0" style={{ background: typeColor }} />
-                  <p className="text-sm text-white flex-1">{act.description}</p>
-                  <span className="text-xs shrink-0" style={{ color: '#6B7280' }}>
-                    {relativeTime(act.created_at)}
-                  </span>
-                </div>
+                <div key={i} title={isToday ? 'Today' : `${daysAgo}d ago`}
+                  style={{ width:20, height:20, borderRadius:5, background: active ? col : 'rgba(255,255,255,0.06)', border: isToday ? `1px solid ${col}` : '1px solid transparent', transition:'all 0.2s' }} />
               )
             })}
           </div>
-        )}
-      </div>
+        </div>
+      )}
     </div>
   )
 }
