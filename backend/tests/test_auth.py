@@ -279,3 +279,62 @@ def test_ai_quiz_rejects_incomplete_provider_output(monkeypatch) -> None:
         )
         assert response.status_code == 502
         assert "invalid quiz question" in response.json()["detail"].lower()
+
+def test_google_id_token_accepts_google_issuer_values_and_rejects_others(monkeypatch) -> None:
+    """Google's two documented issuer strings are valid; other issuers are not."""
+    import asyncio
+    import json
+
+    import jwt as pyjwt
+    from cryptography.hazmat.primitives.asymmetric import rsa
+    from fastapi import HTTPException
+
+    from backend.auth import routes as auth_routes
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    key_id = "studentos-google-test-key"
+    public_jwk = json.loads(pyjwt.algorithms.RSAAlgorithm.to_jwk(private_key.public_key()))
+    public_jwk["kid"] = key_id
+
+    async def fake_get_google_public_keys(force_refresh: bool = False) -> dict:
+        return {"keys": [public_jwk]}
+
+    monkeypatch.setattr(auth_routes, "get_google_public_keys", fake_get_google_public_keys)
+
+    def make_token(issuer: str) -> str:
+        return pyjwt.encode(
+            {
+                "iss": issuer,
+                "aud": "studentos-test-client.apps.googleusercontent.com",
+                "sub": "google-subject-123",
+                "email": "student@example.com",
+                "email_verified": True,
+                "exp": datetime.now(timezone.utc) + timedelta(minutes=5),
+            },
+            private_key,
+            algorithm="RS256",
+            headers={"kid": key_id},
+        )
+
+    for issuer in ("accounts.google.com", "https://accounts.google.com"):
+        payload = asyncio.run(
+            auth_routes.verify_google_id_token(
+                make_token(issuer),
+                "studentos-test-client.apps.googleusercontent.com",
+            )
+        )
+        assert payload["iss"] == issuer
+        assert payload["sub"] == "google-subject-123"
+
+    try:
+        asyncio.run(
+            auth_routes.verify_google_id_token(
+                make_token("https://accounts.example.com"),
+                "studentos-test-client.apps.googleusercontent.com",
+            )
+        )
+    except HTTPException as exc:
+        assert exc.status_code == 400
+        assert exc.detail == "Invalid token: Invalid issuer"
+    else:
+        raise AssertionError("A token with an untrusted issuer must be rejected")

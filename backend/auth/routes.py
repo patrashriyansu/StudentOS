@@ -22,6 +22,7 @@ router = APIRouter()
 limiter = Limiter(key_func=get_remote_address)
 
 GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/certs"
+GOOGLE_ALLOWED_ISSUERS = frozenset({"accounts.google.com", "https://accounts.google.com"})
 
 def email_delivery_configured() -> bool:
     return all((settings.SMTP_HOST, settings.SMTP_USERNAME, settings.SMTP_PASSWORD, settings.SMTP_FROM_EMAIL))
@@ -93,12 +94,17 @@ async def verify_google_id_token(id_token: str, client_id: str) -> dict:
             public_key,
             algorithms=["RS256"],
             audience=client_id,
-            issuer=["accounts.google.com", "https://accounts.google.com"],
+            # PyJWT 2.8 expects a single issuer string, not a list. Verify
+            # the signature, audience and expiry first, then validate Google's two
+            # documented issuer representations explicitly below.
+            options={"verify_iss": False},
         )
     except pyjwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token expired")
     except pyjwt.InvalidTokenError as e:
         raise HTTPException(status_code=400, detail=f"Invalid token: {e}")
+    if payload.get("iss") not in GOOGLE_ALLOWED_ISSUERS:
+        raise HTTPException(status_code=400, detail="Invalid token: Invalid issuer")
     return payload
 
 
