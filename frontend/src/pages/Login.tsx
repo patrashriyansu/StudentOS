@@ -30,10 +30,10 @@ declare global {
   }
 }
 
-type ProviderStatus = { google: boolean; github: boolean; microsoft: boolean }
+type ProviderStatus = { google: boolean }
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim()
-const defaultProviders: ProviderStatus = { google: false, github: false, microsoft: false }
+const defaultProviders: ProviderStatus = { google: false }
 
 
 function GoogleMark() {
@@ -47,25 +47,6 @@ function GoogleMark() {
   )
 }
 
-function GitHubMark() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7 fill-current">
-      <path d="M12 .9a11.1 11.1 0 0 0-3.5 21.6c.6.1.8-.2.8-.5v-2c-3.1.7-3.8-1.3-3.8-1.3-.5-1.3-1.2-1.7-1.2-1.7-1-.7.1-.7.1-.7 1.1.1 1.7 1.2 1.7 1.2 1 .1.7 2.2 3.2 1.6.1-.7.4-1.2.7-1.5-2.5-.3-5.1-1.2-5.1-5.5 0-1.2.4-2.1 1.1-2.9-.1-.3-.5-1.4.1-2.9 0 0 .9-.3 3 1.1a10.3 10.3 0 0 1 5.5 0c2.1-1.4 3-1.1 3-1.1.6 1.5.2 2.6.1 2.9.7.8 1.1 1.7 1.1 2.9 0 4.3-2.6 5.2-5.1 5.5.4.3.7.9.7 1.8V22c0 .3.2.6.8.5A11.1 11.1 0 0 0 12 .9Z" />
-    </svg>
-  )
-}
-
-function MicrosoftMark() {
-  return (
-    <svg viewBox="0 0 24 24" aria-hidden="true" className="h-7 w-7">
-      <path fill="#F25022" d="M1 1h10v10H1z" />
-      <path fill="#7FBA00" d="M13 1h10v10H13z" />
-      <path fill="#00A4EF" d="M1 13h10v10H1z" />
-      <path fill="#FFB900" d="M13 13h10v10H13z" />
-    </svg>
-  )
-}
-
 export default function Login() {
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
@@ -74,7 +55,6 @@ export default function Login() {
   const [error, setError] = useState('')
   const [loading, setLoading] = useState(false)
   const [googleReady, setGoogleReady] = useState(false)
-  const [providerLoading, setProviderLoading] = useState<'github' | 'microsoft' | null>(null)
   const [providers, setProviders] = useState<ProviderStatus>(defaultProviders)
   const googleButtonRef = useRef<HTMLDivElement>(null)
   const googleLoadingRef = useRef(false)
@@ -85,11 +65,7 @@ export default function Login() {
     let active = true
     api.get('/auth/providers')
       .then(({ data }) => {
-        if (active) setProviders({
-          google: Boolean(data?.google),
-          github: Boolean(data?.github),
-          microsoft: Boolean(data?.microsoft),
-        })
+        if (active) setProviders({ google: Boolean(data?.google) })
       })
       .catch(() => {
         if (active) setProviders(defaultProviders)
@@ -169,24 +145,6 @@ export default function Login() {
     } finally {
       setLoading(false)
     }
-  }
-
-  const startSocialLogin = (provider: 'github' | 'microsoft') => {
-    if (!providers[provider]) {
-      setError(provider === 'github'
-        ? 'GitHub sign-in is not configured yet. Please use email or Google for now.'
-        : 'Microsoft sign-in is not configured yet. Please use email or Google for now.')
-      return
-    }
-    setError('')
-    setProviderLoading(provider)
-    const baseUrl = api.defaults.baseURL?.replace(/\/+$/, '')
-    if (!baseUrl) {
-      setProviderLoading(null)
-      setError('The StudentOS authentication service is unavailable.')
-      return
-    }
-    window.location.assign(baseUrl + '/auth/' + provider + '/authorize')
   }
 
   return (
@@ -269,7 +227,7 @@ export default function Login() {
             </div>
 
             <div className="flex items-center justify-center gap-3">
-              <div className="relative flex h-[56px] w-[104px] items-center justify-center overflow-hidden rounded-2xl border border-[#dfe4f2] bg-white/80 shadow-sm">
+              <div className="relative flex h-[56px] w-[112px] items-center justify-center overflow-hidden rounded-2xl border border-[#dfe4f2] bg-white/80 shadow-sm">
                 {providers.google && googleClientId ? (
                   <>
                     <div ref={googleButtonRef} className="absolute inset-0 flex items-center justify-center overflow-hidden" />
@@ -282,24 +240,8 @@ export default function Login() {
                 )}
               </div>
 
-              <button type="button" onClick={() => startSocialLogin('github')} disabled={!providers.github || Boolean(providerLoading)}
-                aria-label="Continue with GitHub" title={providers.github ? 'Continue with GitHub' : 'GitHub sign-in is not configured'}
-                className="flex h-[56px] w-[104px] items-center justify-center rounded-2xl border border-[#dfe4f2] bg-white/80 text-[#101943] shadow-sm transition hover:-translate-y-0.5 hover:border-[#b8c5e5] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50">
-                {providerLoading === 'github' ? <Loader2 size={21} className="animate-spin" /> : <GitHubMark />}
-              </button>
-
-              <button type="button" onClick={() => startSocialLogin('microsoft')} disabled={!providers.microsoft || Boolean(providerLoading)}
-                aria-label="Continue with Microsoft" title={providers.microsoft ? 'Continue with Microsoft' : 'Microsoft sign-in is not configured'}
-                className="flex h-[56px] w-[104px] items-center justify-center rounded-2xl border border-[#dfe4f2] bg-white/80 shadow-sm transition hover:-translate-y-0.5 hover:border-[#b8c5e5] hover:shadow-md disabled:cursor-not-allowed disabled:opacity-50">
-                {providerLoading === 'microsoft' ? <Loader2 size={21} className="animate-spin" /> : <MicrosoftMark />}
-              </button>
+              
             </div>
-
-            {(!providers.github || !providers.microsoft) && (
-              <p className="mt-2 text-center text-[11px] leading-4 text-[#7a849e]">
-                GitHub and Microsoft sign-in activate after their OAuth apps are configured by the administrator.
-              </p>
-            )}
 
             <p className="mt-5 text-center text-sm text-[#26345f]">
               New to StudentOS? <Link to="/register" className="font-bold text-[#1745df] hover:underline">Create an account</Link>
