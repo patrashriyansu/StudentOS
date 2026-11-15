@@ -83,8 +83,8 @@ function HubTile({ icon: Icon, label, sub, color, to }: { icon: any; label: stri
       className="dashboard-hub-tile"
       style={{
         display: 'flex', alignItems: 'center', gap: 12, padding: '12px 14px',
-        borderRadius: 12, background: 'rgba(255,255,255,0.03)',
-        border: '1px solid rgba(255,255,255,0.07)',
+        borderRadius: 12, background: 'var(--app-subtle)',
+        border: '1px solid var(--app-border)',
         cursor: 'pointer', textAlign: 'left', width: '100%',
         transition: 'background 0.15s',
       }}
@@ -95,8 +95,8 @@ function HubTile({ icon: Icon, label, sub, color, to }: { icon: any; label: stri
         <Icon size={17} style={{ color }} />
       </div>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: 13, fontWeight: 600, color: '#fff' }}>{label}</div>
-        <div style={{ fontSize: 11, color: '#6B7280', marginTop: 1 }}>{sub}</div>
+        <div style={{ fontSize: 13, fontWeight: 600, color: 'var(--app-text)' }}>{label}</div>
+        <div style={{ fontSize: 11, color: 'var(--app-muted)', marginTop: 1 }}>{sub}</div>
       </div>
       <span style={{ color: '#4B5563', fontSize: 18, lineHeight: 1 }}>›</span>
     </button>
@@ -267,13 +267,13 @@ export default function Dashboard() {
         <ThemeControl compact />
         <div style={{
           display:'flex', alignItems:'center', gap:12,
-          background:'rgba(255,255,255,0.05)', border:'1px solid rgba(255,255,255,0.1)',
+          background:'var(--app-panel)', border:'1px solid var(--app-border)',
           borderRadius:14, padding:'12px 20px', flexShrink:0,
         }}>
           <Calendar size={18} style={{ color:'#A78BFA' }} />
           <div>
-            <div style={{ fontSize:13, fontWeight:600, color:'#fff' }}>{dateLabel}</div>
-            <div style={{ fontSize:11, color:'#6B7280', marginTop:3 }}>5th Semester • ITER, SOA</div>
+            <div style={{ fontSize:13, fontWeight:600, color:'var(--app-text)' }}>{dateLabel}</div>
+            <div style={{ fontSize:11, color:'var(--app-muted)', marginTop:3 }}>5th Semester • ITER, SOA</div>
           </div>
         </div>
         </div>
