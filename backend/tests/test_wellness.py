@@ -36,6 +36,15 @@ def test_wellness_history_uses_saved_logs_and_validates_ranges() -> None:
         assert registered.status_code == 201
         headers = {"Authorization": f"Bearer {registered.json()['access_token']}"}
 
+        empty_score = client.get("/api/v1/wellness/score", headers=headers)
+        assert empty_score.status_code == 200
+        assert empty_score.json()["overall_score"] is None
+        assert empty_score.json()["trend"] == "not_enough_data"
+
+        empty_history = client.get("/api/v1/wellness/history?days=7", headers=headers)
+        assert empty_history.status_code == 200
+        assert all(row["score"] is None for row in empty_history.json()["history"])
+
         invalid_mood = client.post("/api/v1/wellness/mood", headers=headers, json={"mood_score": 6})
         assert invalid_mood.status_code == 422
 
