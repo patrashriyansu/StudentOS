@@ -73,3 +73,20 @@ class UserActivity(Base):
     description = Column(String(500))
     xp_earned = Column(Integer, default=0)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class EmailReminder(Base):
+    __tablename__ = "email_reminders"
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id"), nullable=False, index=True)
+    title = Column(String(300), nullable=False)
+    message = Column(Text, nullable=False)
+    remind_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    repeat_interval = Column(String(12), default="none")  # none, daily, weekly
+    entity_type = Column(String(50), nullable=True)
+    entity_id = Column(Integer, nullable=True)
+    is_active = Column(Boolean, default=True, index=True)
+    attempts = Column(Integer, default=0)
+    last_error = Column(Text, nullable=True)
+    sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
