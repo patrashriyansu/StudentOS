@@ -1,6 +1,16 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Bot, Send, FileText, Sparkles, Lightbulb, Loader2, CheckCircle2, XCircle, RotateCcw } from 'lucide-react'
 import { api } from '../services/api'
+import { getFriendlyApiError } from '../services/errors'
+
+type QuizQuestion = {
+  question: string
+  options: string[]
+  correct: number
+  explanation?: string
+}
+
+type Flashcard = { front: string; back: string }
 
 const suggestions = [
   'Explain Dijkstra’s algorithm step-by-step',
@@ -23,6 +33,20 @@ export default function AIAssistant() {
     },
   ])
   const [chatLoading, setChatLoading] = useState(false)
+  const [aiConfigured, setAiConfigured] = useState<boolean | null>(null)
+  const [aiStatusError, setAiStatusError] = useState('')
+
+  useEffect(() => {
+    let active = true
+    api.get('/ai/status')
+      .then(({ data }) => {
+        if (active) setAiConfigured(Boolean(data.configured))
+      })
+      .catch((err) => {
+        if (active) setAiStatusError(getFriendlyApiError(err, 'Could not check AI availability.'))
+      })
+    return () => { active = false }
+  }, [])
 
   // Summarize State
   const [summaryInput, setSummaryInput] = useState('')
@@ -32,40 +56,50 @@ export default function AIAssistant() {
   // Quiz State
   const [quizTopic, setQuizTopic] = useState('Data Structures')
   const [quizDifficulty, setQuizDifficulty] = useState('medium')
-  const [quizQuestions, setQuizQuestions] = useState<any[]>([])
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([])
+  const [quizError, setQuizError] = useState('')
   const [quizSelectedAnswers, setQuizSelectedAnswers] = useState<Record<number, number>>({})
   const [quizLoading, setQuizLoading] = useState(false)
   const [quizSubmitted, setQuizSubmitted] = useState(false)
 
   // Flashcards State
   const [flashcardTopic, setFlashcardTopic] = useState('Operating Systems')
-  const [flashcards, setFlashcards] = useState<{ front: string; back: string }[]>([
-    { front: 'What is a Semaphore?', back: 'A synchronization variable used to manage concurrent processes and avoid race conditions.' },
-    { front: 'Explain Thrashing', back: 'A state where the CPU spends more time swapping pages in and out than executing instructions.' },
-    { front: 'What is Deadlock?', back: 'A situation where a set of processes are blocked because each process is holding a resource and waiting for another.' },
-  ])
+  const [flashcards, setFlashcards] = useState<Flashcard[]>([])
+  const [flashcardError, setFlashcardError] = useState('')
   const [revealedCards, setRevealedCards] = useState<Record<number, boolean>>({})
   const [flashcardLoading, setFlashcardLoading] = useState(false)
 
   // Chat Handler
   const handleSend = async (userMsg?: string) => {
-    const textToSend = userMsg || message
-    if (!textToSend.trim()) return
+    const textToSend = (userMsg ?? message).trim()
+    if (!textToSend || chatLoading) return
 
-    setChat((prev) => [...prev, { role: 'user', content: textToSend }])
-    if (!userMsg) setMessage('')
+    const history = chat
+      .slice(1)
+      .slice(-10)
+      .map((entry) => ({
+        role: entry.role === 'ai' ? 'assistant' as const : 'user' as const,
+        content: entry.content,
+      }))
+
+    setChat((previous) => [...previous, { role: 'user', content: textToSend }])
+    if (userMsg === undefined) setMessage('')
     setChatLoading(true)
 
     try {
-      const res = await api.post('/ai/chat', { message: textToSend, mode })
-      setChat((prev) => [...prev, { role: 'ai', content: res.data.response }])
-    } catch {
-      setChat((prev) => [
-        ...prev,
-        {
-          role: 'ai',
-          content: 'Sorry, I encountered an error connecting to the AI backend. Please verify your connection.',
-        },
+      const res = await api.post(
+        '/ai/chat',
+        { message: textToSend, mode, history },
+        { timeout: 60000 },
+      )
+      if (typeof res.data.response !== 'string' || !res.data.response.trim()) {
+        throw new Error('The AI returned an empty response.')
+      }
+      setChat((previous) => [...previous, { role: 'ai', content: res.data.response }])
+    } catch (err) {
+      setChat((previous) => [
+        ...previous,
+        { role: 'ai', content: getFriendlyApiError(err, 'The AI tutor could not answer this request. Please retry.') },
       ])
     } finally {
       setChatLoading(false)
@@ -76,11 +110,12 @@ export default function AIAssistant() {
   const handleSummarize = async () => {
     if (!summaryInput.trim()) return
     setSummarizeLoading(true)
+    setSummaryOutput('')
     try {
-      const res = await api.post('/ai/summarize', { content: summaryInput, max_length: 400 })
+      const res = await api.post('/ai/summarize', { content: summaryInput, max_length: 400 }, { timeout: 60000 })
       setSummaryOutput(res.data.summary)
-    } catch {
-      setSummaryOutput('Failed to summarize text. Please try again.')
+    } catch (err) {
+      setSummaryOutput(getFriendlyApiError(err, 'The AI could not summarize this content. Please retry.'))
     } finally {
       setSummarizeLoading(false)
     }
@@ -90,17 +125,19 @@ export default function AIAssistant() {
   const handleGenerateQuiz = async () => {
     if (!quizTopic.trim()) return
     setQuizLoading(true)
+    setQuizError('')
+    setQuizQuestions([])
     setQuizSubmitted(false)
     setQuizSelectedAnswers({})
     try {
       const res = await api.post('/ai/generate-quiz', {
-        topic: quizTopic,
+        topic: quizTopic.trim(),
         count: 5,
         difficulty: quizDifficulty,
-      })
-      setQuizQuestions(res.data.questions || [])
-    } catch {
-      console.error('Quiz generation failed')
+      }, { timeout: 60000 })
+      setQuizQuestions(Array.isArray(res.data.questions) ? res.data.questions : [])
+    } catch (err) {
+      setQuizError(getFriendlyApiError(err, 'The AI could not generate this quiz. Please retry.'))
     } finally {
       setQuizLoading(false)
     }
@@ -110,15 +147,17 @@ export default function AIAssistant() {
   const handleGenerateFlashcards = async () => {
     if (!flashcardTopic.trim()) return
     setFlashcardLoading(true)
+    setFlashcardError('')
+    setFlashcards([])
     setRevealedCards({})
     try {
       const res = await api.post('/ai/generate-flashcards', {
-        topic: flashcardTopic,
+        topic: flashcardTopic.trim(),
         count: 6,
-      })
-      setFlashcards(res.data.cards || [])
-    } catch {
-      console.error('Flashcard generation failed')
+      }, { timeout: 60000 })
+      setFlashcards(Array.isArray(res.data.cards) ? res.data.cards : [])
+    } catch (err) {
+      setFlashcardError(getFriendlyApiError(err, 'The AI could not generate flashcards. Please retry.'))
     } finally {
       setFlashcardLoading(false)
     }
@@ -133,6 +172,16 @@ export default function AIAssistant() {
             <Bot className="text-primary" /> AI Academic Copilot
           </h1>
           <p className="text-dark-muted">Instant concept tutoring, smart summaries, adaptive quizzes & flashcards</p>
+          <div className="mt-2 flex items-center gap-2 text-xs">
+            <span className={`inline-block h-2 w-2 rounded-full ${aiConfigured === true ? 'bg-emerald-400' : aiConfigured === false ? 'bg-amber-400' : 'bg-slate-400'}`} />
+            <span className="text-dark-muted">
+              {aiConfigured === true ? 'AI provider connected' : aiConfigured === false ? 'AI setup required' : 'Checking AI connection…'}
+            </span>
+          </div>
+          {aiConfigured === false && (
+            <p className="mt-1 text-xs text-amber-300">Add GEMINI_API_KEY to the backend environment to enable AI responses.</p>
+          )}
+          {aiStatusError && <p className="mt-1 text-xs text-rose-300">{aiStatusError}</p>}
         </div>
         <div className="flex gap-1 glass rounded-xl p-1">
           {(['chat', 'summarize', 'quiz', 'flashcards'] as const).map((t) => (
@@ -286,7 +335,8 @@ export default function AIAssistant() {
               <textarea
                 value={summaryInput}
                 onChange={(e) => setSummaryInput(e.target.value)}
-                placeholder="Paste your study content here (up to 5,000 words)..."
+                maxLength={30000}
+                placeholder="Paste your study content here (up to 30,000 characters)..."
                 className="w-full h-80 bg-dark-lighter border border-dark-border rounded-xl p-4 text-sm text-white focus:outline-none focus:border-primary resize-none"
               />
             </div>
@@ -352,6 +402,15 @@ export default function AIAssistant() {
               </div>
             </div>
           </div>
+
+          {quizError && (
+            <p role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-300">{quizError}</p>
+          )}
+          {!quizLoading && !quizError && quizQuestions.length === 0 && (
+            <div className="glass rounded-2xl border border-dark-border p-10 text-center text-sm text-dark-muted">
+              Choose a topic and generate a quiz. Your questions will appear here.
+            </div>
+          )}
 
           {/* Questions display */}
           {quizQuestions.length > 0 && (
@@ -451,6 +510,14 @@ export default function AIAssistant() {
             </button>
           </div>
 
+          {flashcardError && (
+            <p role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-300">{flashcardError}</p>
+          )}
+          {flashcards.length === 0 && !flashcardError && !flashcardLoading && (
+            <div className="glass rounded-2xl border border-dark-border p-10 text-center text-sm text-dark-muted">
+              Choose a subject or concept and generate your first set of flashcards.
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {flashcards.map((c, i) => {
               const isFlipped = revealedCards[i]
