@@ -6,6 +6,9 @@ import { AppDispatch } from './store'
 import { initializeAuth, logout } from './store/slices/authSlice'
 import Layout from './components/layout/Layout'
 import Login from './pages/Login'
+import Register from './pages/Register'
+import ForgotPassword from './pages/ForgotPassword'
+import AuthCallback from './pages/AuthCallback'
 import Dashboard from './pages/Dashboard'
 import Academics from './pages/Academics'
 import Coding from './pages/Coding'
@@ -48,8 +51,9 @@ export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<PublicRoute><Login /></PublicRoute>} />
-      <Route path="/forgot-password" element={<Navigate to="/login" replace />} />
-      <Route path="/register" element={<Navigate to="/login" replace />} />
+      <Route path="/register" element={<PublicRoute><Register /></PublicRoute>} />
+      <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
+      <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/" element={<ProtectedRoute><Layout /></ProtectedRoute>}>
         <Route index element={<Dashboard />} />
         <Route path="dashboard" element={<Dashboard />} />
