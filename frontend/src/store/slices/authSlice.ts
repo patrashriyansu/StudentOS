@@ -56,6 +56,11 @@ const authSlice = createSlice({
       clearStoredAuth()
     },
     setUser(state, action: PayloadAction<User>) { state.user = action.payload },
+    tokenRefreshed(state, action: PayloadAction<{ token: string; refreshToken: string }>) {
+      state.token = action.payload.token
+      state.refreshToken = action.payload.refreshToken
+      state.isAuthenticated = true
+    },
   },
   extraReducers: (builder) => {
     builder.addCase(initializeAuth.pending, (s) => { s.loading = true })
@@ -79,5 +84,5 @@ const authSlice = createSlice({
   }
 })
 
-export const { logout, setUser } = authSlice.actions
+export const { logout, setUser, tokenRefreshed } = authSlice.actions
 export default authSlice.reducer
