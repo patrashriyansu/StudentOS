@@ -20,7 +20,7 @@ test('API client retries protected requests after refreshing an expired token', 
   assert.match(source, /return api\(original\)/)
 })
 
-test('login matches the StudentOS reference and keeps password, Google, GitHub and Microsoft entry points', async () => {
+test('login keeps password and Google sign-in without GitHub or Microsoft buttons', async () => {
   const app = await read('../src/App.tsx')
   const login = await read('../src/pages/Login.tsx')
   const callback = await read('../src/pages/AuthCallback.tsx')
@@ -31,11 +31,10 @@ test('login matches the StudentOS reference and keeps password, Google, GitHub a
   assert.ok(login.includes('loginWithGoogle'))
   assert.ok(login.includes('login({ email: email.trim(), password, rememberMe })'))
   assert.ok(login.includes('VITE_GOOGLE_CLIENT_ID'))
-  assert.ok(login.includes("startSocialLogin('github')"))
-  assert.ok(login.includes("startSocialLogin('microsoft')"))
   assert.ok(login.includes('Forgot password?'))
   assert.ok(login.includes('Remember me'))
   assert.ok(login.includes('Create an account'))
+  assert.doesNotMatch(login, /GitHub|Microsoft|github|microsoft/)
   assert.ok(login.includes('/images/studentos-login-hero.webp'))
   assert.doesNotMatch(login, /Main navigation|>Home<|>Features<|>About<|Get Started/)
   assert.doesNotMatch(login, /<nav/)
