@@ -388,7 +388,6 @@ body { overflow-x: hidden; }
   max-width: 100vw;
 }
 .app-content-area {
-  width: 100%;
   min-width: 0;
 }
 .app-content-expanded { margin-left: 240px; }
