@@ -1,4 +1,5 @@
 import json
+import logging
 import re
 from datetime import date, datetime, timezone
 from typing import Literal
@@ -16,6 +17,7 @@ from backend.users.models import User
 from backend.coding.models import CodingProfile, CodingProblem, Contest, DSAProgress
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 LEETCODE_GRAPHQL_URL = "https://leetcode.com/graphql"
 LEETCODE_PROFILE_QUERY = """
@@ -113,17 +115,27 @@ def parse_leetcode_public_stats(payload: dict, username: str) -> dict:
 
 
 async def fetch_leetcode_public_stats(username: str) -> dict:
-    """Fetch only public profile statistics. No session cookie or account password is used."""
-    variables = json.dumps({"username": username})
+    """Fetch public profile statistics without credentials or session cookies.
+
+    LeetCode's public GraphQL endpoint accepts GET for profile queries, but
+    some edges reject GET requests from server environments. Try a browser-like
+    GET first (without a Content-Type header), then retry the same public query
+    as JSON POST when the endpoint rejects that method/request shape.
+    """
+    variables = {"username": username}
     headers = {
-        "Accept": "application/json",
-        "Content-Type": "application/json",
+        "Accept": "application/json, text/plain, */*",
+        "Accept-Language": "en-US,en;q=0.9",
+        "Origin": "https://leetcode.com",
         "Referer": f"https://leetcode.com/u/{username}/",
         "User-Agent": (
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
             "AppleWebKit/537.36 (KHTML, like Gecko) "
-            "Chrome/126.0.0.0 Safari/537.36"
+            "Chrome/142.0.0.0 Safari/537.36"
         ),
+        "Sec-Fetch-Dest": "empty",
+        "Sec-Fetch-Mode": "cors",
+        "Sec-Fetch-Site": "same-origin",
     }
 
     try:
@@ -134,8 +146,25 @@ async def fetch_leetcode_public_stats(username: str) -> dict:
         ) as client:
             response = await client.get(
                 LEETCODE_GRAPHQL_URL,
-                params={"query": LEETCODE_PROFILE_QUERY, "variables": variables},
+                params={
+                    "query": LEETCODE_PROFILE_QUERY,
+                    "variables": json.dumps(variables, separators=(",", ":")),
+                },
             )
+
+            # Some LeetCode edges reject GET requests originating from hosting
+            # providers. Retry once as standard GraphQL JSON POST; never send
+            # LEETCODE_SESSION, csrftoken, or any private account credential.
+            if response.status_code in {400, 405, 415}:
+                response = await client.post(
+                    LEETCODE_GRAPHQL_URL,
+                    json={
+                        "query": LEETCODE_PROFILE_QUERY,
+                        "variables": variables,
+                    },
+                    headers={"Content-Type": "application/json"},
+                )
+
             response.raise_for_status()
             payload = response.json()
     except httpx.TimeoutException as exc:
@@ -144,15 +173,35 @@ async def fetch_leetcode_public_stats(username: str) -> dict:
             detail="LeetCode took too long to respond. Your handle is saved; try syncing again shortly.",
         ) from exc
     except httpx.HTTPStatusError as exc:
+        response_text = " ".join((exc.response.text or "").split())[:240]
+        logger.warning(
+            "LeetCode GraphQL rejected public profile request: status=%s content_type=%s response=%r",
+            exc.response.status_code,
+            exc.response.headers.get("content-type", ""),
+            response_text,
+        )
         raise HTTPException(
             status_code=503,
-            detail=f"LeetCode is temporarily unavailable (HTTP {exc.response.status_code}). Try syncing again later.",
+            detail=(
+                f"LeetCode rejected the public profile request (HTTP {exc.response.status_code}). "
+                "The handle is saved; retry the sync later."
+            ),
         ) from exc
     except (httpx.HTTPError, ValueError) as exc:
+        logger.warning("LeetCode GraphQL request failed: %s", type(exc).__name__)
         raise HTTPException(
             status_code=503,
             detail="Could not reach LeetCode right now. Your handle is saved; try syncing again shortly.",
         ) from exc
+
+    graphql_errors = payload.get("errors") or []
+    if graphql_errors and not (payload.get("data") or {}).get("matchedUser"):
+        message = str(graphql_errors[0].get("message") or "LeetCode rejected the profile query")
+        logger.warning("LeetCode GraphQL query error for public profile: %s", message[:240])
+        raise HTTPException(
+            status_code=502,
+            detail="LeetCode could not return this public profile's statistics. Please retry later.",
+        )
 
     return parse_leetcode_public_stats(payload, username)
 
