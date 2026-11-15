@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import {
   ArrowRight,
   BookOpen,
-  BriefcaseBusiness,
+  Briefcase,
   CalendarDays,
   CheckCircle2,
   Code2,
