@@ -109,7 +109,7 @@ def test_attendance_upsert_streak_grades_and_email_reminder_flows() -> None:
             "/api/v1/academics/timetable",
             headers=headers,
             json={
-                "day_of_week": now.weekday(),
+                "day_of_week": now.weekday() % 6,
                 "subject_name": "Algorithms",
                 "faculty": "Prof. Rao",
                 "room": "LH-2",
