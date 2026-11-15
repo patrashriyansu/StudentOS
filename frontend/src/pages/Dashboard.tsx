@@ -265,7 +265,7 @@ export default function Dashboard() {
 
         <div style={{ display:'flex', alignItems:'center', gap:12 }}>
         <ThemeControl compact />
-        <div style={{
+        <div className="dashboard-date-chip" style={{
           display:'flex', alignItems:'center', gap:12,
           background:'var(--app-panel)', border:'1px solid var(--app-border)',
           borderRadius:14, padding:'12px 20px', flexShrink:0,
