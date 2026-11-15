@@ -28,4 +28,4 @@ slowapi==0.1.9
 
 # AI integrations
 openai==1.51.0
-google-generativeai==0.8.3
+google-genai>=1.55.0,<3.0.0

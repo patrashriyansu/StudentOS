@@ -1,4 +1,5 @@
 """Google Gen AI service used by StudentOS's academic assistant."""
+import asyncio
 import json
 import logging
 import re
@@ -9,6 +10,7 @@ from fastapi import HTTPException
 from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
+GEMINI_REQUEST_TIMEOUT_SECONDS = 45.0
 
 
 def gemini_is_configured() -> bool:
@@ -20,6 +22,7 @@ async def _generate_text(
     system_hint: str = "",
     *,
     json_response: bool = False,
+    thinking_level: str = "low",
 ) -> str:
     if not gemini_is_configured():
         raise HTTPException(
@@ -29,28 +32,40 @@ async def _generate_text(
 
     try:
         from google import genai
+        from google.genai import types
 
-        config: dict[str, Any] = {
-            "temperature": 0.35,
-            "max_output_tokens": 8192,
-        }
+        config: dict[str, Any] = {"max_output_tokens": 8192}
+        if not settings.GEMINI_MODEL.startswith("gemini-3"):
+            config["temperature"] = 0.35
         if system_hint:
             config["system_instruction"] = system_hint
         if json_response:
             config["response_mime_type"] = "application/json"
+        # Gemini 3 models default to medium thinking. Use low for routine
+        # study tasks and let the chat route request more reasoning when needed.
+        if settings.GEMINI_MODEL.startswith("gemini-3"):
+            config["thinking_config"] = types.ThinkingConfig(thinking_level=thinking_level)
 
-        # Use the SDK's native async client so model calls do not block FastAPI.
         async with genai.Client(api_key=settings.GEMINI_API_KEY).aio as client:
-            response = await client.models.generate_content(
-                model=settings.GEMINI_MODEL,
-                contents=prompt,
-                config=config,
+            response = await asyncio.wait_for(
+                client.models.generate_content(
+                    model=settings.GEMINI_MODEL,
+                    contents=prompt,
+                    config=config,
+                ),
+                timeout=GEMINI_REQUEST_TIMEOUT_SECONDS,
             )
 
         output = (response.text or "").strip()
         if not output:
             raise ValueError("The model returned an empty response.")
         return output
+    except asyncio.TimeoutError as exc:
+        logger.warning("Gemini request timed out after %.0f seconds", GEMINI_REQUEST_TIMEOUT_SECONDS)
+        raise HTTPException(
+            status_code=504,
+            detail="Gemini is taking too long to respond. Please try a shorter question or retry.",
+        ) from exc
     except HTTPException:
         raise
     except Exception as exc:
@@ -67,14 +82,24 @@ async def _generate_text(
         raise HTTPException(status_code=502, detail=detail) from exc
 
 
-async def ask_gemini(prompt: str, system_hint: str = "") -> str:
+async def ask_gemini(
+    prompt: str,
+    system_hint: str = "",
+    *,
+    thinking_level: str = "low",
+) -> str:
     """Generate a normal text response from Gemini."""
-    return await _generate_text(prompt, system_hint)
+    return await _generate_text(prompt, system_hint, thinking_level=thinking_level)
 
 
 async def ask_gemini_json(prompt: str, system_hint: str = "") -> dict | list:
     """Generate and parse JSON, rejecting malformed model output instead of inventing data."""
-    output = await _generate_text(prompt, system_hint, json_response=True)
+    output = await _generate_text(
+        prompt,
+        system_hint,
+        json_response=True,
+        thinking_level="low",
+    )
     cleaned = re.sub(r"^\s*\x60{3}(?:json)?\s*|\s*\x60{3}\s*$", "", output, flags=re.IGNORECASE).strip()
 
     try:

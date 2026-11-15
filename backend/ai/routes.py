@@ -90,7 +90,14 @@ async def ai_chat(req: ChatRequest, current_user: User = Depends(get_current_use
         conversation.append(f"{speaker}: {turn.content}")
     conversation.append(f"Student: {req.message.strip()}")
     prompt = "Continue this tutoring conversation.\n\n" + "\n\n".join(conversation) + "\n\nAssistant:"
-    response = await ask_gemini(prompt, system)
+    thinking_levels = {
+        "default": "low",
+        "exam": "medium",
+        "interview": "medium",
+        "beginner": "low",
+        "deep": "high",
+    }
+    response = await ask_gemini(prompt, system, thinking_level=thinking_levels[req.mode])
     return {
         "response": response,
         "mode": req.mode,
