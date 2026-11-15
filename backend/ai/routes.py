@@ -5,40 +5,52 @@ from backend.core.database import get_db
 from backend.core.security import get_current_user
 from backend.users.models import User
 from backend.ai.gemini_service import ask_gemini, ask_gemini_json
-from pydantic import BaseModel
-from typing import Optional, List
-import json
+from pydantic import BaseModel, Field, field_validator
+from typing import Optional, List, Literal
 
 router = APIRouter()
 
 
 class ChatRequest(BaseModel):
-    message: str
-    context: Optional[str] = None
-    mode: Optional[str] = "default"  # default, exam, interview, beginner, deep
+    message: str = Field(..., min_length=1, max_length=6000)
+    context: Optional[str] = Field(default=None, max_length=12000)
+    mode: Literal["default", "exam", "interview", "beginner", "deep"] = "default"
+
+    @field_validator("message")
+    @classmethod
+    def validate_message(cls, value: str) -> str:
+        value = value.strip()
+        if not value:
+            raise ValueError("Message cannot be empty.")
+        return value
+
 
 class SummaryRequest(BaseModel):
-    content: str
-    max_length: Optional[int] = 500
-    style: Optional[str] = "bullet"  # bullet, paragraph, exam
+    content: str = Field(..., min_length=1, max_length=30000)
+    max_length: int = Field(default=500, ge=80, le=3000)
+    style: Literal["bullet", "paragraph", "exam"] = "bullet"
+
 
 class QuizRequest(BaseModel):
-    topic: str
-    count: int = 5
-    difficulty: str = "medium"
+    topic: str = Field(..., min_length=1, max_length=160)
+    count: int = Field(default=5, ge=1, le=10)
+    difficulty: Literal["easy", "medium", "hard"] = "medium"
+
 
 class FlashcardRequest(BaseModel):
-    topic: str
-    count: int = 10
+    topic: str = Field(..., min_length=1, max_length=160)
+    count: int = Field(default=10, ge=1, le=20)
+
 
 class StudyPlanRequest(BaseModel):
-    subject: str
+    subject: str = Field(..., min_length=1, max_length=160)
     exam_date: Optional[str] = None
-    available_hours_per_day: Optional[float] = 2.0
-    weak_topics: Optional[List[str]] = []
+    available_hours_per_day: Optional[float] = Field(default=2.0, gt=0, le=16)
+    weak_topics: List[str] = Field(default_factory=list)
+
 
 class DoubtRequest(BaseModel):
-    question: str
+    question: str = Field(..., min_length=1, max_length=6000)
     subject: Optional[str] = None
     context: Optional[str] = None
 
@@ -79,7 +91,7 @@ Style: {style}
 Maximum length: ~{req.max_length} words.
 
 Content:
-{req.content[:5000]}"""
+{req.content[:30000]}"""
     summary = await ask_gemini(prompt, "You are an expert study material summarizer.")
     return {
         "summary": summary,
@@ -108,18 +120,35 @@ Return ONLY valid JSON in this exact format:
 
 The "correct" field is the 0-based index of the correct option."""
 
-    result = await ask_gemini_json(prompt, "You are a quiz generator. Return only valid JSON.")
-    if isinstance(result, dict) and "questions" in result:
-        questions = result["questions"][:req.count]
-    elif isinstance(result, dict) and "raw" in result:
-        # Fallback questions
-        questions = [
-            {"question": f"What is the key concept in {req.topic}?", "options": ["Concept A", "Concept B", "Concept C", "Concept D"], "correct": 0, "explanation": f"This is a core concept in {req.topic}."},
-        ] * min(req.count, 5)
-    else:
-        questions = result[:req.count] if isinstance(result, list) else []
+    result = await ask_gemini_json(prompt, "You are an expert assessment designer. Create accurate questions and plausible distractors. Return only valid JSON.")
+    questions = result.get("questions") if isinstance(result, dict) else None
+    if not isinstance(questions, list) or len(questions) < req.count:
+        raise HTTPException(status_code=502, detail="The AI could not create a complete quiz. Please retry or choose another topic.")
 
-    return {"topic": req.topic, "difficulty": req.difficulty, "questions": questions, "total": len(questions)}
+    validated = []
+    for item in questions[:req.count]:
+        if not isinstance(item, dict):
+            raise HTTPException(status_code=502, detail="The AI returned an invalid quiz question. Please retry.")
+        question = item.get("question")
+        options = item.get("options")
+        correct = item.get("correct")
+        explanation = item.get("explanation", "")
+        if (
+            not isinstance(question, str) or not question.strip()
+            or not isinstance(options, list) or len(options) != 4
+            or not all(isinstance(option, str) and option.strip() for option in options)
+            or not isinstance(correct, int) or isinstance(correct, bool) or correct not in range(4)
+            or not isinstance(explanation, str)
+        ):
+            raise HTTPException(status_code=502, detail="The AI returned an invalid quiz question. Please retry.")
+        validated.append({
+            "question": question.strip(),
+            "options": [option.strip() for option in options],
+            "correct": correct,
+            "explanation": explanation.strip(),
+        })
+
+    return {"topic": req.topic, "difficulty": req.difficulty, "questions": validated, "total": len(validated)}
 
 
 # ── Flashcard Generator ────────────────────────────────────────────────────────
@@ -134,13 +163,22 @@ Return ONLY valid JSON:
   ]
 }}"""
 
-    result = await ask_gemini_json(prompt, "You are a flashcard creator. Return only valid JSON.")
-    if isinstance(result, dict) and "cards" in result:
-        cards = result["cards"][:req.count]
-    else:
-        cards = [{"front": f"Key concept {i+1} in {req.topic}", "back": f"Important definition or explanation for concept {i+1}"} for i in range(min(req.count, 5))]
+    result = await ask_gemini_json(prompt, "You are an expert study-card author. Create specific, factually accurate cards. Return only valid JSON.")
+    cards = result.get("cards") if isinstance(result, dict) else None
+    if not isinstance(cards, list) or len(cards) < req.count:
+        raise HTTPException(status_code=502, detail="The AI could not create enough flashcards. Please retry or choose another topic.")
 
-    return {"topic": req.topic, "cards": cards, "total": len(cards)}
+    validated = []
+    for card in cards[:req.count]:
+        if (
+            not isinstance(card, dict)
+            or not isinstance(card.get("front"), str) or not card["front"].strip()
+            or not isinstance(card.get("back"), str) or not card["back"].strip()
+        ):
+            raise HTTPException(status_code=502, detail="The AI returned an invalid flashcard. Please retry.")
+        validated.append({"front": card["front"].strip(), "back": card["back"].strip()})
+
+    return {"topic": req.topic, "cards": validated, "total": len(validated)}
 
 
 # ── Resume Analyzer ────────────────────────────────────────────────────────────
@@ -172,16 +210,7 @@ Return ONLY valid JSON:
     result = await ask_gemini_json(prompt, "You are an expert resume reviewer and ATS specialist.")
     if isinstance(result, dict) and "ats_score" in result:
         return result
-    return {
-        "ats_score": 72,
-        "skills_found": ["Python", "JavaScript", "SQL", "Git"],
-        "missing_skills": ["Docker", "Kubernetes", "AWS", "System Design"],
-        "sections_found": ["Education", "Projects", "Skills"],
-        "missing_sections": ["Work Experience", "Certifications", "Summary"],
-        "suggestions": ["Add quantifiable achievements", "Include a professional summary", "Add relevant certifications", "Tailor keywords for each role"],
-        "strengths": ["Good technical skills listed", "Projects section present"],
-        "overall_feedback": "The resume shows solid technical foundation. Adding quantifiable achievements and a professional summary would significantly improve its ATS score and recruiter appeal."
-    }
+    raise HTTPException(status_code=502, detail="The AI returned an invalid resume analysis. Please try again.")
 
 
 # ── Doubt Solver ──────────────────────────────────────────────────────────────
@@ -227,19 +256,9 @@ Return ONLY valid JSON:
 }}"""
 
     result = await ask_gemini_json(prompt, "You are an expert academic planner.")
-    if isinstance(result, dict) and "plan" in result:
+    if isinstance(result, dict) and isinstance(result.get("plan"), list) and result["plan"]:
         return result
-    return {
-        "total_days": 7,
-        "daily_hours": req.available_hours_per_day,
-        "plan": [
-            {"day": i+1, "focus": f"Week {i+1} - {req.subject}", "hours": req.available_hours_per_day,
-             "topics": ["Core concepts", "Practice problems"], "resources": ["Textbook", "Online resources"]}
-            for i in range(7)
-        ],
-        "tips": ["Practice daily", "Review before sleeping", "Solve past papers"],
-        "priority_topics": req.weak_topics or ["Core concepts"]
-    }
+    raise HTTPException(status_code=502, detail="The AI could not create a valid study plan. Please retry.")
 
 
 # ── AI Recommendations ─────────────────────────────────────────────────────────
