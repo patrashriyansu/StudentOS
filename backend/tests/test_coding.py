@@ -104,3 +104,41 @@ def test_leetcode_rejects_profile_urls_from_other_domains() -> None:
             json={"platform": "leetcode", "username": "https://example.com/u/shriyansupatra/"},
         )
         assert response.status_code == 422
+
+
+
+def test_leetcode_graphql_response_maps_difficulty_counts() -> None:
+    payload = {
+        "data": {
+            "matchedUser": {
+                "username": "shriyansupatra",
+                "profile": {"ranking": 123456},
+                "submitStats": {
+                    "acSubmissionNum": [
+                        {"difficulty": "All", "count": 184, "submissions": 260},
+                        {"difficulty": "Easy", "count": 62, "submissions": 80},
+                        {"difficulty": "Medium", "count": 101, "submissions": 150},
+                        {"difficulty": "Hard", "count": 21, "submissions": 30},
+                    ]
+                },
+                "userCalendar": {"streak": 4, "totalActiveDays": 48},
+            },
+            "userContestRanking": {
+                "attendedContestsCount": 8,
+                "rating": 1512.4,
+                "globalRanking": 12345,
+            },
+        }
+    }
+
+    stats = coding_routes.parse_leetcode_public_stats(payload, "shriyansupatra")
+
+    assert stats["username"] == "shriyansupatra"
+    assert stats["total_problems_solved"] == 184
+    assert stats["easy_solved"] == 62
+    assert stats["medium_solved"] == 101
+    assert stats["hard_solved"] == 21
+    assert stats["total_contests"] == 8
+    assert stats["current_streak"] == 4
+    assert stats["rating"] == 1512
+    assert stats["ranking"] == 123456
