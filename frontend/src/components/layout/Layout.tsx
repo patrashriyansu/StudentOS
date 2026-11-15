@@ -4,7 +4,7 @@ import { useLocation } from 'react-router-dom'
 import { api } from '../../services/api'
 import { useAuth } from '../../hooks/useAuth'
 import {
-  LayoutDashboard, BookOpen, Code, Briefcase, Bot, Heart,
+  LayoutDashboard, BookOpen, Code, Briefcase, Heart,
   Wallet, Bell, BarChart3, User, LogOut, Menu, X,
   GraduationCap, Settings, Search, Sparkles,
 } from 'lucide-react'
