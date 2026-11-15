@@ -11,6 +11,9 @@ os.environ["SEED_DEMO_DATA"] = "false"
 
 from fastapi.testclient import TestClient
 from backend.main import app
+from backend.auth.routes import limiter as auth_limiter
+
+auth_limiter.enabled = False
 
 
 def wait_until_ready(client: TestClient) -> None:
