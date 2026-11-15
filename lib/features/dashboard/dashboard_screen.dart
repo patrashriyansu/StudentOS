@@ -576,7 +576,7 @@ class _DashboardScreenState extends State<DashboardScreen>
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(
-                        'Ask AI Copilot',
+                        'Open Chatbot',
                         style: AppTextStyles.titleLarge.copyWith(
                           color: Colors.white,
                           fontWeight: FontWeight.w700,
