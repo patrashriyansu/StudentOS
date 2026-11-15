@@ -20,17 +20,16 @@ test('API client retries protected requests after refreshing an expired token', 
   assert.match(source, /return api\(original\)/)
 })
 
-test('password recovery screen is registered and linked from login', async () => {
+test('login offers Google only and legacy password pages redirect to it', async () => {
   const app = await read('../src/App.tsx')
   const login = await read('../src/pages/Login.tsx')
-  const reset = await read('../src/pages/ForgotPassword.tsx')
-  assert.match(app, /path="\/forgot-password"/)
-  assert.match(login, /Forgot password\?/)
-  assert.match(reset, /\/auth\/send-otp/)
-  assert.match(reset, /\/auth\/reset-password/)
-  assert.match(reset, /password !== confirmPassword/)
+  assert.match(app, /path="\\/forgot-password".*Navigate to="\\/login"/s)
+  assert.match(app, /path="\\/register".*Navigate to="\\/login"/s)
+  assert.match(login, /loginWithGoogle/)
+  assert.match(login, /VITE_GOOGLE_CLIENT_ID/)
+  assert.match(login, /renderButton/)
+  assert.doesNotMatch(login, /Forgot password\\?|Create an account|type="password"/)
 })
-
 test('wellness trends are based on saved history instead of fabricated chart values', async () => {
   const source = await read('../src/pages/Wellness.tsx')
   assert.match(source, /\/wellness\/history/)
