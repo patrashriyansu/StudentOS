@@ -24,7 +24,7 @@ const features = [
     description: 'Track coding progress, build a DSA routine and stay consistent with daily challenges.',
   },
   {
-    icon: BriefcaseBusiness,
+    icon: Briefcase,
     title: 'Placement preparation',
     description: 'Organize resume work, interview practice and internship preparation in one place.',
   },
