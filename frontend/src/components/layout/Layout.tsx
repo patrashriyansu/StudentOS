@@ -39,14 +39,17 @@ const secondNav = [
   { to: '/settings',       icon: Settings,  label: 'Settings'      },
 ]
 
-function NavItem({ to, icon: Icon, label, badge, end }: {
-  to: string; icon: any; label: string; badge?: number; end?: boolean
+function NavItem({ to, icon: Icon, label, badge, end, collapsed }: {
+  to: string; icon: any; label: string; badge?: number; end?: boolean; collapsed?: boolean
 }) {
   return (
     <NavLink to={to} end={end}
+      title={collapsed ? label : undefined}
+      aria-label={label}
       style={({ isActive }) => ({
-        display: 'flex', alignItems: 'center', gap: 10,
-        padding: '9px 12px', borderRadius: 10, marginBottom: 2,
+        display: 'flex', alignItems: 'center', justifyContent: collapsed ? 'center' : 'flex-start', gap: 10,
+        padding: collapsed ? '10px 0' : '9px 12px', borderRadius: 10, marginBottom: 2,
+        position: 'relative',
         cursor: 'pointer', textDecoration: 'none',
         background: isActive
           ? 'linear-gradient(135deg,rgba(108,99,255,0.22),rgba(168,85,247,0.12))'
@@ -62,8 +65,8 @@ function NavItem({ to, icon: Icon, label, badge, end }: {
       {({ isActive }) => (
         <>
           <Icon size={15} style={{ color: isActive ? '#7C6AF2' : 'var(--app-muted)', flexShrink: 0 }} />
-          <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
-          {badge != null && badge > 0 && (
+          <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', display: collapsed ? 'none' : 'block' }}>{label}</span>
+          {badge != null && badge > 0 && !collapsed && (
             <span style={{
               background: '#6C63FF', color: '#fff', fontSize: 10,
               fontWeight: 700, padding: '1px 6px', borderRadius: 999,
@@ -77,6 +80,7 @@ function NavItem({ to, icon: Icon, label, badge, end }: {
 
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
   const [unreadCount, setUnreadCount] = useState(0)
   const { user, logout } = useAuth()
@@ -111,6 +115,7 @@ export default function Layout() {
       {/* ── Sidebar ───────────────────────────────── */}
       <aside style={{
         ...S.sidebar,
+        width: sidebarCollapsed ? 72 : 240,
         flexShrink: 0,
         display: 'flex',
         flexDirection: 'column',
@@ -118,14 +123,14 @@ export default function Layout() {
         top: 0, bottom: 0, left: 0,
         zIndex: 50,
         overflowY: 'auto',
-        transition: 'transform 0.25s ease',
+        transition: 'transform 0.25s ease, width 0.22s ease',
         transform: sidebarOpen ? 'translateX(0)' : undefined,
       }}
         className={`app-sidebar ${sidebarOpen ? '' : 'max-lg:hidden'}`}
       >
         {/* Logo */}
-        <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+        <div style={{ padding: sidebarCollapsed ? '18px 10px 14px' : '18px 18px 14px', borderBottom: '1px solid var(--app-border)' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: sidebarCollapsed ? 'center' : 'flex-start', gap: 10 }}>
             <div style={{
               width: 36, height: 36, borderRadius: 10, flexShrink: 0,
               background: 'linear-gradient(135deg,#6C63FF,#A855F7)',
@@ -133,36 +138,55 @@ export default function Layout() {
             }}>
               <GraduationCap size={18} color="#fff" />
             </div>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--app-text)', lineHeight: 1 }}>StudentOS</div>
-              <div style={{ fontSize: 10, color: '#6C63FF', marginTop: 2 }}>AI-Powered Student Platform</div>
-            </div>
-            <button onClick={() => setSidebarOpen(false)}
-              style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--app-muted)', cursor: 'pointer' }}
-              className="lg:hidden">
-              <X size={16} />
+            {!sidebarCollapsed && (
+              <div style={{ minWidth: 0 }}>
+                <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--app-text)', lineHeight: 1 }}>StudentOS</div>
+                <div style={{ fontSize: 10, color: 'var(--app-muted)', marginTop: 2, whiteSpace: 'nowrap' }}>AI-Powered Student Platform</div>
+              </div>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (window.matchMedia('(max-width: 1023px)').matches) {
+                  setSidebarOpen(false)
+                } else {
+                  setSidebarCollapsed((current) => !current)
+                }
+              }}
+              aria-label={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+              style={{
+                marginLeft: sidebarCollapsed ? 0 : 'auto',
+                display: 'inline-flex', alignItems: 'center', justifyContent: 'center',
+                width: 28, height: 28, borderRadius: 8,
+                background: 'var(--app-subtle)', border: '1px solid var(--app-border)',
+                color: 'var(--app-muted)', cursor: 'pointer', flexShrink: 0,
+              }}
+            >
+              {sidebarCollapsed ? <Menu size={15} /> : <X size={15} />}
             </button>
           </div>
         </div>
 
         {/* Nav */}
-        <nav style={{ flex: 1, padding: '10px 10px 0' }}>
+        <nav aria-label="StudentOS navigation" style={{ flex: 1, padding: sidebarCollapsed ? '10px 8px 0' : '10px 10px 0' }}>
           {mainNav.map(({ to, icon, label, exact }) => (
-            <NavItem key={label} to={to} icon={icon} label={label} end={exact || to === '/'} />
+            <NavItem key={label} to={to} icon={icon} label={label} end={exact || to === '/'} collapsed={sidebarCollapsed} />
           ))}
 
-          <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '10px 4px' }} />
+          <div style={{ height: 1, background: 'var(--app-border)', margin: '10px 4px' }} />
 
           {secondNav.map(({ to, icon, label }) => (
-            <NavItem key={label} to={to} icon={icon} label={label} badge={label === 'Notifications' ? unreadCount : undefined} />
+            <NavItem key={label} to={to} icon={icon} label={label} badge={label === 'Notifications' ? unreadCount : undefined} collapsed={sidebarCollapsed} />
           ))}
         </nav>
 
       </aside>
 
       {/* ── Right: topbar + content ─────────────── */}
-      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden' }}
-        className="lg:ml-[240px]"
+      <div
+        style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', transition: 'margin-left 0.22s ease' }}
+        className={sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-[240px]'}
       >
 
         {/* Top Bar */}
@@ -172,9 +196,20 @@ export default function Layout() {
           padding: '0 24px', flexShrink: 0,
           position: 'sticky', top: 0, zIndex: 30,
         }} className="app-topbar">
-          <button onClick={() => setSidebarOpen(true)}
-            style={{ background: 'none', border: 'none', color: 'var(--app-muted)', cursor: 'pointer' }}
-            className="lg:hidden">
+          <button
+            type="button"
+            onClick={() => {
+              if (window.matchMedia('(max-width: 1023px)').matches) {
+                setSidebarOpen(true)
+              } else {
+                setSidebarCollapsed(false)
+              }
+            }}
+            aria-label="Open navigation"
+            title="Open navigation"
+            style={{ background: 'none', border: 'none', color: 'var(--app-muted)', cursor: 'pointer', display: sidebarCollapsed ? 'inline-flex' : undefined }}
+            className={sidebarCollapsed ? 'inline-flex' : 'lg:hidden'}
+          >
             <Menu size={20} />
           </button>
 

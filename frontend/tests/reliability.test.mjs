@@ -62,6 +62,19 @@ test('light and dark themes persist globally and the registration page has a cam
   assert.match(styles, /--app-panel/)
 })
 
+test('desktop sidebar can collapse to an icon rail and expand again', async () => {
+  const layout = await read('../src/components/layout/Layout.tsx')
+  assert.match(layout, /sidebarCollapsed/)
+  assert.match(layout, /width: sidebarCollapsed \? 72 : 240/)
+  assert.match(layout, /Collapse sidebar/)
+  assert.match(layout, /Expand sidebar/)
+  assert.match(layout, /lg:ml-\[72px\]/)
+  assert.match(layout, /lg:ml-\[240px\]/)
+  assert.match(layout, /window\.matchMedia\('\(max-width: 1023px\)'\)/)
+  assert.match(layout, /collapsed=\{sidebarCollapsed\}/)
+  assert.match(layout, /title=\{collapsed \? label : undefined\}/)
+})
+
 test('wellness trends are based on saved history instead of fabricated chart values', async () => {
   const source = await read('../src/pages/Wellness.tsx')
   assert.match(source, /\/wellness\/history/)
