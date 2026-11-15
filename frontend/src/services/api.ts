@@ -14,7 +14,9 @@ let refreshPromise: Promise<TokenResponse> | null = null
 
 api.interceptors.request.use((config) => {
   const token = localStorage.getItem('token')
-  if (token) config.headers.Authorization = `Bearer ${token}`
+  // Explicit per-request credentials (for example the token returned by login)
+  // must take precedence over any stale token left in storage.
+  if (token && !config.headers.Authorization) config.headers.Authorization = `Bearer ${token}`
   return config
 })
 
