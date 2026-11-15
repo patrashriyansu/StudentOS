@@ -43,7 +43,8 @@ export default function ForgotPassword() {
       setError('Enter the six-digit recovery code.')
       return
     }
-    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password) || !/[!@#$%^&*()_+\-=\[\]{}|;:,.<>?]/.test(password)) {
+    const hasRequiredSpecial = [...password].some((character) => '!@#$%^&*()_+-=[]{}|;:,.<>?'.includes(character))
+    if (!/[A-Z]/.test(password) || !/[a-z]/.test(password) || !/\d/.test(password) || !hasRequiredSpecial) {
       setError('Use at least 8 characters with uppercase, lowercase, a number and a special character.')
       return
     }
