@@ -218,3 +218,62 @@ def test_avatar_upload_is_validated_and_persisted() -> None:
         profile = client.get("/api/v1/auth/me", headers=headers)
         assert profile.status_code == 200
         assert profile.json()["avatar"].startswith("data:image/jpeg;base64,")
+
+
+
+def test_google_login_creates_account_and_returns_studentos_tokens(monkeypatch) -> None:
+    from backend.auth import routes as auth_routes
+
+    monkeypatch.setattr(auth_routes.settings, "GOOGLE_CLIENT_ID", "test-google-client-id")
+
+    async def fake_verify_google_id_token(id_token: str, client_id: str) -> dict:
+        assert id_token == "g" * 100
+        assert client_id == "test-google-client-id"
+        return {
+            "email": unique_email(),
+            "email_verified": True,
+            "name": "Google Student",
+            "sub": f"google-{uuid4().hex}",
+        }
+
+    monkeypatch.setattr(auth_routes, "verify_google_id_token", fake_verify_google_id_token)
+
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        email = unique_email()
+        async def identity(id_token: str, client_id: str) -> dict:
+            return {"email": email, "email_verified": True, "name": "Google Student", "sub": "google-test-subject"}
+        monkeypatch.setattr(auth_routes, "verify_google_id_token", identity)
+
+        response = client.post("/api/v1/auth/google", json={"id_token": "g" * 100})
+        assert response.status_code == 200, response.text
+        tokens = response.json()
+        assert tokens["access_token"]
+        assert tokens["refresh_token"]
+
+        me = client.get("/api/v1/auth/me", headers=auth_headers(tokens["access_token"]))
+        assert me.status_code == 200
+        assert me.json()["email"] == email
+        assert me.json()["name"] == "Google Student"
+
+
+def test_google_login_rejects_unverified_email(monkeypatch) -> None:
+    from backend.auth import routes as auth_routes
+
+    monkeypatch.setattr(auth_routes.settings, "GOOGLE_CLIENT_ID", "test-google-client-id")
+
+    async def fake_verify_google_id_token(id_token: str, client_id: str) -> dict:
+        return {
+            "email": unique_email(),
+            "email_verified": False,
+            "name": "Unverified Student",
+            "sub": "unverified-google-subject",
+        }
+
+    monkeypatch.setattr(auth_routes, "verify_google_id_token", fake_verify_google_id_token)
+
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        response = client.post("/api/v1/auth/google", json={"id_token": "g" * 100})
+        assert response.status_code == 403
+        assert "verified" in response.json()["detail"].lower()

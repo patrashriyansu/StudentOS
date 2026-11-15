@@ -6,6 +6,8 @@ import asyncio
 import secrets
 import smtplib
 import ssl
+import re
+import time
 from email.message import EmailMessage
 import httpx
 import jwt as pyjwt
@@ -52,16 +54,28 @@ async def send_otp_email(email: str, code: str, purpose: OTPPurpose) -> None:
 
 
 _google_keys_cache: dict | None = None
+_google_keys_cache_expires_at = 0.0
 
 
 async def get_google_public_keys() -> dict:
-    global _google_keys_cache
-    if _google_keys_cache is None:
-        async with httpx.AsyncClient() as client:
+    global _google_keys_cache, _google_keys_cache_expires_at
+    if _google_keys_cache is not None and time.monotonic() < _google_keys_cache_expires_at:
+        return _google_keys_cache
+    try:
+        async with httpx.AsyncClient(timeout=10) as client:
             resp = await client.get(GOOGLE_CERTS_URL)
             resp.raise_for_status()
-            _google_keys_cache = resp.json()
-    return _google_keys_cache
+            keys = resp.json()
+            if not isinstance(keys, dict) or not isinstance(keys.get("keys"), list):
+                raise ValueError("Google returned an invalid public-key response.")
+            cache_control = resp.headers.get("cache-control", "")
+            max_age_match = re.search(r"max-age=(\d+)", cache_control)
+            max_age = int(max_age_match.group(1)) if max_age_match else 300
+            _google_keys_cache = keys
+            _google_keys_cache_expires_at = time.monotonic() + min(max(max_age, 60), 3600)
+            return _google_keys_cache
+    except Exception:
+        raise HTTPException(status_code=503, detail="Google sign-in could not be verified right now. Please try again.")
 
 
 async def verify_google_id_token(id_token: str, client_id: str) -> dict:
@@ -87,6 +101,10 @@ async def verify_google_id_token(id_token: str, client_id: str) -> dict:
         raise HTTPException(status_code=401, detail="Token expired")
     except pyjwt.InvalidTokenError as e:
         raise HTTPException(status_code=400, detail=f"Invalid token: {e}")
+    if payload.get("email_verified") is not True:
+        raise HTTPException(status_code=403, detail="Your Google account email must be verified before signing in.")
+    if not payload.get("email") or not payload.get("sub"):
+        raise HTTPException(status_code=400, detail="Invalid Google token: missing account details")
     return payload
 
 
@@ -130,29 +148,50 @@ async def login(request: Request, req: LoginRequest, db: AsyncSession = Depends(
 @limiter.limit("5/minute")
 async def google_login(request: Request, req: GoogleLoginRequest, db: AsyncSession = Depends(get_db)):
     if not settings.GOOGLE_CLIENT_ID:
-        raise HTTPException(status_code=503, detail="Google login not configured")
-    try:
-        payload = await verify_google_id_token(req.id_token, settings.GOOGLE_CLIENT_ID)
-        email = payload.get("email")
-        name = payload.get("name", "Google User")
-        google_sub = payload.get("sub")
-        if not email:
-            raise HTTPException(status_code=400, detail="Invalid Google token: missing email")
-        result = await db.execute(select(User).where(User.email == email))
-        user = result.scalar_one_or_none()
-        if not user:
-            user = User(email=email, name=name, role="student", password_hash="", google_id=google_sub)
-            db.add(user)
-            await db.commit()
-            await db.refresh(user)
-        return TokenResponse(
-            access_token=create_access_token({"sub": str(user.id), "role": user.role}),
-            refresh_token=create_refresh_token({"sub": str(user.id)})
+        raise HTTPException(status_code=503, detail="Google sign-in is not configured on the server.")
+
+    payload = await verify_google_id_token(req.id_token, settings.GOOGLE_CLIENT_ID)
+    email = str(payload.get("email", "")).strip().lower()
+    name = str(payload.get("name") or "Google User").strip()[:255]
+    google_sub = str(payload.get("sub", "")).strip()
+    if payload.get("email_verified") is not True or not email or not google_sub:
+        raise HTTPException(status_code=403, detail="A verified Google account is required.")
+
+    by_google_id = await db.execute(select(User).where(User.google_id == google_sub))
+    user = by_google_id.scalar_one_or_none()
+    if user is None:
+        by_email = await db.execute(select(User).where(func.lower(User.email) == email))
+        user = by_email.scalar_one_or_none()
+
+    if user and not user.is_active:
+        raise HTTPException(status_code=403, detail="This StudentOS account is disabled. Contact support.")
+    if user and user.google_id and user.google_id != google_sub:
+        raise HTTPException(status_code=409, detail="This email is already connected to another Google account.")
+
+    if user is None:
+        user = User(
+            email=email,
+            name=name,
+            role="student",
+            password_hash=secrets.token_urlsafe(32),
+            google_id=google_sub,
+            is_verified=True,
         )
-    except HTTPException:
-        raise
-    except Exception as e:
-        raise HTTPException(status_code=400, detail=f"Invalid Google token: {e}")
+        db.add(user)
+    else:
+        # A verified Google email can safely link to the existing password account.
+        user.google_id = google_sub
+        user.is_verified = True
+        if not user.name.strip():
+            user.name = name
+
+    user.last_login = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(user)
+    return TokenResponse(
+        access_token=create_access_token({"sub": str(user.id), "role": user.role}),
+        refresh_token=create_refresh_token({"sub": str(user.id)})
+    )
 
 @router.post("/refresh", response_model=TokenResponse)
 @limiter.limit("10/minute")

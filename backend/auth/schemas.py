@@ -48,7 +48,7 @@ class TokenResponse(BaseModel):
     token_type: str = "bearer"
 
 class GoogleLoginRequest(BaseModel):
-    id_token: str
+    id_token: str = Field(..., min_length=100, max_length=10000)
 
 class OTPRequest(BaseModel):
     email: EmailStr
