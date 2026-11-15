@@ -61,7 +61,7 @@ export default function AIAssistant() {
     const conversationContext = chat
       .slice(-8)
       .map((entry) => `${entry.role === 'ai' ? 'Tutor' : 'Student'}: ${entry.content}`)
-      .join('\\n')
+      .join('\n')
       .slice(-10000)
 
     try {
