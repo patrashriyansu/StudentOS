@@ -39,6 +39,17 @@ export const login = createAsyncThunk('auth/login', async ({ email, password }: 
   } catch (err) { return rejectWithValue(getFriendlyApiError(err, 'Login failed. Please check your email and password.')) }
 })
 
+export const googleLogin = createAsyncThunk('auth/googleLogin', async (idToken: string, { rejectWithValue }) => {
+  try {
+    const { data } = await api.post('/auth/google', { id_token: idToken }, { timeout: 30000 })
+    const userRes = await api.get<User>('/auth/me', { headers: { Authorization: `Bearer ${data.access_token}` } })
+    saveAuth(data.access_token, data.refresh_token, userRes.data)
+    return { token: data.access_token, refreshToken: data.refresh_token, user: userRes.data }
+  } catch (err) {
+    return rejectWithValue(getFriendlyApiError(err, 'Google sign-in failed. Please try again.'))
+  }
+})
+
 export const register = createAsyncThunk('auth/register', async ({ email, password, name, role }: { email: string; password: string; name: string; role: string }, { rejectWithValue }) => {
   try {
     const { data } = await api.post('/auth/register', { email, password, name, role }, { timeout: 30000 })
@@ -78,6 +89,9 @@ const authSlice = createSlice({
     builder.addCase(login.pending, (s) => { s.loading = true })
     builder.addCase(login.fulfilled, (s, a) => { s.loading = false; s.initialized = true; s.user = a.payload.user; s.token = a.payload.token; s.refreshToken = a.payload.refreshToken; s.isAuthenticated = true })
     builder.addCase(login.rejected, (s) => { s.loading = false; s.initialized = true })
+    builder.addCase(googleLogin.pending, (s) => { s.loading = true })
+    builder.addCase(googleLogin.fulfilled, (s, a) => { s.loading = false; s.initialized = true; s.user = a.payload.user; s.token = a.payload.token; s.refreshToken = a.payload.refreshToken; s.isAuthenticated = true })
+    builder.addCase(googleLogin.rejected, (s) => { s.loading = false; s.initialized = true })
     builder.addCase(register.pending, (s) => { s.loading = true })
     builder.addCase(register.fulfilled, (s, a) => { s.loading = false; s.initialized = true; s.user = a.payload.user; s.token = a.payload.token; s.refreshToken = a.payload.refreshToken; s.isAuthenticated = true })
     builder.addCase(register.rejected, (s) => { s.loading = false; s.initialized = true })

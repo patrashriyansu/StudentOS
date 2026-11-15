@@ -1,6 +1,10 @@
 import { useState } from 'react'
 import { Bot, Send, FileText, Sparkles, Lightbulb, Loader2, CheckCircle2, XCircle, RotateCcw } from 'lucide-react'
 import { api } from '../services/api'
+import { getFriendlyApiError } from '../services/errors'
+
+type QuizQuestion = { question: string; options: string[]; correct: number; explanation: string }
+type Flashcard = { front: string; back: string }
 
 const suggestions = [
   'Explain Dijkstra’s algorithm step-by-step',
@@ -32,18 +36,16 @@ export default function AIAssistant() {
   // Quiz State
   const [quizTopic, setQuizTopic] = useState('Data Structures')
   const [quizDifficulty, setQuizDifficulty] = useState('medium')
-  const [quizQuestions, setQuizQuestions] = useState<any[]>([])
+  const [quizQuestions, setQuizQuestions] = useState<QuizQuestion[]>([])
+  const [quizError, setQuizError] = useState('')
   const [quizSelectedAnswers, setQuizSelectedAnswers] = useState<Record<number, number>>({})
   const [quizLoading, setQuizLoading] = useState(false)
   const [quizSubmitted, setQuizSubmitted] = useState(false)
 
   // Flashcards State
   const [flashcardTopic, setFlashcardTopic] = useState('Operating Systems')
-  const [flashcards, setFlashcards] = useState<{ front: string; back: string }[]>([
-    { front: 'What is a Semaphore?', back: 'A synchronization variable used to manage concurrent processes and avoid race conditions.' },
-    { front: 'Explain Thrashing', back: 'A state where the CPU spends more time swapping pages in and out than executing instructions.' },
-    { front: 'What is Deadlock?', back: 'A situation where a set of processes are blocked because each process is holding a resource and waiting for another.' },
-  ])
+  const [flashcards, setFlashcards] = useState<Flashcard[]>([])
+  const [flashcardError, setFlashcardError] = useState('')
   const [revealedCards, setRevealedCards] = useState<Record<number, boolean>>({})
   const [flashcardLoading, setFlashcardLoading] = useState(false)
 
@@ -56,17 +58,17 @@ export default function AIAssistant() {
     if (!userMsg) setMessage('')
     setChatLoading(true)
 
+    const conversationContext = chat
+      .slice(-8)
+      .map((entry) => `${entry.role === 'ai' ? 'Tutor' : 'Student'}: ${entry.content}`)
+      .join('\\n')
+      .slice(-10000)
+
     try {
-      const res = await api.post('/ai/chat', { message: textToSend, mode })
+      const res = await api.post('/ai/chat', { message: textToSend, mode, context: conversationContext }, { timeout: 60000 })
       setChat((prev) => [...prev, { role: 'ai', content: res.data.response }])
-    } catch {
-      setChat((prev) => [
-        ...prev,
-        {
-          role: 'ai',
-          content: 'Sorry, I encountered an error connecting to the AI backend. Please verify your connection.',
-        },
-      ])
+    } catch (err) {
+      setChat((prev) => [...prev, { role: 'ai', content: getFriendlyApiError(err, 'The AI tutor could not answer this request. Please retry.') }])
     } finally {
       setChatLoading(false)
     }
@@ -77,10 +79,10 @@ export default function AIAssistant() {
     if (!summaryInput.trim()) return
     setSummarizeLoading(true)
     try {
-      const res = await api.post('/ai/summarize', { content: summaryInput, max_length: 400 })
+      const res = await api.post('/ai/summarize', { content: summaryInput, max_length: 400 }, { timeout: 60000 })
       setSummaryOutput(res.data.summary)
-    } catch {
-      setSummaryOutput('Failed to summarize text. Please try again.')
+    } catch (err) {
+      setSummaryOutput(getFriendlyApiError(err, 'The AI could not summarize this content. Please retry.'))
     } finally {
       setSummarizeLoading(false)
     }
@@ -90,6 +92,8 @@ export default function AIAssistant() {
   const handleGenerateQuiz = async () => {
     if (!quizTopic.trim()) return
     setQuizLoading(true)
+    setQuizError('')
+    setQuizQuestions([])
     setQuizSubmitted(false)
     setQuizSelectedAnswers({})
     try {
@@ -97,10 +101,10 @@ export default function AIAssistant() {
         topic: quizTopic,
         count: 5,
         difficulty: quizDifficulty,
-      })
+      }, { timeout: 60000 })
       setQuizQuestions(res.data.questions || [])
-    } catch {
-      console.error('Quiz generation failed')
+    } catch (err) {
+      setQuizError(getFriendlyApiError(err, 'The AI could not generate this quiz. Please retry.'))
     } finally {
       setQuizLoading(false)
     }
@@ -110,15 +114,17 @@ export default function AIAssistant() {
   const handleGenerateFlashcards = async () => {
     if (!flashcardTopic.trim()) return
     setFlashcardLoading(true)
+    setFlashcardError('')
+    setFlashcards([])
     setRevealedCards({})
     try {
       const res = await api.post('/ai/generate-flashcards', {
         topic: flashcardTopic,
         count: 6,
-      })
+      }, { timeout: 60000 })
       setFlashcards(res.data.cards || [])
-    } catch {
-      console.error('Flashcard generation failed')
+    } catch (err) {
+      setFlashcardError(getFriendlyApiError(err, 'The AI could not generate flashcards. Please retry.'))
     } finally {
       setFlashcardLoading(false)
     }
@@ -286,6 +292,7 @@ export default function AIAssistant() {
               <textarea
                 value={summaryInput}
                 onChange={(e) => setSummaryInput(e.target.value)}
+                maxLength={30000}
                 placeholder="Paste your study content here (up to 5,000 words)..."
                 className="w-full h-80 bg-dark-lighter border border-dark-border rounded-xl p-4 text-sm text-white focus:outline-none focus:border-primary resize-none"
               />
@@ -352,6 +359,13 @@ export default function AIAssistant() {
               </div>
             </div>
           </div>
+
+          {quizError && <p role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-300">{quizError}</p>}
+          {!quizLoading && quizQuestions.length === 0 && !quizError && (
+            <div className="glass rounded-2xl border border-dark-border p-10 text-center text-sm text-dark-muted">
+              Enter a subject or topic and generate a quiz to begin.
+            </div>
+          )}
 
           {/* Questions display */}
           {quizQuestions.length > 0 && (
@@ -451,6 +465,12 @@ export default function AIAssistant() {
             </button>
           </div>
 
+          {flashcardError && <p role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-300">{flashcardError}</p>}
+          {flashcards.length === 0 && !flashcardError && !flashcardLoading && (
+            <div className="glass rounded-2xl border border-dark-border p-10 text-center text-sm text-dark-muted">
+              Choose a subject or concept and generate your first set of flashcards.
+            </div>
+          )}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
             {flashcards.map((c, i) => {
               const isFlipped = revealedCards[i]
