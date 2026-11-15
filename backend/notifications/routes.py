@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, update
@@ -6,12 +8,13 @@ from zoneinfo import ZoneInfo
 from backend.core.database import get_db
 from backend.core.security import get_current_user
 from backend.users.models import User, Notification, EmailReminder
-from backend.core.email import email_delivery_configured
+from backend.core.email import email_delivery_configured, missing_email_settings, send_email
 from backend.notifications.service import to_utc_datetime
 from pydantic import BaseModel
 from typing import Optional, Literal
 
 router = APIRouter()
+logger = logging.getLogger("studentos.notifications")
 
 class NotificationCreate(BaseModel):
     title: str
@@ -35,10 +38,43 @@ async def get_reminder_status(current_user: User = Depends(get_current_user), db
             EmailReminder.is_active.is_(True),
         )
     )
+    missing_settings = missing_email_settings()
     return {
-        "email_configured": email_delivery_configured(),
+        "email_configured": not missing_settings,
+        "missing_settings": missing_settings,
         "pending_count": result.scalar() or 0,
     }
+
+
+@router.post("/reminders/test")
+async def send_test_reminder_email(
+    current_user: User = Depends(get_current_user),
+):
+    missing_settings = missing_email_settings()
+    if missing_settings:
+        raise HTTPException(
+            status_code=503,
+            detail=f"SMTP email delivery is not configured. Missing settings: {', '.join(missing_settings)}",
+        )
+
+    try:
+        await send_email(
+            current_user.email,
+            "StudentOS email delivery test",
+            (
+                f"Hello {current_user.name},\n\n"
+                "This is a test email from StudentOS. Your SMTP settings are working, "
+                "and scheduled reminders can now be delivered.\n"
+            ),
+        )
+    except Exception as exc:
+        logger.exception("StudentOS test email failed for user %s", current_user.id)
+        raise HTTPException(
+            status_code=502,
+            detail="SMTP could not send the test email. Check the host, port, credentials and sender address.",
+        ) from exc
+
+    return {"message": "Test email sent", "to": current_user.email}
 
 
 @router.get("/reminders")

@@ -6,13 +6,25 @@ from email.message import EmailMessage
 from backend.core.config import settings
 
 
+SMTP_REQUIRED_SETTINGS = (
+    "SMTP_HOST",
+    "SMTP_USERNAME",
+    "SMTP_PASSWORD",
+    "SMTP_FROM_EMAIL",
+)
+
+
+def missing_email_settings() -> list[str]:
+    """Return missing SMTP variable names without exposing configured values."""
+    return [
+        name
+        for name in SMTP_REQUIRED_SETTINGS
+        if not str(getattr(settings, name, "") or "").strip()
+    ]
+
+
 def email_delivery_configured() -> bool:
-    return all((
-        settings.SMTP_HOST,
-        settings.SMTP_USERNAME,
-        settings.SMTP_PASSWORD,
-        settings.SMTP_FROM_EMAIL,
-    ))
+    return not missing_email_settings()
 
 
 async def send_email(to_email: str, subject: str, body: str) -> None:

@@ -179,3 +179,38 @@ def test_attendance_upsert_streak_grades_and_email_reminder_flows() -> None:
         assert "Interview reminder: Example Labs" in reminder_titles
         assert "Joining reminder: Example Labs" in reminder_titles
         assert "Prepare for placement" in reminder_titles
+
+
+
+def test_reminder_email_status_and_test_delivery(monkeypatch) -> None:
+    from backend.notifications import routes as notification_routes
+
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        headers = register_student(client)
+
+        monkeypatch.setattr(notification_routes, "missing_email_settings", lambda: ["SMTP_PASSWORD"])
+        status = client.get("/api/v1/notifications/reminders/status", headers=headers)
+        assert status.status_code == 200, status.text
+        assert status.json()["email_configured"] is False
+        assert status.json()["missing_settings"] == ["SMTP_PASSWORD"]
+
+        blocked = client.post("/api/v1/notifications/reminders/test", headers=headers)
+        assert blocked.status_code == 503
+        assert "SMTP_PASSWORD" in blocked.json()["detail"]
+
+        sent_messages: list[tuple[str, str, str]] = []
+
+        async def fake_send_email(to_email: str, subject: str, body: str) -> None:
+            sent_messages.append((to_email, subject, body))
+
+        monkeypatch.setattr(notification_routes, "missing_email_settings", lambda: [])
+        monkeypatch.setattr(notification_routes, "send_email", fake_send_email)
+
+        profile = client.get("/api/v1/auth/me", headers=headers)
+        assert profile.status_code == 200, profile.text
+        delivered = client.post("/api/v1/notifications/reminders/test", headers=headers)
+        assert delivered.status_code == 200, delivered.text
+        assert delivered.json()["to"] == profile.json()["email"]
+        assert len(sent_messages) == 1
+        assert sent_messages[0][1] == "StudentOS email delivery test"
