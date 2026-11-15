@@ -138,7 +138,7 @@ export default function Layout() {
               <div style={{ fontSize: 10, color: '#6C63FF', marginTop: 2 }}>AI-Powered Student Platform</div>
             </div>
             <button onClick={() => setSidebarOpen(false)}
-              style={{ marginLeft: 'auto', background: 'none', border: 'none', color: '#6B7280', cursor: 'pointer' }}
+              style={{ marginLeft: 'auto', background: 'none', border: 'none', color: 'var(--app-muted)', cursor: 'pointer' }}
               className="lg:hidden">
               <X size={16} />
             </button>
@@ -173,29 +173,29 @@ export default function Layout() {
           position: 'sticky', top: 0, zIndex: 30,
         }} className="app-topbar">
           <button onClick={() => setSidebarOpen(true)
-            style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer' }}
+            style={{ background: 'none', border: 'none', color: 'var(--app-muted)', cursor: 'pointer' }}
             className="lg:hidden">
             <Menu size={20} />
           </button>
 
           {/* Search */}
           <div style={{ flex: 1, maxWidth: 460, position: 'relative' }}>
-            <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: '#6B7280', pointerEvents: 'none' }} />
+            <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--app-muted)', pointerEvents: 'none' }} />
             <input
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
               placeholder="Search notes, tasks, exams, DSA, or ask AI..."
               style={{
-                width: '100%', background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.08)',
+                width: '100%', background: 'var(--app-input)',
+                border: '1px solid var(--app-border)',
                 borderRadius: 10, padding: '8px 50px 8px 34px',
-                color: '#fff', fontSize: 13, outline: 'none', boxSizing: 'border-box',
+                color: 'var(--app-text)', fontSize: 13, outline: 'none', boxSizing: 'border-box',
               }}
             />
             <span style={{
               position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
-              background: 'rgba(255,255,255,0.08)', borderRadius: 5,
-              padding: '2px 7px', fontSize: 10, color: '#6B7280',
+              background: 'var(--app-subtle)', borderRadius: 5,
+              padding: '2px 7px', fontSize: 10, color: 'var(--app-muted)',
             }}>Ctrl K</span>
           </div>
 
@@ -213,7 +213,7 @@ export default function Layout() {
               style={{
                 width: 36, height: 36, borderRadius: 10, display: 'flex',
                 alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+                background: 'var(--app-subtle)', border: '1px solid var(--app-border)',
               }}
             >
               <Bell size={15} color="var(--app-muted)" />
@@ -222,7 +222,7 @@ export default function Layout() {
               <span style={{
                 position: 'absolute', top: -5, right: -5, minWidth: 16, height: 16,
                 padding: '0 4px', borderRadius: 999, background: '#EF4444',
-                border: '1.5px solid #0B0B1E', color: '#fff', fontSize: 9,
+                border: '1.5px solid var(--app-topbar-bg)', color: '#fff', fontSize: 9,
                 fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
                 pointerEvents: 'none',
               }}>{unreadCount > 9 ? '9+' : unreadCount}</span>
