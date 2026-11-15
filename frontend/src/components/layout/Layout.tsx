@@ -3,6 +3,7 @@ import { useEffect, useState } from 'react'
 import { useLocation } from 'react-router-dom'
 import { api } from '../../services/api'
 import { useAuth } from '../../hooks/useAuth'
+import ThemeControl from '../theme/ThemeControl'
 import {
   LayoutDashboard, BookOpen, Code, Briefcase, Heart,
   Wallet, Bell, BarChart3, User, LogOut, Menu, X,
@@ -11,12 +12,12 @@ import {
 
 const S = {
   sidebar: {
-    width: 240, background: '#0B0B1E',
-    borderRight: '1px solid rgba(255,255,255,0.06)',
+    width: 240, background: 'var(--app-sidebar-bg)',
+    borderRight: '1px solid var(--app-border)',
   } as React.CSSProperties,
   topbar: {
-    height: 60, background: '#0B0B1E',
-    borderBottom: '1px solid rgba(255,255,255,0.06)',
+    height: 60, background: 'var(--app-topbar-bg)',
+    borderBottom: '1px solid var(--app-border)',
   } as React.CSSProperties,
 }
 
@@ -53,14 +54,14 @@ function NavItem({ to, icon: Icon, label, badge, end }: {
         border: isActive
           ? '1px solid rgba(108,99,255,0.28)'
           : '1px solid transparent',
-        color: isActive ? '#fff' : '#9CA3AF',
+        color: isActive ? 'var(--app-text)' : 'var(--app-sidebar-muted)',
         fontSize: 13, fontWeight: isActive ? 600 : 400,
         transition: 'all 0.15s',
       })}
     >
       {({ isActive }) => (
         <>
-          <Icon size={15} style={{ color: isActive ? '#A78BFA' : '#6B7280', flexShrink: 0 }} />
+          <Icon size={15} style={{ color: isActive ? '#7C6AF2' : 'var(--app-muted)', flexShrink: 0 }} />
           <span style={{ flex: 1, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>{label}</span>
           {badge != null && badge > 0 && (
             <span style={{
@@ -97,7 +98,7 @@ export default function Layout() {
   const handleLogout = () => { logout(); navigate('/login') }
 
   return (
-    <div style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: '#080818', color: '#fff', fontFamily: 'Inter,sans-serif' }}>
+    <div className="app-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--app-bg)', color: 'var(--app-text)', fontFamily: 'Inter,sans-serif' }}>
 
       {/* Mobile overlay */}
       {sidebarOpen && (
@@ -120,7 +121,7 @@ export default function Layout() {
         transition: 'transform 0.25s ease',
         transform: sidebarOpen ? 'translateX(0)' : undefined,
       }}
-        className={`${sidebarOpen ? '' : 'max-lg:hidden'}`}
+        className={`app-sidebar ${sidebarOpen ? '' : 'max-lg:hidden'}`}
       >
         {/* Logo */}
         <div style={{ padding: '18px 18px 14px', borderBottom: '1px solid rgba(255,255,255,0.06)' }}>
@@ -133,7 +134,7 @@ export default function Layout() {
               <GraduationCap size={18} color="#fff" />
             </div>
             <div>
-              <div style={{ fontSize: 15, fontWeight: 700, color: '#fff', lineHeight: 1 }}>StudentOS</div>
+              <div style={{ fontSize: 15, fontWeight: 700, color: 'var(--app-text)', lineHeight: 1 }}>StudentOS</div>
               <div style={{ fontSize: 10, color: '#6C63FF', marginTop: 2 }}>AI-Powered Student Platform</div>
             </div>
             <button onClick={() => setSidebarOpen(false)}
@@ -170,8 +171,8 @@ export default function Layout() {
           display: 'flex', alignItems: 'center', gap: 14,
           padding: '0 24px', flexShrink: 0,
           position: 'sticky', top: 0, zIndex: 30,
-        }}>
-          <button onClick={() => setSidebarOpen(true)}
+        }} className="app-topbar">
+          <button onClick={() => setSidebarOpen(true)
             style={{ background: 'none', border: 'none', color: '#9CA3AF', cursor: 'pointer' }}
             className="lg:hidden">
             <Menu size={20} />
@@ -200,6 +201,8 @@ export default function Layout() {
 
           <div style={{ flex: 1 }} />
 
+          <ThemeControl compact />
+
           {/* Bell */}
           <div style={{ position: 'relative' }}>
             <button
@@ -213,7 +216,7 @@ export default function Layout() {
                 background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
               }}
             >
-              <Bell size={15} color="#9CA3AF" />
+              <Bell size={15} color="var(--app-muted)" />
             </button>
             {unreadCount > 0 && (
               <span style={{
@@ -240,10 +243,10 @@ export default function Layout() {
               {user?.name?.[0]?.toUpperCase() || 'S'}
             </div>
             <div>
-              <div style={{ fontSize: 13, fontWeight: 600, color: '#fff', lineHeight: 1 }}>
+              <div className="app-user-name" style={{ fontSize: 13, fontWeight: 600, color: 'var(--app-text)', lineHeight: 1 }}>
                 {user?.name || 'Student'}
               </div>
-              <div style={{ fontSize: 11, color: '#6B7280', marginTop: 2 }}>B.Tech CSE '28</div>
+              <div style={{ fontSize: 11, color: 'var(--app-muted)', marginTop: 2 }}>B.Tech CSE '28</div>
             </div>
           </div>
 
