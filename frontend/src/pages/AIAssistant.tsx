@@ -280,7 +280,7 @@ export default function AIAssistant() {
           </div>
 
           {/* Right Sidebar: Suggestions & Actions */}
-          <div className="space-y-6 ai-tool-panel">
+          <div className="space-y-6 ai-chat-aside ai-tool-panel">
             <div className="glass rounded-2xl p-6 border border-dark-border">
               <h3 className="font-semibold text-sm mb-3">Popular Doubt Prompts</h3>
               <div className="space-y-2">
@@ -354,7 +354,7 @@ export default function AIAssistant() {
             <div>
               <h3 className="font-semibold text-base mb-2">AI-Generated Summary</h3>
               <p className="text-xs text-dark-muted mb-4">Bullet points and key exam takeaways</p>
-              <div className="w-full h-96 bg-dark-lighter/50 border border-dark-border rounded-xl p-5 text-sm overflow-y-auto whitespace-pre-wrap leading-relaxed">
+              <div className="ai-summary-output w-full h-96 bg-dark-lighter/50 border border-dark-border rounded-xl p-5 text-sm overflow-y-auto whitespace-pre-wrap leading-relaxed">
                 {summaryOutput || <span className="text-dark-muted italic">Generated summary will appear here...</span>}
               </div>
             </div>
