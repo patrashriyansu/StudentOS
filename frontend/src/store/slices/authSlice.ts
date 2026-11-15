@@ -2,7 +2,7 @@ import { createSlice, createAsyncThunk, PayloadAction } from '@reduxjs/toolkit'
 import { AuthState, User } from '../../types'
 import { api } from '../../services/api'
 import { getFriendlyApiError } from '../../services/errors'
-import { clearStoredAuth, getAccessToken, getRefreshToken, getStoredUser, saveAuth } from '../../services/authStorage'
+import { clearStoredAuth, getAccessToken, getRefreshToken, getStoredUser, saveAuth, shouldRememberAuth } from '../../services/authStorage'
 
 const initialState: AuthState = {
   user: getStoredUser(),
@@ -18,11 +18,12 @@ export const initializeAuth = createAsyncThunk('auth/initialize', async (_, { re
   if (!token) return null
 
   try {
+    const rememberMe = shouldRememberAuth()
     const { data: user } = await api.get<User>('/auth/me')
     const accessToken = getAccessToken()
     const refreshToken = getRefreshToken()
     if (!accessToken || !refreshToken) return null
-    saveAuth(accessToken, refreshToken, user)
+    saveAuth(accessToken, refreshToken, user, rememberMe)
     return { token: accessToken, refreshToken, user }
   } catch (err) {
     clearStoredAuth()
@@ -30,24 +31,29 @@ export const initializeAuth = createAsyncThunk('auth/initialize', async (_, { re
   }
 })
 
-export const login = createAsyncThunk('auth/login', async ({ email, password }: { email: string; password: string }, { rejectWithValue }) => {
-  try {
-    const { data } = await api.post('/auth/login', { email, password })
-    const userRes = await api.get<User>('/auth/me', { headers: { Authorization: `Bearer ${data.access_token}` } })
-    saveAuth(data.access_token, data.refresh_token, userRes.data)
-    return { token: data.access_token, refreshToken: data.refresh_token, user: userRes.data }
-  } catch (err) { return rejectWithValue(getFriendlyApiError(err, 'Login failed. Please check your email and password.')) }
-})
+export const login = createAsyncThunk(
+  'auth/login',
+  async ({ email, password, rememberMe = true }: { email: string; password: string; rememberMe?: boolean }, { rejectWithValue }) => {
+    try {
+      const { data } = await api.post('/auth/login', { email, password })
+      const userRes = await api.get<User>('/auth/me', { headers: { Authorization: `Bearer ${data.access_token}` } })
+      saveAuth(data.access_token, data.refresh_token, userRes.data, rememberMe)
+      return { token: data.access_token, refreshToken: data.refresh_token, user: userRes.data }
+    } catch (err) {
+      return rejectWithValue(getFriendlyApiError(err, 'Login failed. Please check your email and password.'))
+    }
+  },
+)
 
 export const loginWithGoogle = createAsyncThunk(
   'auth/loginWithGoogle',
-  async ({ idToken }: { idToken: string }, { rejectWithValue }) => {
+  async ({ idToken, rememberMe = true }: { idToken: string; rememberMe?: boolean }, { rejectWithValue }) => {
     try {
       const { data } = await api.post('/auth/google', { id_token: idToken }, { timeout: 30000 })
       const userRes = await api.get<User>('/auth/me', {
         headers: { Authorization: `Bearer ${data.access_token}` },
       })
-      saveAuth(data.access_token, data.refresh_token, userRes.data)
+      saveAuth(data.access_token, data.refresh_token, userRes.data, rememberMe)
       return { token: data.access_token, refreshToken: data.refresh_token, user: userRes.data }
     } catch (err) {
       return rejectWithValue(getFriendlyApiError(err, 'Google sign-in failed. Please try again.'))
