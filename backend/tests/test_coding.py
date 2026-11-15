@@ -1,3 +1,4 @@
+import asyncio
 import os
 import sys
 import time
@@ -142,3 +143,73 @@ def test_leetcode_graphql_response_maps_difficulty_counts() -> None:
     assert stats["current_streak"] == 4
     assert stats["rating"] == 1512
     assert stats["ranking"] == 123456
+
+
+
+def test_leetcode_public_fetch_retries_post_when_get_is_rejected(monkeypatch) -> None:
+    payload = {
+        "data": {
+            "matchedUser": {
+                "username": "shriyansupatra",
+                "profile": {"ranking": 698511},
+                "submitStats": {
+                    "acSubmissionNum": [
+                        {"difficulty": "All", "count": 242, "submissions": 264},
+                        {"difficulty": "Easy", "count": 127, "submissions": 140},
+                        {"difficulty": "Medium", "count": 103, "submissions": 111},
+                        {"difficulty": "Hard", "count": 12, "submissions": 13},
+                    ]
+                },
+                "userCalendar": {"streak": 20, "totalActiveDays": 99},
+            },
+            "userContestRanking": None,
+        }
+    }
+
+    class FakeResponse:
+        def __init__(self, status_code: int, data: dict | None = None):
+            self.status_code = status_code
+            self._data = data or {}
+            self.headers = {"content-type": "application/json"}
+            self.text = ""
+
+        def raise_for_status(self) -> None:
+            assert self.status_code < 400
+
+        def json(self) -> dict:
+            return self._data
+
+    class FakeAsyncClient:
+        def __init__(self, **kwargs):
+            self.default_headers = kwargs.get("headers", {})
+            self.get_calls = 0
+            self.post_calls = []
+
+        async def __aenter__(self):
+            return self
+
+        async def __aexit__(self, *args):
+            return None
+
+        async def get(self, *args, **kwargs):
+            self.get_calls += 1
+            return FakeResponse(400)
+
+        async def post(self, *args, **kwargs):
+            self.post_calls.append(kwargs)
+            return FakeResponse(200, payload)
+
+    fake_client = FakeAsyncClient()
+    monkeypatch.setattr(coding_routes.httpx, "AsyncClient", lambda **kwargs: fake_client)
+
+    stats = asyncio.run(coding_routes.fetch_leetcode_public_stats("shriyansupatra"))
+
+    assert stats["total_problems_solved"] == 242
+    assert stats["easy_solved"] == 127
+    assert stats["medium_solved"] == 103
+    assert stats["hard_solved"] == 12
+    assert fake_client.get_calls == 1
+    assert len(fake_client.post_calls) == 1
+    assert fake_client.post_calls[0]["json"]["variables"] == {"username": "shriyansupatra"}
+    assert "Content-Type" not in fake_client.default_headers
+    assert fake_client.default_headers["Origin"] == "https://leetcode.com"
