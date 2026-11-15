@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react'
-import { Droplets, Moon, Activity, Frown, Meh, Smile, Laugh, Check, Sparkles } from 'lucide-react'
+import { Droplets, Moon, Activity, Frown, Meh, Smile, Laugh, Check, Sparkles, Star } from 'lucide-react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer } from 'recharts'
 import { api } from '../services/api'
 
@@ -8,6 +8,7 @@ const moodOptions = [
   { icon: Meh, label: 'Okay', color: '#F59E0B', value: 2 },
   { icon: Smile, label: 'Good', color: '#10B981', value: 3 },
   { icon: Laugh, label: 'Great', color: '#6C63FF', value: 4 },
+  { icon: Star, label: 'Excellent', color: '#FBBF24', value: 5 },
 ]
 
 export default function Wellness() {
@@ -18,6 +19,7 @@ export default function Wellness() {
   const [moodNote, setMoodNote] = useState('')
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
   const [wellnessScore, setWellnessScore] = useState<any>(null)
+  const [trendData, setTrendData] = useState<{ day: string; score: number }[]>([])
 
   // Load wellness summary
   useEffect(() => {
@@ -36,6 +38,18 @@ export default function Wellness() {
         if (res.data) setWellnessScore(res.data)
       })
       .catch(() => {})
+
+    api.get('/wellness/history', { params: { days: 7 } })
+      .then((res) => {
+        const history = Array.isArray(res.data?.history) ? res.data.history : []
+        setTrendData(history
+          .filter((entry: { score?: number | null }) => entry.score !== null && entry.score !== undefined)
+          .map((entry: { date: string; score: number }) => ({
+            day: new Date(`${entry.date}T12:00:00`).toLocaleDateString('en-US', { weekday: 'short' }),
+            score: entry.score,
+          })))
+      })
+      .catch(() => setTrendData([]))
   }, [])
 
   const notify = (msg: string) => {
@@ -55,9 +69,9 @@ export default function Wellness() {
 
   // Log Water
   const handleLogWater = async (glasses: number) => {
-    setWater(glasses)
     try {
       await api.post('/wellness/water', { glasses, goal: 8 })
+      setWater(glasses)
       notify(`${glasses} glasses recorded! Stay hydrated.`)
     } catch (err) {
       console.error(err)
@@ -129,8 +143,8 @@ export default function Wellness() {
             icon: Activity,
             label: 'Vitality Score',
             value: wellnessScore
-              ? `${wellnessScore.overall_score ?? wellnessScore.score ?? Math.round((mood / 4) * 30 + Math.min(water, 8) / 8 * 30 + Math.min(sleep, 8) / 8 * 40)}/100`
-              : `${Math.round((mood / 4) * 30 + Math.min(water, 8) / 8 * 30 + Math.min(sleep, 8) / 8 * 40)}/100`,
+              ? `${wellnessScore.overall_score ?? wellnessScore.score ?? Math.round((mood / 5) * 30 + Math.min(water, 8) / 8 * 30 + Math.min(sleep, 8) / 8 * 40)}/100`
+              : `${Math.round((mood / 5) * 30 + Math.min(water, 8) / 8 * 30 + Math.min(sleep, 8) / 8 * 40)}/100`,
             color: 'from-emerald-500 to-teal-500',
           },
         ].map(({ icon: Icon, label, value, color }) => (
@@ -154,23 +168,13 @@ export default function Wellness() {
               <h3 className="font-semibold text-base">Wellness Vitality Score Trend</h3>
               {wellnessScore && (
                 <span className="text-xs text-emerald-400 font-semibold uppercase tracking-wider">
-                  Status: {wellnessScore.trend || 'Improving'}
+                  Status: {wellnessScore.trend === 'not_enough_data' ? 'Track your habits' : (wellnessScore.trend || 'Tracking')}
                 </span>
               )}
             </div>
-            {wellnessScore ? (
+            {trendData.length > 0 ? (
               <ResponsiveContainer width="100%" height={220}>
-                <LineChart
-                  data={[
-                    { day: 'Mon', score: 72 },
-                    { day: 'Tue', score: 76 },
-                    { day: 'Wed', score: 70 },
-                    { day: 'Thu', score: 82 },
-                    { day: 'Fri', score: 78 },
-                    { day: 'Sat', score: 85 },
-                    { day: 'Sun', score: 80 },
-                  ]}
-                >
+                <LineChart data={trendData}>
                   <XAxis dataKey="day" axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 12 }} />
                   <YAxis axisLine={false} tickLine={false} tick={{ fill: '#9CA3AF', fontSize: 12 }} domain={[50, 100]} />
                   <Tooltip contentStyle={{ background: '#1A1A2E', border: '1px solid #2A2A3E', borderRadius: '12px' }} />
@@ -178,7 +182,7 @@ export default function Wellness() {
                 </LineChart>
               </ResponsiveContainer>
             ) : (
-              <p className="text-sm text-dark-muted">Log your first entry to see your wellness score.</p>
+              <p className="text-sm text-dark-muted">Log mood, sleep or water entries to build your personal trend.</p>
             )}
           </div>
 
