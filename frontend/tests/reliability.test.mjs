@@ -38,3 +38,20 @@ test('wellness trends are based on saved history instead of fabricated chart val
   assert.doesNotMatch(source, /score: 72|score: 76|score: 70/)
   assert.match(source, /Not enough data/)
 })
+
+
+test('StudentOS Pro upsell card is removed from the sidebar', async () => {
+  const layout = await read('../src/components/layout/Layout.tsx')
+  assert.doesNotMatch(layout, /StudentOS Pro|Unlock AI tools, advanced analytics|Upgrade Now/)
+})
+
+test('coding hub normalizes LeetCode profile URLs and syncs public solved stats', async () => {
+  const coding = await read('../src/pages/Coding.tsx')
+  const backend = await read('../../backend/coding/routes.py')
+  assert.match(coding, /normalizeLeetCodeInput/)
+  assert.match(coding, /\/coding\/leetcode\/sync/)
+  assert.match(coding, /Sync stats/)
+  assert.match(backend, /submitStatsGlobal/)
+  assert.match(backend, /total_problems_solved/)
+  assert.match(backend, /leetcode\.com\/graphql/)
+})
