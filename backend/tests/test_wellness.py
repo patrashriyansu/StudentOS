@@ -44,6 +44,9 @@ def test_wellness_history_uses_saved_logs_and_validates_ranges() -> None:
         empty_history = client.get("/api/v1/wellness/history?days=7", headers=headers)
         assert empty_history.status_code == 200
         assert all(row["score"] is None for row in empty_history.json()["history"])
+        empty_summary = client.get("/api/v1/wellness/summary", headers=headers)
+        assert empty_summary.status_code == 200
+        assert empty_summary.json()["today"]["water_glasses"] is None
 
         invalid_mood = client.post("/api/v1/wellness/mood", headers=headers, json={"mood_score": 6})
         assert invalid_mood.status_code == 422
