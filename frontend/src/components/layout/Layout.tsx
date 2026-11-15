@@ -1,8 +1,10 @@
 import { Outlet, NavLink, useNavigate } from 'react-router-dom'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
+import { useLocation } from 'react-router-dom'
+import { api } from '../../services/api'
 import { useAuth } from '../../hooks/useAuth'
 import {
-  LayoutDashboard, BookOpen, Code, Briefcase, Bot, Heart,
+  LayoutDashboard, BookOpen, Code, Briefcase, Heart,
   Wallet, Bell, BarChart3, User, LogOut, Menu, X,
   GraduationCap, Settings, Search, Sparkles,
 } from 'lucide-react'
@@ -31,7 +33,7 @@ const mainNav = [
 
 const secondNav = [
   { to: '/analytics',      icon: BarChart3, label: 'Analytics'     },
-  { to: '/notifications',  icon: Bell,      label: 'Notifications', badge: 0 },
+  { to: '/notifications',  icon: Bell,      label: 'Notifications' },
   { to: '/profile',        icon: User,      label: 'Profile'       },
   { to: '/settings',       icon: Settings,  label: 'Settings'      },
 ]
@@ -75,8 +77,22 @@ function NavItem({ to, icon: Icon, label, badge, end }: {
 export default function Layout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [searchQuery, setSearchQuery] = useState('')
+  const [unreadCount, setUnreadCount] = useState(0)
   const { user, logout } = useAuth()
   const navigate = useNavigate()
+  const location = useLocation()
+
+  useEffect(() => {
+    let active = true
+    api.get('/notifications/unread-count')
+      .then((response) => {
+        if (active) setUnreadCount(Number(response.data?.unread_count) || 0)
+      })
+      .catch(() => {
+        if (active) setUnreadCount(0)
+      })
+    return () => { active = false }
+  }, [location.pathname])
 
   const handleLogout = () => { logout(); navigate('/login') }
 
@@ -136,8 +152,8 @@ export default function Layout() {
 
           <div style={{ height: 1, background: 'rgba(255,255,255,0.05)', margin: '10px 4px' }} />
 
-          {secondNav.map(({ to, icon, label, badge }) => (
-            <NavItem key={label} to={to} icon={icon} label={label} badge={badge} />
+          {secondNav.map(({ to, icon, label }) => (
+            <NavItem key={label} to={to} icon={icon} label={label} badge={label === 'Notifications' ? unreadCount : undefined} />
           ))}
         </nav>
 
@@ -186,18 +202,28 @@ export default function Layout() {
 
           {/* Bell */}
           <div style={{ position: 'relative' }}>
-            <button style={{
-              width: 36, height: 36, borderRadius: 10, display: 'flex',
-              alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
-              background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
-            }}>
+            <button
+              type="button"
+              aria-label={unreadCount > 0 ? `Open notifications, ${unreadCount} unread` : 'Open notifications'}
+              title="Notifications"
+              onClick={() => navigate('/notifications')}
+              style={{
+                width: 36, height: 36, borderRadius: 10, display: 'flex',
+                alignItems: 'center', justifyContent: 'center', cursor: 'pointer',
+                background: 'rgba(255,255,255,0.05)', border: '1px solid rgba(255,255,255,0.08)',
+              }}
+            >
               <Bell size={15} color="#9CA3AF" />
             </button>
-            <span style={{
-              position: 'absolute', top: 7, right: 7, width: 7, height: 7,
-              borderRadius: '50%', background: '#EF4444',
-              border: '1.5px solid #0B0B1E',
-            }} />
+            {unreadCount > 0 && (
+              <span style={{
+                position: 'absolute', top: -5, right: -5, minWidth: 16, height: 16,
+                padding: '0 4px', borderRadius: 999, background: '#EF4444',
+                border: '1.5px solid #0B0B1E', color: '#fff', fontSize: 9,
+                fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                pointerEvents: 'none',
+              }}>{unreadCount > 9 ? '9+' : unreadCount}</span>
+            )}
           </div>
 
           {/* User */}

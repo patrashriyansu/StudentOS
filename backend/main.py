@@ -22,6 +22,7 @@ import backend.productivity.models   # noqa: F401
 import backend.finance.models        # noqa: F401
 
 from backend.api import router as api_router
+from backend.notifications.service import reminder_worker
 
 limiter = Limiter(key_func=get_remote_address)
 
@@ -51,12 +52,18 @@ async def lifespan(app: FastAPI):
     app.state.db_ready = False
     app.state.db_error = None
     app.state.db_init_task = asyncio.create_task(initialize_database(app))
+    app.state.reminder_task = asyncio.create_task(reminder_worker())
     yield
     task = getattr(app.state, "db_init_task", None)
     if task and not task.done():
         task.cancel()
         with contextlib.suppress(asyncio.CancelledError):
             await task
+    reminder_task = getattr(app.state, "reminder_task", None)
+    if reminder_task and not reminder_task.done():
+        reminder_task.cancel()
+        with contextlib.suppress(asyncio.CancelledError):
+            await reminder_task
     await engine.dispose()
 
 

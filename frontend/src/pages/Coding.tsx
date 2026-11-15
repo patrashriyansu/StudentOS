@@ -144,8 +144,6 @@ export default function Coding() {
 
   const platforms = [
     { id: 'leetcode', name: 'LeetCode', color: '#F59E0B', username: profile.leetcode_username },
-    { id: 'codeforces', name: 'Codeforces', color: '#6C63FF', username: profile.codeforces_username },
-    { id: 'codechef', name: 'CodeChef', color: '#A855F7', username: profile.codechef_username },
   ]
 
   const statCards = [
@@ -246,14 +244,12 @@ export default function Coding() {
                             if (event.key === 'Enter') void handleSaveUsername(item.id)
                             if (event.key === 'Escape') setEditingPlatform(null)
                           }}
-                          placeholder={item.id === 'leetcode' ? 'Username or LeetCode profile URL' : 'Enter handle'}
+                          placeholder="LeetCode username or profile URL"
                           className="w-full min-w-[180px] bg-dark border border-dark-border rounded px-2 py-1 text-xs text-white mt-1"
                         />
                       ) : item.username ? (
                         <a
-                          href={leetCodeUrl || (item.id === 'codeforces'
-                            ? `https://codeforces.com/profile/${item.username}`
-                            : `https://www.codechef.com/users/${item.username}`)}
+                          href={leetCodeUrl || `https://leetcode.com/u/${item.username}/`}
                           target="_blank"
                           rel="noreferrer"
                           className="block truncate text-xs text-dark-muted mt-0.5 font-mono hover:text-primary"

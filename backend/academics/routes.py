@@ -1,13 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
-from datetime import date, datetime, timezone
+from datetime import date, datetime, timezone, timedelta, time as dt_time
+from zoneinfo import ZoneInfo
 from backend.core.database import get_db
 from backend.core.security import get_current_user
-from backend.users.models import User
+from backend.users.models import User, EmailReminder
 from backend.academics.models import Subject, AttendanceRecord, Timetable, Assignment, Note, Exam, StudySession, Grade
+from backend.notifications.service import INDIA_TZ, schedule_email_reminder, to_utc_datetime
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Literal
 
 router = APIRouter()
 
@@ -28,7 +30,7 @@ async def get_subjects(current_user: User = Depends(get_current_user), db: Async
 async def create_subject(req: SubjectCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     subject = Subject(user_id=current_user.id, **req.model_dump())
     db.add(subject); await db.commit(); await db.refresh(subject)
-    return {"id": subject.id, "message": "Subject created"}
+    return {"id": subject.id, "name": subject.name, "code": subject.code, "faculty": subject.faculty, "credits": subject.credits, "total_classes": subject.total_classes, "attended_classes": subject.attended_classes, "message": "Subject created"}
 
 @router.post("/subjects/{subject_id}/attendance")
 async def mark_attendance(subject_id: int, req: AttendanceMark, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -40,6 +42,94 @@ async def mark_attendance(subject_id: int, req: AttendanceMark, current_user: Us
     if req.status == "present": subject.attended_classes += 1
     db.add(record); await db.commit()
     return {"message": "Attendance marked"}
+
+
+
+class DailyAttendanceMark(BaseModel):
+    subject_id: int
+    status: Literal["present", "absent"]
+    date: Optional[str] = None
+
+
+@router.post("/attendance")
+async def mark_daily_attendance(
+    req: DailyAttendanceMark,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    subject_result = await db.execute(
+        select(Subject).where(Subject.id == req.subject_id, Subject.user_id == current_user.id)
+    )
+    subject = subject_result.scalar_one_or_none()
+    if not subject:
+        raise HTTPException(status_code=404, detail="Subject not found")
+
+    attendance_date = date.fromisoformat(req.date) if req.date else datetime.now(INDIA_TZ).date()
+    existing_result = await db.execute(
+        select(AttendanceRecord).where(
+            AttendanceRecord.subject_id == subject.id,
+            AttendanceRecord.date == attendance_date,
+        )
+    )
+    record = existing_result.scalar_one_or_none()
+
+    if record:
+        previous_status = record.status
+        if previous_status != req.status:
+            if previous_status == "present":
+                subject.attended_classes = max(0, (subject.attended_classes or 0) - 1)
+            if req.status == "present":
+                subject.attended_classes = (subject.attended_classes or 0) + 1
+            record.status = req.status
+    else:
+        record = AttendanceRecord(subject_id=subject.id, date=attendance_date, status=req.status)
+        subject.total_classes = (subject.total_classes or 0) + 1
+        if req.status == "present":
+            subject.attended_classes = (subject.attended_classes or 0) + 1
+        db.add(record)
+
+    await db.commit()
+    return {
+        "message": "Attendance marked",
+        "date": attendance_date.isoformat(),
+        "status": record.status,
+        "total_classes": subject.total_classes,
+        "attended_classes": subject.attended_classes,
+    }
+
+
+@router.get("/attendance/streak")
+async def get_attendance_streak(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(AttendanceRecord)
+        .join(Subject, AttendanceRecord.subject_id == Subject.id)
+        .where(Subject.user_id == current_user.id)
+        .order_by(AttendanceRecord.date.desc())
+    )
+    records = result.scalars().all()
+
+    daily_status: dict[date, bool] = {}
+    for record in records:
+        current_day = record.date
+        daily_status[current_day] = daily_status.get(current_day, True) and record.status == "present"
+
+    today = datetime.now(INDIA_TZ).date()
+    streak = 0
+    current_day = today
+    while daily_status.get(current_day) is True:
+        streak += 1
+        current_day -= timedelta(days=1)
+
+    return {
+        "current_streak": streak,
+        "last_attendance_date": max(daily_status).isoformat() if daily_status else None,
+        "today_marked": today in daily_status,
+        "today_present": daily_status.get(today, False),
+    }
+
 
 @router.get("/subjects/{subject_id}/attendance")
 async def get_attendance_history(subject_id: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -59,10 +149,41 @@ async def get_timetable(current_user: User = Depends(get_current_user), db: Asyn
 
 @router.post("/timetable")
 async def add_timetable_entry(req: TimetableEntry, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    from datetime import time as dt_time
-    entry = Timetable(user_id=current_user.id, day_of_week=req.day_of_week, subject_name=req.subject_name, faculty=req.faculty, room=req.room, start_time=dt_time.fromisoformat(req.start_time), end_time=dt_time.fromisoformat(req.end_time))
-    db.add(entry); await db.commit(); await db.refresh(entry)
-    return {"id": entry.id, "message": "Entry added"}
+    if not 0 <= req.day_of_week <= 5:
+        raise HTTPException(status_code=422, detail="Choose a valid weekday")
+    try:
+        start_time = dt_time.fromisoformat(req.start_time)
+        end_time = dt_time.fromisoformat(req.end_time)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Enter valid class times")
+    if end_time <= start_time:
+        raise HTTPException(status_code=422, detail="Class end time must be after start time")
+
+    entry = Timetable(user_id=current_user.id, day_of_week=req.day_of_week, subject_name=req.subject_name, faculty=req.faculty, room=req.room, start_time=start_time, end_time=end_time)
+    db.add(entry)
+    await db.flush()
+
+    local_now = datetime.now(INDIA_TZ)
+    days_until_class = (req.day_of_week - local_now.weekday()) % 7
+    class_date = local_now.date() + timedelta(days=days_until_class)
+    class_start = datetime.combine(class_date, start_time, tzinfo=INDIA_TZ)
+    first_reminder = class_start - timedelta(minutes=15)
+    if first_reminder <= local_now:
+        first_reminder += timedelta(days=7)
+
+    await schedule_email_reminder(
+        db,
+        user_id=current_user.id,
+        title=f"Upcoming class: {req.subject_name}",
+        message=f"Your {req.subject_name} class starts at {start_time.strftime('%H:%M')}. Room: {req.room or 'Not specified'}.",
+        remind_at=first_reminder,
+        repeat_interval="weekly",
+        entity_type="timetable",
+        entity_id=entry.id,
+    )
+    await db.commit()
+    await db.refresh(entry)
+    return {"id": entry.id, "message": "Entry added", "email_reminder": "weekly, 15 minutes before class"}
 
 # --- Assignments ---
 class AssignmentCreate(BaseModel):
@@ -76,16 +197,42 @@ async def get_assignments(current_user: User = Depends(get_current_user), db: As
 
 @router.post("/assignments")
 async def create_assignment(req: AssignmentCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    assignment = Assignment(user_id=current_user.id, title=req.title, description=req.description, subject=req.subject, due_date=datetime.fromisoformat(req.due_date))
-    db.add(assignment); await db.commit(); await db.refresh(assignment)
-    return {"id": assignment.id, "message": "Assignment created"}
+    due_at = to_utc_datetime(req.due_date)
+    assignment = Assignment(user_id=current_user.id, title=req.title, description=req.description, subject=req.subject, due_date=due_at)
+    db.add(assignment)
+    await db.flush()
+    if due_at > datetime.now(timezone.utc):
+        await schedule_email_reminder(
+            db,
+            user_id=current_user.id,
+            title=f"Assignment due: {req.title}",
+            message=f"{req.title} for {req.subject} is due on {due_at.astimezone(INDIA_TZ).strftime('%d %b %Y at %I:%M %p')}.",
+            remind_at=due_at - timedelta(days=1),
+            entity_type="assignment",
+            entity_id=assignment.id,
+        )
+    await db.commit()
+    await db.refresh(assignment)
+    return {"id": assignment.id, "message": "Assignment created", "email_reminder": "scheduled when due date is in the future"}
 
 @router.put("/assignments/{assignment_id}/status")
 async def update_assignment_status(assignment_id: int, status: str, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Assignment).where(Assignment.id == assignment_id, Assignment.user_id == current_user.id))
     assignment = result.scalar_one_or_none()
     if not assignment: raise HTTPException(status_code=404)
-    assignment.status = status; await db.commit()
+    assignment.status = status
+    if status == "submitted":
+        reminder_result = await db.execute(
+            select(EmailReminder).where(
+                EmailReminder.user_id == current_user.id,
+                EmailReminder.entity_type == "assignment",
+                EmailReminder.entity_id == assignment.id,
+                EmailReminder.is_active.is_(True),
+            )
+        )
+        for reminder in reminder_result.scalars().all():
+            reminder.is_active = False
+    await db.commit()
     return {"message": "Status updated"}
 
 # --- Notes ---
@@ -131,9 +278,23 @@ async def get_exams(current_user: User = Depends(get_current_user), db: AsyncSes
 
 @router.post("/exams")
 async def create_exam(req: ExamCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    exam = Exam(user_id=current_user.id, subject=req.subject, exam_type=req.exam_type, date=datetime.fromisoformat(req.date), syllabus=req.syllabus)
-    db.add(exam); await db.commit(); await db.refresh(exam)
-    return {"id": exam.id, "message": "Exam created"}
+    exam_at = to_utc_datetime(req.date)
+    exam = Exam(user_id=current_user.id, subject=req.subject, exam_type=req.exam_type, date=exam_at, syllabus=req.syllabus)
+    db.add(exam)
+    await db.flush()
+    if exam_at > datetime.now(timezone.utc):
+        await schedule_email_reminder(
+            db,
+            user_id=current_user.id,
+            title=f"Upcoming exam: {req.subject}",
+            message=f"Your {req.exam_type} exam for {req.subject} is scheduled for {exam_at.astimezone(INDIA_TZ).strftime('%d %b %Y at %I:%M %p')}.",
+            remind_at=exam_at - timedelta(days=1),
+            entity_type="exam",
+            entity_id=exam.id,
+        )
+    await db.commit()
+    await db.refresh(exam)
+    return {"id": exam.id, "message": "Exam created", "email_reminder": "scheduled when exam date is in the future"}
 
 # --- Study Sessions ---
 class StudySessionCreate(BaseModel):
@@ -158,6 +319,38 @@ async def get_grades(current_user: User = Depends(get_current_user), db: AsyncSe
     result = await db.execute(select(Grade).where(Grade.user_id == current_user.id).order_by(Grade.semester))
     grades = result.scalars().all()
     return [{"id": g.id, "semester": g.semester, "subject": g.subject, "credits": g.credits, "grade_point": g.grade_point, "grade": g.grade} for g in grades]
+
+
+
+class GradeCreate(BaseModel):
+    semester: int
+    subject: str
+    credits: int
+    grade_point: float
+    grade: str
+
+
+@router.post("/grades")
+async def create_grade(
+    req: GradeCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if req.semester < 1 or req.credits < 1 or not 0 <= req.grade_point <= 10:
+        raise HTTPException(status_code=422, detail="Enter valid semester, credits and grade point")
+    grade = Grade(
+        user_id=current_user.id,
+        semester=req.semester,
+        subject=req.subject.strip(),
+        credits=req.credits,
+        grade_point=req.grade_point,
+        grade=req.grade.strip().upper(),
+    )
+    db.add(grade)
+    await db.commit()
+    await db.refresh(grade)
+    return {"id": grade.id, "message": "Marks saved"}
+
 
 @router.get("/sgpa/{semester}")
 async def get_sgpa(semester: int, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):

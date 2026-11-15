@@ -22,11 +22,11 @@ email-validator==2.1.0
 python-dotenv==1.0.1
 
 # HTTP client
-httpx==0.27.2
+httpx==0.28.1
 
 # Rate limiting
 slowapi==0.1.9
 
 # AI integrations
 openai==1.51.0
-google-generativeai==0.8.3
+google-genai>=1.55.0,<3.0.0

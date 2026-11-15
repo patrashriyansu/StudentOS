@@ -218,3 +218,64 @@ def test_avatar_upload_is_validated_and_persisted() -> None:
         profile = client.get("/api/v1/auth/me", headers=headers)
         assert profile.status_code == 200
         assert profile.json()["avatar"].startswith("data:image/jpeg;base64,")
+
+
+
+def test_ai_status_reports_backend_configuration() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        tokens = register_user(client)
+        response = client.get("/api/v1/ai/status", headers=auth_headers(tokens["access_token"]))
+        assert response.status_code == 200, response.text
+        assert response.json()["provider"] == "Google Gemini"
+        assert isinstance(response.json()["configured"], bool)
+
+
+def test_ai_chat_includes_conversation_history(monkeypatch) -> None:
+    from backend.ai import routes as ai_routes
+
+    async def fake_ask_gemini(prompt: str, system_hint: str = "") -> str:
+        assert "Student: Explain recursion" in prompt
+        assert "Assistant: Recursion is a function calling itself." in prompt
+        assert "Student: Show an example" in prompt
+        return "Here is a recursive example."
+
+    monkeypatch.setattr(ai_routes, "ask_gemini", fake_ask_gemini)
+
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        tokens = register_user(client)
+        response = client.post(
+            "/api/v1/ai/chat",
+            headers=auth_headers(tokens["access_token"]),
+            json={
+                "message": "Show an example",
+                "mode": "beginner",
+                "history": [
+                    {"role": "user", "content": "Explain recursion"},
+                    {"role": "assistant", "content": "Recursion is a function calling itself."},
+                ],
+            },
+        )
+        assert response.status_code == 200, response.text
+        assert response.json()["response"] == "Here is a recursive example."
+
+
+def test_ai_quiz_rejects_incomplete_provider_output(monkeypatch) -> None:
+    from backend.ai import routes as ai_routes
+
+    async def fake_ask_gemini_json(prompt: str, system_hint: str = "") -> dict:
+        return {"questions": [{"question": "Malformed item", "options": ["A", "B"], "correct": 0}]}
+
+    monkeypatch.setattr(ai_routes, "ask_gemini_json", fake_ask_gemini_json)
+
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        tokens = register_user(client)
+        response = client.post(
+            "/api/v1/ai/generate-quiz",
+            headers=auth_headers(tokens["access_token"]),
+            json={"topic": "Data structures", "count": 1, "difficulty": "easy"},
+        )
+        assert response.status_code == 502
+        assert "invalid quiz question" in response.json()["detail"].lower()
