@@ -65,7 +65,7 @@ const steps = [
 
 export default function Landing() {
   return (
-    <main className="min-h-screen overflow-hidden bg-[#080d1c] text-white">
+    <main className="landing-page min-h-screen overflow-hidden bg-[#080d1c] text-white">
       <header className="relative z-10 border-b border-white/10 bg-[#080d1c]/85 backdrop-blur-xl">
         <nav className="mx-auto flex max-w-7xl items-center justify-between px-5 py-4 sm:px-8 lg:px-10" aria-label="Main navigation">
           <Link to="/" className="flex items-center gap-2.5" aria-label="StudentOS home">
