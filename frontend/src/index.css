@@ -374,3 +374,193 @@ body, button, input, textarea, select, .glass, .theme-choice {
 @media (min-width: 1024px) {
   .app-sidebar { transform: translateX(0) !important; }
 }
+
+
+/* Responsive app shell: prevent desktop-sized children from forcing horizontal scrolling. */
+html, body, #root {
+  width: 100%;
+  min-width: 320px;
+}
+body { overflow-x: hidden; }
+.app-shell {
+  width: 100%;
+  min-width: 0;
+  max-width: 100vw;
+}
+.app-content-area {
+  min-width: 0;
+}
+.app-content-expanded { margin-left: 240px; }
+.app-content-collapsed { margin-left: 72px; }
+.app-page-content {
+  min-width: 0;
+  width: 100%;
+  max-width: 100%;
+  overscroll-behavior: contain;
+}
+.app-page-content > * { min-width: 0; max-width: 100%; }
+.app-topbar > * { min-width: 0; }
+.app-search-wrap { min-width: 0; }
+.app-user-profile { flex-shrink: 0; }
+.dashboard-root, .ai-chat-page { width: 100%; min-width: 0; }
+.dashboard-root > *, .ai-chat-page > * { min-width: 0; }
+.dashboard-stat-grid > *, .dashboard-overview-grid > *,
+.dashboard-insights-grid > *, .dashboard-hub-grid > * { min-width: 0; }
+
+/* Chatbot panel and utility tabs reflow instead of clipping at laptop widths. */
+.ai-tool-tabs { flex-wrap: wrap; max-width: 100%; }
+.ai-chat-layout { min-width: 0; }
+.ai-chat-panel {
+  min-width: 0;
+  height: min(650px, calc(100dvh - 250px));
+  min-height: 460px;
+}
+.ai-chat-mode { flex-wrap: wrap; gap: 8px; }
+.ai-chat-mode-options { flex-wrap: wrap; justify-content: flex-end; }
+.ai-chat-messages { min-width: 0; overflow-wrap: anywhere; }
+.ai-chat-messages > div { min-width: 0; }
+.ai-chat-messages > div > div:last-child { overflow-wrap: anywhere; }
+.ai-chat-composer { min-width: 0; }
+.ai-chat-composer input { min-width: 0; }
+.ai-chat-aside { min-width: 0; }
+.ai-summary-layout > div { min-width: 0; }
+.ai-summary-layout textarea { height: clamp(220px, 35dvh, 340px) !important; }
+.ai-summary-output {
+  height: clamp(220px, 35dvh, 340px) !important;
+  min-height: 220px;
+  overflow-wrap: anywhere;
+}
+
+/* Standard laptops and compact desktop windows. */
+@media (min-width: 1024px) and (max-width: 1279px) {
+  .app-sidebar:not(.is-collapsed) { width: 220px !important; }
+  .app-content-expanded { margin-left: 220px !important; }
+  .app-page-content { padding: 20px !important; }
+  .app-topbar { padding-left: 18px !important; padding-right: 18px !important; gap: 10px !important; }
+
+  .dashboard-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .dashboard-overview-grid,
+  .dashboard-insights-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+  }
+  .dashboard-overview-grid > :last-child,
+  .dashboard-insights-grid > :last-child { grid-column: 1 / -1; }
+
+  .ai-chat-layout { grid-template-columns: minmax(0, 1.6fr) minmax(250px, 1fr) !important; }
+  .ai-chat-panel { height: min(620px, calc(100dvh - 230px)); }
+}
+
+/* Narrow desktop/tablet landscape: keep the conversation at a usable width. */
+@media (min-width: 1024px) and (max-width: 1180px) {
+  .ai-chat-layout { grid-template-columns: minmax(0, 1fr) !important; }
+  .ai-chat-panel { height: min(620px, calc(100dvh - 230px)); }
+}
+
+/* Phones and tablets. */
+@media (max-width: 1023px) {
+  .app-content-area,
+  .app-content-expanded,
+  .app-content-collapsed { margin-left: 0 !important; width: 100%; }
+  .app-page-content { padding: 14px !important; }
+  .app-topbar {
+    height: 56px !important;
+    min-height: 56px;
+    padding: 0 12px !important;
+    gap: 9px !important;
+  }
+  .app-search-wrap { max-width: none !important; flex: 1 1 auto !important; }
+  .app-search-wrap input { padding-right: 12px !important; font-size: 12px !important; }
+  .app-search-shortcut { display: none !important; }
+  .app-user-details { display: none !important; }
+  .app-user-profile { gap: 0 !important; }
+  .app-topbar .theme-control-label { display: none; }
+  .app-topbar .theme-control { gap: 2px; padding: 3px; }
+  .app-topbar .theme-choice { width: 28px; min-height: 28px; }
+  .app-topbar button[title="Logout"] { padding: 5px !important; }
+
+  .dashboard-overview-grid,
+  .dashboard-insights-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .dashboard-overview-grid > :last-child,
+  .dashboard-insights-grid > :last-child { grid-column: auto; }
+  .dashboard-stat-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .dashboard-hub-grid { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; }
+  .dashboard-hero { gap: 14px; flex-wrap: wrap; padding: 20px !important; }
+  .dashboard-hero-copy { width: 100%; }
+  .dashboard-hero-copy span { font-size: clamp(20px, 5vw, 26px) !important; }
+  .dashboard-date-chip { max-width: 100%; padding: 9px 12px !important; }
+  .dashboard-chatbot-banner { flex-wrap: wrap; gap: 10px !important; }
+  .dashboard-chatbot-banner > div:nth-child(2) { flex: 1 1 150px !important; min-width: 0; }
+  .dashboard-chatbot-banner button { margin-left: auto; }
+
+  .ai-chat-layout { grid-template-columns: minmax(0, 1fr) !important; }
+  .ai-chat-panel {
+    height: min(620px, 64dvh);
+    min-height: 410px;
+  }
+  .ai-tool-tabs { width: 100%; display: grid !important; grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .ai-tool-tabs button { padding: 8px 6px !important; min-width: 0; }
+  .ai-chat-mode { align-items: flex-start; padding: 12px 14px !important; }
+  .ai-chat-mode > span { width: 100%; }
+  .ai-chat-mode-options { width: 100%; justify-content: flex-start; }
+  .ai-chat-messages { padding: 16px !important; }
+  .ai-chat-composer { padding: 12px !important; }
+}
+
+/* Small phones: prioritize touch targets, reading width and non-overlapping controls. */
+@media (max-width: 640px) {
+  .app-page-content { padding: 11px !important; }
+  .app-topbar { padding: 0 9px !important; gap: 6px !important; }
+  .app-topbar .app-search-wrap input { padding-left: 30px !important; }
+  .app-topbar .app-user-profile > div:first-child {
+    width: 32px !important;
+    height: 32px !important;
+  }
+  .app-topbar button[title="Logout"] { padding: 4px !important; }
+  .app-topbar button[title="Logout"] svg { width: 14px; height: 14px; }
+
+  .dashboard-root { gap: 13px !important; }
+  .dashboard-stat-grid { gap: 9px !important; }
+  .dashboard-stat-card { padding: 13px !important; }
+  .dashboard-stat-card > div:last-child svg { width: 54px; height: 54px; }
+  .dashboard-stat-card > div:first-of-type span { font-size: 10px !important; }
+  .dashboard-hub-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .dashboard-overview-grid, .dashboard-insights-grid { gap: 12px !important; }
+  .dashboard-hero { border-radius: 15px !important; padding: 17px !important; }
+  .dashboard-hero-copy span { font-size: 21px !important; }
+  .dashboard-date-chip { width: 100%; }
+  .dashboard-chatbot-banner { padding: 11px !important; }
+  .dashboard-chatbot-banner button { width: 100%; margin: 0; }
+
+  .ai-chat-page { gap: 16px !important; }
+  .ai-chat-page h1 { font-size: 21px !important; }
+  .ai-chat-page > div:first-child > div:first-child > p { font-size: 12px; line-height: 1.5; }
+  .ai-tool-tabs button { font-size: 12px !important; }
+  .ai-chat-panel {
+    height: min(590px, 58dvh);
+    min-height: 390px;
+    border-radius: 15px !important;
+  }
+  .ai-chat-mode-options { gap: 6px !important; }
+  .ai-chat-mode-options button { padding: 7px 9px !important; font-size: 11px !important; }
+  .ai-chat-messages { padding: 12px !important; gap: 12px !important; }
+  .ai-chat-messages > div > div:last-child { max-width: 90% !important; padding: 11px !important; font-size: 13px !important; }
+  .ai-chat-composer { padding: 10px !important; }
+  .ai-chat-composer input { padding: 10px 12px !important; font-size: 13px !important; }
+  .ai-chat-composer button { width: 44px !important; height: 44px !important; flex-shrink: 0; }
+  .ai-chat-aside > div { padding: 16px !important; }
+  .ai-summary-layout > div { padding: 16px !important; min-height: 0; }
+  .ai-summary-layout textarea,
+  .ai-summary-output { height: 260px !important; min-height: 220px; }
+  .ai-tool-panel > .glass { padding: 16px !important; }
+  .ai-tool-panel .p-10 { padding: 20px !important; }
+}
+
+/* Very narrow phones. */
+@media (max-width: 380px) {
+  .app-topbar { gap: 4px !important; }
+  .app-topbar .theme-control { display: none; }
+  .dashboard-stat-grid { grid-template-columns: minmax(0, 1fr) !important; }
+  .dashboard-stat-card { min-height: 116px; }
+  .ai-tool-tabs { gap: 2px !important; }
+  .ai-tool-tabs button { padding: 7px 3px !important; font-size: 11px !important; }
+}

@@ -245,7 +245,7 @@ export default function Dashboard() {
           <rect x="30"  y="60" width="20" height="50" />
         </svg>
 
-        <div>
+        <div className="dashboard-hero-copy">
           <div style={{ display:'flex', alignItems:'baseline', gap:10, flexWrap:'wrap' }}>
             <span style={{ fontSize:28, fontWeight:800, color:'var(--app-text)' }}>👋 {greeting()},</span>
             <span style={{
@@ -276,7 +276,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── 4 Stat Cards ─────────────────────────────────── */}
-      <div style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>
+      <div className="dashboard-stat-grid" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>
         <StatCard
           icon={GraduationCap} iconColor="#06B6D4" label="Attendance"
           value={attendance != null ? `${attendance}%` : '—'}
@@ -312,7 +312,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── Middle: Hubs | Tasks | Exams ─────────────────── */}
-      <div style={{ display:'grid', gridTemplateColumns:'5fr 4fr 3fr', gap:14 }}>
+      <div className="dashboard-overview-grid" style={{ display:'grid', gridTemplateColumns:'minmax(0,5fr) minmax(0,4fr) minmax(0,3fr)', gap:14 }}>
 
         {/* My Hubs */}
         <div className="dashboard-panel" style={panel}>
@@ -320,7 +320,7 @@ export default function Dashboard() {
             <h3 style={h3}>My Hubs</h3>
             <button onClick={() => navigate('/')} style={{ fontSize:12, color:'#6C63FF', background:'none', border:'none', cursor:'pointer' }}>View All →</button>
           </div>
-          <div style={{ display:'grid', gridTemplateColumns:'1fr 1fr', gap:10, marginBottom:10 }}>
+          <div className="dashboard-hub-grid" style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', gap:10, marginBottom:10 }}>
             <HubTile icon={BookOpen}   label="Study Hub"    sub="Notes, PDFs, Summaries, Quiz"       color="#6C63FF" to="/ai" />
             <HubTile icon={GraduationCap} label="Academic Hub" sub="Attendance, SGPA, Timetable"     color="#06B6D4" to="/academics" />
             <HubTile icon={Code}       label="Coding Hub"   sub="DSA, LeetCode, Contests"            color="#10B981" to="/coding" />
@@ -328,8 +328,8 @@ export default function Dashboard() {
             <HubTile icon={Heart}      label="Wellness Hub" sub="Mood, Sleep, Meditation"            color="#F43F5E" to="/wellness" />
             <HubTile icon={Wallet}     label="Finance Hub"  sub="Expenses, Budget, Savings"          color="#A855F7" to="/expenses" />
           </div>
-          {/* AI Copilot banner */}
-          <div style={{
+          {/* Chatbot quick access banner */}
+          <div className="dashboard-chatbot-banner" style={{
             display:'flex', alignItems:'center', gap:14, padding:'13px 16px',
             borderRadius:12, background:'linear-gradient(135deg,rgba(108,99,255,0.12),rgba(168,85,247,0.08))',
             border:'1px solid rgba(108,99,255,0.22)',
@@ -338,15 +338,15 @@ export default function Dashboard() {
               <Bot size={17} style={{ color:'#A78BFA' }} />
             </div>
             <div style={{ flex:1 }}>
-              <div style={{ fontSize:13, fontWeight:600, color:'#fff' }}>AI Copilot</div>
-              <div style={{ fontSize:11, color:'#9CA3AF' }}>Ask, Summarize, Plan, Solve & More</div>
+              <div style={{ fontSize:13, fontWeight:600, color:'#fff' }}>Chatbot</div>
+              <div style={{ fontSize:11, color:'#9CA3AF' }}>Chat, summarize, plan, solve & more</div>
             </div>
             <button onClick={() => navigate('/ai')} style={{
               padding:'8px 14px', borderRadius:8, cursor:'pointer',
               background:'linear-gradient(135deg,#6C63FF,#A855F7)',
               color:'#fff', fontSize:12, fontWeight:600, border:'none', whiteSpace:'nowrap',
             }}>
-              Chat with AI →
+              Open Chatbot →
             </button>
           </div>
         </div>
@@ -447,7 +447,7 @@ export default function Dashboard() {
       </div>
 
       {/* ── Bottom: Academic | LeetCode | Attendance ─────── */}
-      <div style={{ display:'grid', gridTemplateColumns:'5fr 4fr 3fr', gap:14 }}>
+      <div className="dashboard-insights-grid" style={{ display:'grid', gridTemplateColumns:'minmax(0,5fr) minmax(0,4fr) minmax(0,3fr)', gap:14 }}>
 
         {/* Academic Overview */}
         <div className="dashboard-panel" style={panel}>

@@ -18,7 +18,7 @@
 | Placement Hub | Hub Home, Resume Analyzer, Mock Interview, ATS Score, Internship Finder |
 | Wellness Hub | Hub Home, Mood Tracker, Sleep Tracker, Water Tracker, Meditation |
 | Finance Hub | Hub Home, Expense Tracker, Budget Planner, Savings Predictor |
-| AI | AI Copilot (chat) |
+| Chatbot | AI-powered chat, summaries, quizzes and flashcards |
 | Misc | Notifications, Profile, Digital Twin |
 
 ### Tech Stack

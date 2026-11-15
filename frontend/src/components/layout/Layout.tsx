@@ -29,7 +29,7 @@ const mainNav = [
   { to: '/placements', icon: Briefcase,        label: 'Placement Hub'},
   { to: '/wellness',   icon: Heart,            label: 'Wellness Hub' },
   { to: '/expenses',   icon: Wallet,           label: 'Finance Hub'  },
-  { to: '/ai',         icon: Sparkles,         label: 'AI Copilot'   },
+  { to: '/ai',         icon: Sparkles,         label: 'Chatbot'   },
 ]
 
 const secondNav = [
@@ -88,6 +88,10 @@ export default function Layout() {
   const location = useLocation()
 
   useEffect(() => {
+    setSidebarOpen(false)
+  }, [location.pathname])
+
+  useEffect(() => {
     let active = true
     api.get('/notifications/unread-count')
       .then((response) => {
@@ -102,7 +106,7 @@ export default function Layout() {
   const handleLogout = () => { logout(); navigate('/login') }
 
   return (
-    <div className="app-shell" style={{ display: 'flex', height: '100vh', overflow: 'hidden', background: 'var(--app-bg)', color: 'var(--app-text)', fontFamily: 'Inter,sans-serif' }}>
+    <div className="app-shell" style={{ display: 'flex', height: '100dvh', minHeight: 0, overflow: 'hidden', background: 'var(--app-bg)', color: 'var(--app-text)', fontFamily: 'Inter,sans-serif' }}>
 
       {/* Mobile overlay */}
       {sidebarOpen && (
@@ -126,7 +130,7 @@ export default function Layout() {
         transition: 'transform 0.25s ease, width 0.22s ease',
         transform: sidebarOpen ? 'translateX(0)' : undefined,
       }}
-        className={`app-sidebar ${sidebarOpen ? 'mobile-open' : ''}`}
+        className={`app-sidebar ${sidebarCollapsed ? 'is-collapsed' : ''} ${sidebarOpen ? 'mobile-open' : ''}`}
       >
         {/* Logo */}
         <div style={{ padding: sidebarCollapsed ? '18px 10px 14px' : '18px 18px 14px', borderBottom: '1px solid var(--app-border)' }}>
@@ -186,7 +190,7 @@ export default function Layout() {
       {/* ── Right: topbar + content ─────────────── */}
       <div
         style={{ flex: 1, display: 'flex', flexDirection: 'column', minWidth: 0, overflow: 'hidden', transition: 'margin-left 0.22s ease' }}
-        className={sidebarCollapsed ? 'lg:ml-[72px]' : 'lg:ml-[240px]'}
+        className={`app-content-area ${sidebarCollapsed ? 'app-content-collapsed' : 'app-content-expanded'}`}
       >
 
         {/* Top Bar */}
@@ -214,12 +218,12 @@ export default function Layout() {
           </button>
 
           {/* Search */}
-          <div style={{ flex: 1, maxWidth: 460, position: 'relative' }}>
+          <div className="app-search-wrap" style={{ flex: 1, maxWidth: 460, position: 'relative', minWidth: 0 }}>
             <Search size={14} style={{ position: 'absolute', left: 12, top: '50%', transform: 'translateY(-50%)', color: 'var(--app-muted)', pointerEvents: 'none' }} />
             <input
               value={searchQuery}
               onChange={e => setSearchQuery(e.target.value)}
-              placeholder="Search notes, tasks, exams, DSA, or ask AI..."
+              placeholder="Search StudentOS..."
               style={{
                 width: '100%', background: 'var(--app-input)',
                 border: '1px solid var(--app-border)',
@@ -227,7 +231,7 @@ export default function Layout() {
                 color: 'var(--app-text)', fontSize: 13, outline: 'none', boxSizing: 'border-box',
               }}
             />
-            <span style={{
+            <span className="app-search-shortcut" style={{
               position: 'absolute', right: 10, top: '50%', transform: 'translateY(-50%)',
               background: 'var(--app-subtle)', borderRadius: 5,
               padding: '2px 7px', fontSize: 10, color: 'var(--app-muted)',
@@ -266,8 +270,13 @@ export default function Layout() {
 
           {/* User */}
           <div
-            style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}
+            className="app-user-profile"
+            role="button"
+            tabIndex={0}
+            aria-label="Open profile"
             onClick={() => navigate('/profile')}
+            onKeyDown={(event) => { if (event.key === 'Enter' || event.key === ' ') navigate('/profile') }}
+            style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', minWidth: 0 }}
           >
             <div style={{
               width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
@@ -277,7 +286,7 @@ export default function Layout() {
             }}>
               {user?.name?.[0]?.toUpperCase() || 'S'}
             </div>
-            <div>
+            <div className="app-user-details">
               <div className="app-user-name" style={{ fontSize: 13, fontWeight: 600, color: 'var(--app-text)', lineHeight: 1 }}>
                 {user?.name || 'Student'}
               </div>
@@ -299,7 +308,7 @@ export default function Layout() {
         </header>
 
         {/* Page Content */}
-        <main style={{ flex: 1, overflowY: 'auto', padding: '24px' }}>
+        <main className="app-page-content" style={{ flex: 1, minWidth: 0, minHeight: 0, overflowY: 'auto', overflowX: 'hidden', padding: '24px' }}>
           <Outlet />
         </main>
       </div>

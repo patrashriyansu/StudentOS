@@ -18,7 +18,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
   final List<Map<String, dynamic>> _messages = [
     {
       'role': 'ai',
-      'text': 'Hi Shriyansu! 👋 I\'m your AI Copilot powered by Gemini. I can help you with:\n\n📚 Summarize notes\n📝 Create MCQs & quizzes\n📅 Build study plans\n💡 Explain concepts\n\nWhat would you like to do today?',
+      'text': 'Hi Shriyansu! 👋 I\'m your StudentOS Chatbot powered by Gemini. I can help you with:\n\n📚 Summarize notes\n📝 Create MCQs & quizzes\n📅 Build study plans\n💡 Explain concepts\n\nWhat would you like to do today?',
     },
     {'role': 'user', 'text': 'Explain Binary Search'},
     {
@@ -74,7 +74,7 @@ class _AiAssistantScreenState extends State<AiAssistantScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: CustomAppBar(
-        title: 'AI Copilot 🤖',
+        title: 'Chatbot 🤖',
         actions: [
           Padding(
             padding: const EdgeInsets.only(right: 12),
