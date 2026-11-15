@@ -312,7 +312,7 @@ export default function Login() {
           <div className="pointer-events-none absolute left-[24%] top-[20%] h-[450px] w-[450px] rounded-full border border-white/90" />
           <div className="pointer-events-none absolute bottom-[4%] left-[20%] h-[220px] w-[540px] rounded-full bg-[#fff0e9]/60 blur-3xl" />
 
-          <img src="/images/studentos-login-student.webp" alt="StudentOS student mascot holding a laptop and giving a thumbs up"
+          <img src="/images/studentos-login-hero.webp" alt="Student holding a laptop"
             className="pointer-events-none relative z-[2] h-[82%] max-h-[820px] w-full object-contain object-bottom drop-shadow-[0_24px_36px_rgba(39,50,99,0.18)]" />
 
           <div className="absolute left-[31%] top-[5%] z-[4] rounded-[25px] border border-white/90 bg-white/75 px-5 py-4 shadow-[0_12px_30px_rgba(73,86,170,0.12)] backdrop-blur-xl">
