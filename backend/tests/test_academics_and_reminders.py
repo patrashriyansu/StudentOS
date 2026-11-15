@@ -214,3 +214,42 @@ def test_reminder_email_status_and_test_delivery(monkeypatch) -> None:
         assert delivered.json()["to"] == profile.json()["email"]
         assert len(sent_messages) == 1
         assert sent_messages[0][1] == "StudentOS email delivery test"
+
+
+
+def test_social_login_provider_status_and_authorization_redirects(monkeypatch) -> None:
+    from backend.auth import routes as auth_routes
+
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        monkeypatch.setattr(auth_routes.settings, "GITHUB_CLIENT_ID", "")
+        monkeypatch.setattr(auth_routes.settings, "GITHUB_CLIENT_SECRET", "")
+        monkeypatch.setattr(auth_routes.settings, "MICROSOFT_CLIENT_ID", "")
+        monkeypatch.setattr(auth_routes.settings, "MICROSOFT_CLIENT_SECRET", "")
+
+        missing = client.get("/api/v1/auth/providers")
+        assert missing.status_code == 200
+        assert missing.json() == {"google": bool(auth_routes.settings.GOOGLE_CLIENT_ID), "github": False, "microsoft": False}
+        assert client.get("/api/v1/auth/github/authorize").status_code == 503
+        assert client.get("/api/v1/auth/microsoft/authorize").status_code == 503
+
+        monkeypatch.setattr(auth_routes.settings, "GITHUB_CLIENT_ID", "github-client-id")
+        monkeypatch.setattr(auth_routes.settings, "GITHUB_CLIENT_SECRET", "github-client-secret")
+        monkeypatch.setattr(auth_routes.settings, "MICROSOFT_CLIENT_ID", "microsoft-client-id")
+        monkeypatch.setattr(auth_routes.settings, "MICROSOFT_CLIENT_SECRET", "microsoft-client-secret")
+
+        configured = client.get("/api/v1/auth/providers")
+        assert configured.json()["github"] is True
+        assert configured.json()["microsoft"] is True
+
+        github = client.get("/api/v1/auth/github/authorize", follow_redirects=False)
+        assert github.status_code == 302
+        assert "github.com/login/oauth/authorize" in github.headers["location"]
+        assert "read%3Auser" in github.headers["location"]
+        assert github.cookies.get("studentos_oauth_state_github")
+
+        microsoft = client.get("/api/v1/auth/microsoft/authorize", follow_redirects=False)
+        assert microsoft.status_code == 302
+        assert "login.microsoftonline.com/common/oauth2/v2.0/authorize" in microsoft.headers["location"]
+        assert "openid" in microsoft.headers["location"]
+        assert microsoft.cookies.get("studentos_oauth_state_microsoft")

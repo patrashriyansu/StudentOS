@@ -85,6 +85,31 @@ For local development, use `ENVIRONMENT=development` and a local database.
 Production must use a persistent PostgreSQL `DATABASE_URL`, a unique
 `SECRET_KEY` of at least 32 characters, and `ENVIRONMENT=production`.
 
+### GitHub and Microsoft sign-in
+
+The web login supports password sign-in, Google, GitHub, and Microsoft. GitHub
+and Microsoft require provider OAuth applications; their buttons stay disabled
+until both client ID and client secret are configured on the Render
+`studentos-backend` service.
+
+Register these exact callback URLs in the provider consoles:
+
+- GitHub OAuth App callback: `https://studentos-backend-a58j.onrender.com/api/v1/auth/github/callback`
+- Microsoft Entra ID Web redirect URI: `https://studentos-backend-a58j.onrender.com/api/v1/auth/microsoft/callback`
+
+For GitHub, grant the `read:user` and `user:email` scopes. For Microsoft,
+create a confidential Web app and allow the OpenID Connect / Microsoft Graph
+`User.Read` sign-in scopes. Use `common` as the tenant for personal and work
+or school Microsoft accounts, or set `MICROSOFT_TENANT_ID` to a tenant ID if
+the app should be single-tenant.
+
+Set the provider secrets as private Render environment variables:
+`GITHUB_CLIENT_ID`, `GITHUB_CLIENT_SECRET`, `MICROSOFT_CLIENT_ID`, and
+`MICROSOFT_CLIENT_SECRET`. The optional `MICROSOFT_TENANT_ID` defaults to
+`common`. Never commit client secrets to Git. After saving these values,
+redeploy the backend; the login page reads provider readiness from
+`GET /api/v1/auth/providers`.
+
 ### Email delivery and scheduled reminders
 
 Password recovery and scheduled email reminders use the same backend SMTP

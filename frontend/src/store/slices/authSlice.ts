@@ -61,6 +61,23 @@ export const loginWithGoogle = createAsyncThunk(
   },
 )
 
+export const loginWithOAuthTokens = createAsyncThunk(
+  'auth/loginWithOAuthTokens',
+  async ({ accessToken, refreshToken, rememberMe = true }: {
+    accessToken: string; refreshToken: string; rememberMe?: boolean
+  }, { rejectWithValue }) => {
+    try {
+      const userRes = await api.get<User>('/auth/me', {
+        headers: { Authorization: `Bearer ${accessToken}` },
+      })
+      saveAuth(accessToken, refreshToken, userRes.data, rememberMe)
+      return { token: accessToken, refreshToken, user: userRes.data }
+    } catch (err) {
+      return rejectWithValue(getFriendlyApiError(err, 'Social sign-in could not be completed. Please try again.'))
+    }
+  },
+)
+
 export const register = createAsyncThunk('auth/register', async ({ email, password, name, role }: { email: string; password: string; name: string; role: string }, { rejectWithValue }) => {
   try {
     const { data } = await api.post('/auth/register', { email, password, name, role }, { timeout: 30000 })
@@ -105,6 +122,12 @@ const authSlice = createSlice({
       s.loading = false; s.initialized = true; s.user = a.payload.user; s.token = a.payload.token; s.refreshToken = a.payload.refreshToken; s.isAuthenticated = true
     })
     builder.addCase(loginWithGoogle.rejected, (s) => { s.loading = false; s.initialized = true })
+    builder.addCase(loginWithOAuthTokens.pending, (s) => { s.loading = true })
+    builder.addCase(loginWithOAuthTokens.fulfilled, (s, a) => {
+      s.loading = false; s.initialized = true; s.user = a.payload.user
+      s.token = a.payload.token; s.refreshToken = a.payload.refreshToken; s.isAuthenticated = true
+    })
+    builder.addCase(loginWithOAuthTokens.rejected, (s) => { s.loading = false; s.initialized = true })
     builder.addCase(register.pending, (s) => { s.loading = true })
     builder.addCase(register.fulfilled, (s, a) => { s.loading = false; s.initialized = true; s.user = a.payload.user; s.token = a.payload.token; s.refreshToken = a.payload.refreshToken; s.isAuthenticated = true })
     builder.addCase(register.rejected, (s) => { s.loading = false; s.initialized = true })

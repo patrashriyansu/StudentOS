@@ -24,6 +24,16 @@ services:
         value: "https://studentos-shriyansu.vercel.app"
       - key: ENVIRONMENT
         value: "production"
+      - key: GITHUB_CLIENT_ID
+        sync: false
+      - key: GITHUB_CLIENT_SECRET
+        sync: false
+      - key: MICROSOFT_CLIENT_ID
+        sync: false
+      - key: MICROSOFT_CLIENT_SECRET
+        sync: false
+      - key: MICROSOFT_TENANT_ID
+        value: "common"
       - key: SMTP_HOST
         sync: false
       - key: SMTP_USERNAME

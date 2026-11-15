@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float, Text, JSON, ForeignKey
+from sqlalchemy import Column, Integer, String, Boolean, DateTime, Float, Text, JSON, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship
 from backend.core.database import Base
 from datetime import datetime, timezone, date
@@ -89,4 +89,20 @@ class EmailReminder(Base):
     attempts = Column(Integer, default=0)
     last_error = Column(Text, nullable=True)
     sent_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+class OAuthIdentity(Base):
+    """External login identity linked to a StudentOS user."""
+
+    __tablename__ = "oauth_identities"
+    __table_args__ = (
+        UniqueConstraint("provider", "provider_user_id", name="uq_oauth_provider_subject"),
+        UniqueConstraint("provider", "user_id", name="uq_oauth_provider_user"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    provider = Column(String(24), nullable=False, index=True)
+    provider_user_id = Column(String(255), nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
