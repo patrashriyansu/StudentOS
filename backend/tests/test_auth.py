@@ -17,6 +17,9 @@ from jose import jwt
 
 from backend.core.config import settings
 from backend.main import app
+from backend.auth.routes import limiter as auth_limiter
+
+auth_limiter.enabled = False
 
 
 def unique_email() -> str:
@@ -209,7 +212,7 @@ def test_avatar_upload_is_validated_and_persisted() -> None:
         uploaded = client.post(
             "/api/v1/users/upload-avatar",
             headers=headers,
-            files={"file": ("avatar.jpg", b"\\xff\\xd8\\xff\\xd9", "image/jpeg")},
+            files={"file": ("avatar.jpg", bytes([255, 216, 255, 217]), "image/jpeg")},
         )
         assert uploaded.status_code == 200
         profile = client.get("/api/v1/auth/me", headers=headers)
