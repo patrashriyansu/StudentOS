@@ -74,6 +74,44 @@ def normalize_leetcode_username(value: str) -> str:
     return candidate
 
 
+def parse_leetcode_public_stats(payload: dict, username: str) -> dict:
+    """Convert a public LeetCode GraphQL response into StudentOS coding metrics."""
+    data = payload.get("data") or {}
+    user_data = data.get("matchedUser")
+    if not user_data:
+        raise HTTPException(status_code=404, detail="That LeetCode username was not found. Check the profile URL.")
+
+    accepted_rows = (user_data.get("submitStats") or {}).get("acSubmissionNum") or []
+    if not accepted_rows:
+        raise HTTPException(
+            status_code=502,
+            detail="LeetCode returned an incomplete profile response. Please retry the sync.",
+        )
+
+    accepted = {
+        str(row.get("difficulty", "")).strip().lower(): int(row.get("count") or 0)
+        for row in accepted_rows
+    }
+    easy = accepted.get("easy", 0)
+    medium = accepted.get("medium", 0)
+    hard = accepted.get("hard", 0)
+    total = accepted.get("all", easy + medium + hard)
+
+    contest = data.get("userContestRanking") or {}
+    calendar = user_data.get("userCalendar") or {}
+    return {
+        "username": user_data.get("username") or username,
+        "total_problems_solved": total,
+        "easy_solved": easy,
+        "medium_solved": medium,
+        "hard_solved": hard,
+        "total_contests": int(contest.get("attendedContestsCount") or 0),
+        "current_streak": int(calendar.get("streak") or 0),
+        "rating": round(float(contest.get("rating") or 0)),
+        "ranking": (user_data.get("profile") or {}).get("ranking"),
+    }
+
+
 async def fetch_leetcode_public_stats(username: str) -> dict:
     """Fetch only public profile statistics. No session cookie or account password is used."""
     variables = json.dumps({"username": username})
@@ -116,39 +154,7 @@ async def fetch_leetcode_public_stats(username: str) -> dict:
             detail="Could not reach LeetCode right now. Your handle is saved; try syncing again shortly.",
         ) from exc
 
-    user_data = (payload.get("data") or {}).get("matchedUser")
-    if not user_data:
-        raise HTTPException(status_code=404, detail="That LeetCode username was not found. Check the profile URL.")
-
-    accepted_rows = (user_data.get("submitStats") or {}).get("acSubmissionNum") or []
-    if not accepted_rows:
-        raise HTTPException(
-            status_code=502,
-            detail="LeetCode returned an incomplete profile response. Please retry the sync.",
-        )
-
-    accepted = {
-        str(row.get("difficulty", "")).strip().lower(): int(row.get("count") or 0)
-        for row in accepted_rows
-    }
-    easy = accepted.get("easy", 0)
-    medium = accepted.get("medium", 0)
-    hard = accepted.get("hard", 0)
-    total = accepted.get("all", easy + medium + hard)
-
-    contest = (payload.get("data") or {}).get("userContestRanking") or {}
-    calendar = user_data.get("userCalendar") or {}
-    return {
-        "username": user_data.get("username") or username,
-        "total_problems_solved": total,
-        "easy_solved": easy,
-        "medium_solved": medium,
-        "hard_solved": hard,
-        "total_contests": int(contest.get("attendedContestsCount") or 0),
-        "current_streak": int(calendar.get("streak") or 0),
-        "rating": round(float(contest.get("rating") or 0)),
-        "ranking": (user_data.get("profile") or {}).get("ranking"),
-    }
+    return parse_leetcode_public_stats(payload, username)
 
 
 def serialize_profile(profile: CodingProfile) -> dict:
