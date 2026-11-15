@@ -107,7 +107,7 @@ export default function Layout() {
       {/* Mobile overlay */}
       {sidebarOpen && (
         <div
-          style={{ position: 'fixed', inset: 0, background: 'rgba(0,0,0,0.6)', zIndex: 40 }}
+          style={{ position: 'fixed', inset: 0, background: 'rgba(15,23,42,0.12)', zIndex: 40, backdropFilter: 'blur(1px)' }}
           onClick={() => setSidebarOpen(false)}
         />
       )}
@@ -126,7 +126,7 @@ export default function Layout() {
         transition: 'transform 0.25s ease, width 0.22s ease',
         transform: sidebarOpen ? 'translateX(0)' : undefined,
       }}
-        className={`app-sidebar ${sidebarOpen ? '' : 'max-lg:hidden'}`}
+        className={`app-sidebar ${sidebarOpen ? 'mobile-open' : ''}`}
       >
         {/* Logo */}
         <div style={{ padding: sidebarCollapsed ? '18px 10px 14px' : '18px 18px 14px', borderBottom: '1px solid var(--app-border)' }}>

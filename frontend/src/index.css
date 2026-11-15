@@ -345,3 +345,32 @@ body, button, input, textarea, select, .glass, .theme-choice {
       url('/images/studentos-campus-hero.webp');
   }
 }
+
+
+/* Mobile navigation behaves as a true side drawer: slide in, keep the page peeking
+   on the right, and let the X/backdrop close it smoothly. */
+@media (max-width: 1023px) {
+  .app-sidebar {
+    width: min(300px, 68vw) !important;
+    max-width: 68vw;
+    transform: translateX(-105%) !important;
+    background: rgba(255,255,255,0.90) !important;
+    backdrop-filter: blur(20px) saturate(1.12);
+    -webkit-backdrop-filter: blur(20px) saturate(1.12);
+    box-shadow: 18px 0 48px rgba(24,35,70,0.14);
+    border-right: 1px solid rgba(170,182,210,0.36) !important;
+    transition: transform 280ms cubic-bezier(.2,.75,.25,1), background-color 160ms ease !important;
+  }
+  .app-sidebar.mobile-open {
+    transform: translateX(0) !important;
+  }
+  :root[data-theme="dark"] .app-sidebar {
+    background: rgba(11,11,30,0.92) !important;
+    border-right-color: rgba(255,255,255,0.10) !important;
+    box-shadow: 18px 0 48px rgba(0,0,0,0.36);
+  }
+}
+
+@media (min-width: 1024px) {
+  .app-sidebar { transform: translateX(0) !important; }
+}
