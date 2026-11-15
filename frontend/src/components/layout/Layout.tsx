@@ -172,7 +172,7 @@ export default function Layout() {
           padding: '0 24px', flexShrink: 0,
           position: 'sticky', top: 0, zIndex: 30,
         }} className="app-topbar">
-          <button onClick={() => setSidebarOpen(true)
+          <button onClick={() => setSidebarOpen(true)}
             style={{ background: 'none', border: 'none', color: 'var(--app-muted)', cursor: 'pointer' }}
             className="lg:hidden">
             <Menu size={20} />
