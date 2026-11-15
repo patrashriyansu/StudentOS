@@ -234,7 +234,8 @@ def test_ai_status_reports_backend_configuration() -> None:
 def test_ai_chat_includes_conversation_history(monkeypatch) -> None:
     from backend.ai import routes as ai_routes
 
-    async def fake_ask_gemini(prompt: str, system_hint: str = "") -> str:
+    async def fake_ask_gemini(prompt: str, system_hint: str = "", *, thinking_level: str = "low") -> str:
+        assert thinking_level == "low"
         assert "Student: Explain recursion" in prompt
         assert "Assistant: Recursion is a function calling itself." in prompt
         assert "Student: Show an example" in prompt
@@ -259,6 +260,31 @@ def test_ai_chat_includes_conversation_history(monkeypatch) -> None:
         )
         assert response.status_code == 200, response.text
         assert response.json()["response"] == "Here is a recursive example."
+
+
+def test_ai_chat_uses_high_thinking_for_deep_mode(monkeypatch) -> None:
+    from backend.ai import routes as ai_routes
+
+    levels: list[str] = []
+
+    async def fake_ask_gemini(
+        prompt: str, system_hint: str = "", *, thinking_level: str = "low"
+    ) -> str:
+        levels.append(thinking_level)
+        return "A detailed explanation."
+
+    monkeypatch.setattr(ai_routes, "ask_gemini", fake_ask_gemini)
+
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        tokens = register_user(client)
+        response = client.post(
+            "/api/v1/ai/chat",
+            headers=auth_headers(tokens["access_token"]),
+            json={"message": "Explain Dijkstra's algorithm", "mode": "deep"},
+        )
+        assert response.status_code == 200, response.text
+        assert levels == ["high"]
 
 
 def test_ai_quiz_rejects_incomplete_provider_output(monkeypatch) -> None:
