@@ -283,3 +283,65 @@ body {
 body, button, input, textarea, select, .glass, .theme-choice {
   transition: color 150ms ease, background-color 150ms ease, border-color 150ms ease, box-shadow 150ms ease;
 }
+
+
+/* Light-mode polish for dashboard widgets and legacy inline-styled feature panels. */
+:root[data-theme="light"] .dashboard-stat-card {
+  background: linear-gradient(135deg,#485b9d 0%,#645aa4 100%) !important;
+  border-color: rgba(65,80,145,0.15) !important;
+}
+:root[data-theme="light"] .dashboard-stat-card > div:first-child {
+  background: rgba(255,255,255,0.08) !important;
+}
+:root[data-theme="light"] .dashboard-date-chip {
+  background: rgba(255,255,255,0.88) !important;
+  border-color: var(--app-border) !important;
+}
+:root[data-theme="light"] .dashboard-date-chip [style*="color: rgb(255, 255, 255)"] {
+  color: var(--app-text) !important;
+}
+:root[data-theme="light"] .dashboard-root .dashboard-panel h3 {
+  color: var(--app-text) !important;
+}
+
+/* Several feature widgets use inline dark surface colours; map those surfaces to the active palette. */
+:root[data-theme="light"] [style*="background: rgb(8, 8, 24)"],
+:root[data-theme="light"] [style*="background: #080818"],
+:root[data-theme="light"] [style*="background: rgb(7, 7, 20)"] {
+  background: var(--app-bg) !important;
+}
+:root[data-theme="light"] [style*="background: rgb(14, 14, 36)"],
+:root[data-theme="light"] [style*="background: #0E0E24"],
+:root[data-theme="light"] [style*="background: rgb(17, 17, 34)"],
+:root[data-theme="light"] [style*="background: #111122"],
+:root[data-theme="light"] [style*="background: rgb(20, 20, 48)"],
+:root[data-theme="light"] [style*="background: #141430"] {
+  background: var(--app-panel) !important;
+  border-color: var(--app-border) !important;
+}
+:root[data-theme="light"] [style*="background: rgb(11, 11, 30)"],
+:root[data-theme="light"] [style*="background: #0B0B1E"] {
+  background: var(--app-sidebar-bg) !important;
+  border-color: var(--app-border) !important;
+}
+:root[data-theme="light"] #root main [style*="color: rgb(255, 255, 255)"]:not(button):not(button *):not(.dashboard-stat-card *):not([style*="background: linear-gradient"]) {
+  color: var(--app-text) !important;
+}
+:root[data-theme="light"] #root main [style*="color: rgb(156, 163, 175)"] {
+  color: var(--app-muted) !important;
+}
+
+/* Mobile registration keeps the campus photo visible behind the frosted form. */
+@media (max-width: 1023px) {
+  .register-background {
+    background-position: 58% center;
+    background-image:
+      linear-gradient(180deg,rgba(246,248,255,0.70),rgba(246,248,255,0.90)),
+      url('/images/studentos-campus-hero.webp');
+  }
+  :root[data-theme="dark"] .register-background {
+    background-image:
+      linear-gradient(180deg,rgba(7,8,27,0.78),rgba(8,8,24,0.92)),
+      url('/images/studentos-campus-hero.webp');
+  }
+}
