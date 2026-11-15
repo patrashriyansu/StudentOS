@@ -1,7 +1,6 @@
-from pydantic import field_validator
+from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 from functools import lru_cache
-import os
 from pathlib import Path
 
 # Find .env file — check backend dir first, then project root
@@ -32,14 +31,6 @@ class Settings(BaseSettings):
     SMTP_STARTTLS: bool = True
     SEED_DEMO_DATA: bool = False
 
-    @field_validator("SECRET_KEY")
-    @classmethod
-    def validate_secret_key(cls, value: str) -> str:
-        if os.getenv("ENVIRONMENT", "development").lower() == "production":
-            if value == "studentos-super-secret-key-change-in-production" or len(value) < 32:
-                raise ValueError("Production requires a unique SECRET_KEY of at least 32 characters.")
-        return value
-
     @field_validator("DATABASE_URL")
     @classmethod
     def normalize_database_url(cls, value: str) -> str:
@@ -48,9 +39,16 @@ class Settings(BaseSettings):
             return value.replace("postgres://", "postgresql+asyncpg://", 1)
         if value.startswith("postgresql://"):
             value = value.replace("postgresql://", "postgresql+asyncpg://", 1)
-        if os.getenv("ENVIRONMENT", "development").lower() == "production" and value.startswith("sqlite"):
-            raise ValueError("Production must use a persistent PostgreSQL DATABASE_URL.")
         return value
+
+    @model_validator(mode="after")
+    def validate_production_configuration(self) -> "Settings":
+        if self.ENVIRONMENT.lower() == "production":
+            if self.SECRET_KEY == "studentos-super-secret-key-change-in-production" or len(self.SECRET_KEY) < 32:
+                raise ValueError("Production requires a unique SECRET_KEY of at least 32 characters.")
+            if self.DATABASE_URL.startswith("sqlite"):
+                raise ValueError("Production must use a persistent PostgreSQL DATABASE_URL.")
+        return self
 
     class Config:
         env_file = _env_file
