@@ -29,7 +29,7 @@ const mainNav = [
   { to: '/placements', icon: Briefcase,        label: 'Placement Hub'},
   { to: '/wellness',   icon: Heart,            label: 'Wellness Hub' },
   { to: '/expenses',   icon: Wallet,           label: 'Finance Hub'  },
-  { to: '/ai',         icon: Sparkles,         label: 'AI Copilot'   },
+  { to: '/ai',         icon: Sparkles,         label: 'Chatbot'   },
 ]
 
 const secondNav = [
