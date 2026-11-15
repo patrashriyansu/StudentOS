@@ -12,7 +12,6 @@ import {
   CartesianGrid,
 } from 'recharts'
 import { api } from '../services/api'
-import ThemeControl from '../components/theme/ThemeControl'
 
 /* ── Ring SVG ──────────────────────────────────────────────────── */
 function Ring({ value = 0, max = 100, color, size = 72, stroke = 7 }: {
@@ -263,8 +262,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div style={{ display:'flex', alignItems:'center', gap:12 }}>
-        <ThemeControl compact />
         <div className="dashboard-date-chip" style={{
           display:'flex', alignItems:'center', gap:12,
           background:'var(--app-panel)', border:'1px solid var(--app-border)',
@@ -275,7 +272,6 @@ export default function Dashboard() {
             <div style={{ fontSize:13, fontWeight:600, color:'var(--app-text)' }}>{dateLabel}</div>
             <div style={{ fontSize:11, color:'var(--app-muted)', marginTop:3 }}>5th Semester • ITER, SOA</div>
           </div>
-        </div>
         </div>
       </div>
 
