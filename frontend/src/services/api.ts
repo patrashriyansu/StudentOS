@@ -1,9 +1,10 @@
 import axios, { AxiosError, InternalAxiosRequestConfig } from 'axios'
 import { store } from '../store'
 import { logout } from '../store/slices/authSlice'
+import { getAccessToken, getRefreshToken, saveTokens, shouldRememberAuth } from './authStorage'
 
 const defaultBackend = ['https://studentos-backend-a58j', 'onrender', 'com'].join('.')
-const rawApiUrl = (import.meta.env.VITE_API_URL || defaultBackend).replace(/\/+$/, '')
+const rawApiUrl = (import.meta.env.VITE_API_URL || defaultBackend).replace(/\\/+$/, '')
 const BASE_URL = rawApiUrl.endsWith('/api/v1') ? rawApiUrl : `${rawApiUrl}/api/v1`
 
 export const api = axios.create({ baseURL: BASE_URL, timeout: 15000 })
@@ -13,7 +14,7 @@ type TokenResponse = { access_token: string; refresh_token: string }
 let refreshPromise: Promise<TokenResponse> | null = null
 
 api.interceptors.request.use((config) => {
-  const token = localStorage.getItem('token')
+  const token = getAccessToken()
   // Explicit per-request credentials (for example the token returned by login)
   // must take precedence over any stale token left in storage.
   if (token && !config.headers.Authorization) config.headers.Authorization = `Bearer ${token}`
@@ -25,10 +26,10 @@ api.interceptors.response.use(
   async (error: AxiosError) => {
     const original = error.config as RetryableConfig | undefined
     const requestUrl = original?.url || ''
-    const isAuthEndpoint = /\/auth\/(login|register|refresh|google|send-otp|verify-otp|reset-password)(\?|$)/.test(requestUrl)
+    const isAuthEndpoint = /\\/auth\\/(login|register|refresh|google|send-otp|verify-otp|reset-password)(\\?|$)/.test(requestUrl)
 
     if (error.response?.status === 401 && original && !original._retry && !isAuthEndpoint) {
-      const refreshToken = localStorage.getItem('refreshToken')
+      const refreshToken = getRefreshToken()
       if (!refreshToken) {
         store.dispatch(logout())
         return Promise.reject(error)
@@ -45,8 +46,7 @@ api.interceptors.response.use(
             if (!data.access_token || !data.refresh_token) {
               throw new Error('The authentication service returned an invalid refresh response.')
             }
-            localStorage.setItem('token', data.access_token)
-            localStorage.setItem('refreshToken', data.refresh_token)
+            saveTokens(data.access_token, data.refresh_token, shouldRememberAuth())
             store.dispatch({
               type: 'auth/tokenRefreshed',
               payload: { token: data.access_token, refreshToken: data.refresh_token },
