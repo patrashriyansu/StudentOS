@@ -54,7 +54,7 @@ async def send_test_reminder_email(
     if missing_settings:
         raise HTTPException(
             status_code=503,
-            detail=f"SMTP email delivery is not configured. Missing settings: {', '.join(missing_settings)}",
+            detail=f"Email delivery is not configured. Missing settings: {', '.join(missing_settings)}",
         )
 
     try:
@@ -63,7 +63,7 @@ async def send_test_reminder_email(
             "StudentOS email delivery test",
             (
                 f"Hello {current_user.name},\n\n"
-                "This is a test email from StudentOS. Your SMTP settings are working, "
+                "This is a test email from StudentOS. Your email-provider settings are working, "
                 "and scheduled reminders can now be delivered.\n"
             ),
         )
