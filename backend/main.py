@@ -90,21 +90,30 @@ app.add_middleware(
 app.include_router(api_router, prefix="/api/v1")
 
 
+def require_database_ready() -> None:
+    if not getattr(app.state, "db_ready", False):
+        detail = getattr(app.state, "db_error", None) or "Database is still starting"
+        raise HTTPException(status_code=503, detail=detail)
+
+
 @app.get("/health")
 @app.get("/api/v1/health")
 async def health():
+    # Render's existing service setting still uses /health. Keep that path
+    # readiness-aware as well as /ready so failed database initialization
+    # cannot be reported as a healthy production service.
+    require_database_ready()
     return {
         "status": "healthy",
         "version": "1.0.0",
         "database": settings.DATABASE_URL.split("://")[0],
-        "database_ready": bool(getattr(app.state, "db_ready", False)),
-        "database_error": getattr(app.state, "db_error", None),
+        "database_ready": True,
+        "database_error": None,
     }
+
 
 @app.get("/ready")
 @app.get("/api/v1/ready")
 async def ready():
-    if not getattr(app.state, "db_ready", False):
-        detail = getattr(app.state, "db_error", None) or "Database is still starting"
-        raise HTTPException(status_code=503, detail=detail)
+    require_database_ready()
     return {"ready": True}
