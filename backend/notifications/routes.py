@@ -54,7 +54,7 @@ async def send_test_reminder_email(
     if missing_settings:
         raise HTTPException(
             status_code=503,
-            detail=f"SMTP email delivery is not configured. Missing settings: {', '.join(missing_settings)}",
+            detail=f"Email delivery is not configured. Missing settings: {', '.join(missing_settings)}",
         )
 
     try:
@@ -63,7 +63,7 @@ async def send_test_reminder_email(
             "StudentOS email delivery test",
             (
                 f"Hello {current_user.name},\n\n"
-                "This is a test email from StudentOS. Your SMTP settings are working, "
+                "This is a test email from StudentOS. Your email-provider settings are working, "
                 "and scheduled reminders can now be delivered.\n"
             ),
         )
@@ -71,7 +71,7 @@ async def send_test_reminder_email(
         logger.exception("StudentOS test email failed for user %s", current_user.id)
         raise HTTPException(
             status_code=502,
-            detail="SMTP could not send the test email. Check the host, port, credentials and sender address.",
+            detail="The email provider could not send the test email. Check RESEND_API_KEY and verify the EMAIL_FROM sender domain.",
         ) from exc
 
     return {"message": "Test email sent", "to": current_user.email}

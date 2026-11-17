@@ -169,9 +169,9 @@ export default function Notifications() {
             <MailWarning size={16} className="shrink-0 mt-0.5" />
             <div className="space-y-2">
               <p>Reminders are being saved, but email delivery is paused because the backend is missing these settings:</p>
-              <p className="font-mono text-amber-100">{missingEmailSettings.length ? missingEmailSettings.join(', ') : 'SMTP_HOST, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM_EMAIL'}</p>
-              <p>Open your <a href="https://dashboard.render.com/" target="_blank" rel="noreferrer" className="underline">Render dashboard</a>, select <strong>studentos-backend</strong>, then open <strong>Environment</strong> and add the SMTP values. For Gmail, use an <a href="https://myaccount.google.com/apppasswords" target="_blank" rel="noreferrer" className="underline">App Password</a>, not your normal account password.</p>
-              <p>Required: SMTP_HOST, SMTP_PORT, SMTP_USERNAME, SMTP_PASSWORD, SMTP_FROM_EMAIL and SMTP_STARTTLS. Save the variables and redeploy the backend.</p>
+              <p className="font-mono text-amber-100">{missingEmailSettings.length ? missingEmailSettings.join(', ') : 'RESEND_API_KEY, EMAIL_FROM'}</p>
+              <p>Open your <a href="https://dashboard.render.com/" target="_blank" rel="noreferrer" className="underline">Render dashboard</a>, select <strong>studentos-backend</strong>, then open <strong>Environment</strong> and add a Resend API key and a sender address from your verified domain. Create a key at <a href="https://resend.com/api-keys" target="_blank" rel="noreferrer" className="underline">Resend API Keys</a>.</p>
+              <p>Required: RESEND_API_KEY and EMAIL_FROM. Save the variables and redeploy the backend.</p>
             </div>
           </div>
         )}

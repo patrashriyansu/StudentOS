@@ -189,15 +189,15 @@ def test_reminder_email_status_and_test_delivery(monkeypatch) -> None:
         wait_until_ready(client)
         headers = register_student(client)
 
-        monkeypatch.setattr(notification_routes, "missing_email_settings", lambda: ["SMTP_PASSWORD"])
+        monkeypatch.setattr(notification_routes, "missing_email_settings", lambda: ["RESEND_API_KEY"])
         status = client.get("/api/v1/notifications/reminders/status", headers=headers)
         assert status.status_code == 200, status.text
         assert status.json()["email_configured"] is False
-        assert status.json()["missing_settings"] == ["SMTP_PASSWORD"]
+        assert status.json()["missing_settings"] == ["RESEND_API_KEY"]
 
         blocked = client.post("/api/v1/notifications/reminders/test", headers=headers)
         assert blocked.status_code == 503
-        assert "SMTP_PASSWORD" in blocked.json()["detail"]
+        assert "RESEND_API_KEY" in blocked.json()["detail"]
 
         sent_messages: list[tuple[str, str, str]] = []
 

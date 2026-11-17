@@ -112,29 +112,31 @@ redeploy the backend; the login page reads provider readiness from
 
 ### Email delivery and scheduled reminders
 
-Password recovery and scheduled email reminders use the same backend SMTP
-configuration. Set these as private environment variables on the backend host:
+Password recovery and scheduled email reminders use the Resend HTTPS API.
+Render Free blocks outbound SMTP traffic on ports 25, 465 and 587, so StudentOS
+uses HTTPS instead. Create a Resend account, add and verify a sender domain,
+and create a sending API key at [Resend API keys](https://resend.com/api-keys).
 
-| Variable | Gmail SMTP example |
+Set these private environment variables on the Render `studentos-backend`
+service:
+
+| Variable | Value |
 | --- | --- |
-| `SMTP_HOST` | `smtp.gmail.com` |
-| `SMTP_PORT` | `587` |
-| `SMTP_USERNAME` | Your sending Gmail address |
-| `SMTP_PASSWORD` | A Google App Password |
-| `SMTP_FROM_EMAIL` | Your verified sending address |
-| `SMTP_STARTTLS` | `true` |
+| `RESEND_API_KEY` | Your Resend API key (`re_...`) |
+| `EMAIL_FROM` | A sender on your verified domain, e.g. `StudentOS <noreply@example.com>` |
 
-On Render, open the `studentos-backend` service, choose **Environment**, add
-the variables above, save, and redeploy the backend. For Gmail, enable
-2-Step Verification and create an [App Password](https://myaccount.google.com/apppasswords);
-do not use your normal Google password. Never commit SMTP credentials to Git.
+Never commit the API key to Git. After saving the values, redeploy the backend.
+Open **Smart Notifications → Email Reminders** and select **Send test email**
+to verify delivery to the signed-in student's account email. The status endpoint
+shows which values are missing. The Resend sender domain must be verified before
+sending to arbitrary student email addresses; Resend's test sender is only for
+limited testing.
 
-After deployment, open **Smart Notifications → Email Reminders** and select
-**Send test email**. The status endpoint reports which required variables are
-missing, and the test action verifies that the SMTP server can authenticate and
-send to the signed-in student's account email. Reminders saved before SMTP is
-configured remain queued and are processed by the backend worker after delivery
-is enabled.
+**Reminder timing on Render Free:** the background reminder worker runs inside
+the web service. Render Free services can spin down after 15 minutes without
+incoming traffic and may restart at any time, so a reminder can be delivered late
+when the service is asleep. Exact-time delivery needs an always-on service or an
+external scheduler; the Free web service alone cannot guarantee it.
 
 ### CI
 
