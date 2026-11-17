@@ -5,8 +5,8 @@ services:
     rootDir: .
     buildCommand: pip install -r backend/requirements-render.txt
     startCommand: uvicorn backend.main:app --host 0.0.0.0 --port $PORT
-    plan: starter
-    healthCheckPath: /health
+    plan: free
+    healthCheckPath: /ready
     envVars:
       - key: SECRET_KEY
         generateValue: true
@@ -34,18 +34,10 @@ services:
         sync: false
       - key: MICROSOFT_TENANT_ID
         value: "common"
-      - key: SMTP_HOST
+      - key: RESEND_API_KEY
         sync: false
-      - key: SMTP_USERNAME
+      - key: EMAIL_FROM
         sync: false
-      - key: SMTP_PASSWORD
-        sync: false
-      - key: SMTP_FROM_EMAIL
-        sync: false
-      - key: SMTP_PORT
-        value: "587"
-      - key: SMTP_STARTTLS
-        value: "true"
       - key: SEED_DEMO_DATA
         value: "false"
 
