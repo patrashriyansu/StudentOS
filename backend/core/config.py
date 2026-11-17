@@ -29,12 +29,8 @@ class Settings(BaseSettings):
     AWS_SECRET_ACCESS_KEY: str = ""
     AWS_REGION: str = "us-east-1"
     FRONTEND_URL: str = ""
-    SMTP_HOST: str = ""
-    SMTP_PORT: int = 587
-    SMTP_USERNAME: str = ""
-    SMTP_PASSWORD: str = ""
-    SMTP_FROM_EMAIL: str = ""
-    SMTP_STARTTLS: bool = True
+    RESEND_API_KEY: str = ""
+    EMAIL_FROM: str = ""
     SEED_DEMO_DATA: bool = False
 
     @field_validator("DATABASE_URL")
