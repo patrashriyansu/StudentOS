@@ -1,24 +1,17 @@
-import asyncio
-import smtplib
-import ssl
-from email.message import EmailMessage
+import httpx
 
 from backend.core.config import settings
 
 
-SMTP_REQUIRED_SETTINGS = (
-    "SMTP_HOST",
-    "SMTP_USERNAME",
-    "SMTP_PASSWORD",
-    "SMTP_FROM_EMAIL",
-)
+REQUIRED_EMAIL_SETTINGS = ("RESEND_API_KEY", "EMAIL_FROM")
+RESEND_EMAILS_URL = "https://api.resend.com/emails"
 
 
 def missing_email_settings() -> list[str]:
-    """Return missing SMTP variable names without exposing configured values."""
+    """Return missing email-provider setting names without exposing secret values."""
     return [
         name
-        for name in SMTP_REQUIRED_SETTINGS
+        for name in REQUIRED_EMAIL_SETTINGS
         if not str(getattr(settings, name, "") or "").strip()
     ]
 
@@ -28,21 +21,27 @@ def email_delivery_configured() -> bool:
 
 
 async def send_email(to_email: str, subject: str, body: str) -> None:
-    """Send a plain-text email using the same SMTP configuration as account recovery."""
-    if not email_delivery_configured():
-        raise RuntimeError("SMTP email delivery is not configured")
+    """Send plain-text mail through Resend's HTTPS API (works on Render Free)."""
+    missing = missing_email_settings()
+    if missing:
+        raise RuntimeError(f"Email delivery is not configured. Missing settings: {', '.join(missing)}")
 
-    message = EmailMessage()
-    message["Subject"] = subject
-    message["From"] = settings.SMTP_FROM_EMAIL
-    message["To"] = to_email
-    message.set_content(body)
+    headers = {
+        "Authorization": f"Bearer {settings.RESEND_API_KEY}",
+        "Content-Type": "application/json",
+        "User-Agent": "StudentOS/1.0",
+    }
+    payload = {
+        "from": settings.EMAIL_FROM,
+        "to": [to_email],
+        "subject": subject,
+        "text": body,
+    }
 
-    def deliver() -> None:
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=20) as server:
-            if settings.SMTP_STARTTLS:
-                server.starttls(context=ssl.create_default_context())
-            server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-            server.send_message(message)
-
-    await asyncio.to_thread(deliver)
+    async with httpx.AsyncClient(timeout=httpx.Timeout(20.0, connect=5.0)) as client:
+        response = await client.post(RESEND_EMAILS_URL, headers=headers, json=payload)
+        if response.is_error:
+            raise RuntimeError(
+                f"Resend email API returned HTTP {response.status_code}. "
+                "Check RESEND_API_KEY and verify the EMAIL_FROM sender domain."
+            )
