@@ -3,13 +3,9 @@ from fastapi.responses import RedirectResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from datetime import datetime, timedelta, timezone
-import asyncio
 import secrets
 import hmac
 from urllib.parse import urlencode
-import smtplib
-import ssl
-from email.message import EmailMessage
 import httpx
 import jwt as pyjwt
 from backend.core.database import get_db
@@ -18,6 +14,7 @@ from backend.users.models import User, OAuthIdentity
 from backend.auth.models import OTP, OTPPurpose
 from backend.auth.schemas import LoginRequest, RegisterRequest, TokenResponse, GoogleLoginRequest, OTPRequest, OTPVerifyRequest, PasswordResetRequest
 from backend.core.config import settings
+from backend.core.email import email_delivery_configured, send_email
 from slowapi import Limiter
 from slowapi.util import get_remote_address
 
@@ -27,31 +24,20 @@ limiter = Limiter(key_func=get_remote_address)
 GOOGLE_CERTS_URL = "https://www.googleapis.com/oauth2/v3/certs"
 GOOGLE_ALLOWED_ISSUERS = frozenset({"accounts.google.com", "https://accounts.google.com"})
 
-def email_delivery_configured() -> bool:
-    return all((settings.SMTP_HOST, settings.SMTP_USERNAME, settings.SMTP_PASSWORD, settings.SMTP_FROM_EMAIL))
-
-
 async def send_otp_email(email: str, code: str, purpose: OTPPurpose) -> None:
     if not email_delivery_configured():
-        raise RuntimeError("SMTP email delivery is not configured")
+        raise RuntimeError("Email delivery is not configured")
 
-    message = EmailMessage()
-    message["Subject"] = "Your StudentOS recovery code" if purpose == OTPPurpose.PASSWORD_RESET else "Your StudentOS verification code"
-    message["From"] = settings.SMTP_FROM_EMAIL
-    message["To"] = email
-    message.set_content(
+    subject = (
+        "Your StudentOS recovery code"
+        if purpose == OTPPurpose.PASSWORD_RESET
+        else "Your StudentOS verification code"
+    )
+    body = (
         f"Your StudentOS verification code is {code}. It expires in 10 minutes. "
         "Do not share this code with anyone. If you did not request it, you can ignore this email."
     )
-
-    def deliver() -> None:
-        with smtplib.SMTP(settings.SMTP_HOST, settings.SMTP_PORT, timeout=15) as server:
-            if settings.SMTP_STARTTLS:
-                server.starttls(context=ssl.create_default_context())
-            server.login(settings.SMTP_USERNAME, settings.SMTP_PASSWORD)
-            server.send_message(message)
-
-    await asyncio.to_thread(deliver)
+    await send_email(email, subject, body)
 
 
 
