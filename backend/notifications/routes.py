@@ -71,7 +71,7 @@ async def send_test_reminder_email(
         logger.exception("StudentOS test email failed for user %s", current_user.id)
         raise HTTPException(
             status_code=502,
-            detail="SMTP could not send the test email. Check the host, port, credentials and sender address.",
+            detail="The email provider could not send the test email. Check RESEND_API_KEY and verify the EMAIL_FROM sender domain.",
         ) from exc
 
     return {"message": "Test email sent", "to": current_user.email}
