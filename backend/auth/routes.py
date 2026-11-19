@@ -11,6 +11,7 @@ import jwt as pyjwt
 from backend.core.database import get_db
 from backend.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token, get_current_user, oauth2_scheme
 from backend.users.models import User, OAuthIdentity
+from backend.users.activity import record_daily_visit
 from backend.auth.models import OTP, OTPPurpose
 from backend.auth.schemas import LoginRequest, RegisterRequest, TokenResponse, GoogleLoginRequest, OTPRequest, OTPVerifyRequest, PasswordResetRequest
 from backend.core.config import settings
@@ -126,8 +127,7 @@ async def login(request: Request, req: LoginRequest, db: AsyncSession = Depends(
     user = result.scalar_one_or_none()
     if not user or not verify_password(req.password, user.password_hash):
         raise HTTPException(status_code=401, detail="Invalid email or password")
-    user.last_login = datetime.now(timezone.utc)
-    await db.commit()
+    await record_daily_visit(user, db)
     return TokenResponse(
         access_token=create_access_token({"sub": str(user.id), "role": user.role}),
         refresh_token=create_refresh_token({"sub": str(user.id)})
@@ -184,8 +184,8 @@ async def google_login(request: Request, req: GoogleLoginRequest, db: AsyncSessi
             if not user.avatar and payload.get("picture"):
                 user.avatar = payload["picture"]
 
-        user.last_login = datetime.now(timezone.utc)
-        await db.commit()
+        await db.flush()
+        await record_daily_visit(user, db)
         await db.refresh(user)
         return TokenResponse(
             access_token=create_access_token({"sub": str(user.id), "role": user.role}),
@@ -321,11 +321,10 @@ async def _complete_oauth_login(
     if user.email.lower() != normalized_email:
         raise HTTPException(status_code=409, detail="The provider account email no longer matches the linked StudentOS account.")
     user.is_verified = True
-    user.last_login = datetime.now(timezone.utc)
     if not user.avatar and avatar:
         user.avatar = avatar
 
-    await db.commit()
+    await record_daily_visit(user, db)
     await db.refresh(user)
     return TokenResponse(
         access_token=create_access_token({"sub": str(user.id), "role": user.role}),
