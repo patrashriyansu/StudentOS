@@ -33,7 +33,10 @@ declare global {
 type ProviderStatus = { google: boolean }
 
 const googleClientId = import.meta.env.VITE_GOOGLE_CLIENT_ID?.trim()
-const defaultProviders: ProviderStatus = { google: false }
+// The Google button is enabled from the build-time client ID. The provider
+// endpoint is a diagnostic/server-side check, not a reason to hide the button
+// when a cross-origin request is temporarily blocked by CORS or network issues.
+const defaultProviders: ProviderStatus = { google: Boolean(googleClientId) }
 
 
 function GoogleMark() {
@@ -65,7 +68,7 @@ export default function Login() {
     let active = true
     api.get('/auth/providers')
       .then(({ data }) => {
-        if (active) setProviders({ google: Boolean(data?.google) })
+        if (active) setProviders({ google: Boolean(googleClientId) || Boolean(data?.google) })
       })
       .catch(() => {
         if (active) setProviders(defaultProviders)
