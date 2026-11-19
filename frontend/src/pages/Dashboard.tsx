@@ -114,6 +114,7 @@ export default function Dashboard() {
   const [exams, setExams] = useState<any[]>([])
   const [streak, setStreak] = useState<number>(0)
   const [streakPingedToday, setStreakPingedToday] = useState<boolean>(false)
+  const [adminActivity, setAdminActivity] = useState<any>(null)
 
   const greeting = () => {
     const h = new Date().getHours()
@@ -162,6 +163,13 @@ export default function Dashboard() {
       api.get('/users/streak').then(r => setStreak(r.data?.streak_days ?? 0)).catch(() => {})
     })
   }, [])
+
+  useEffect(() => {
+    if (user?.role !== 'admin') return
+    api.get('/users/activity-overview')
+      .then(r => setAdminActivity(r.data))
+      .catch(() => setAdminActivity(null))
+  }, [user?.role])
 
   /* ── derived ── */
   const attendance = academics?.attendance
@@ -274,6 +282,59 @@ export default function Dashboard() {
           </div>
         </div>
       </div>
+
+      {user?.role === 'admin' && (
+        <section style={{ ...panel, display:'flex', flexDirection:'column', gap:16 }}>
+          <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', gap:12, flexWrap:'wrap' }}>
+            <div>
+              <h3 style={{ ...h3, fontSize:16 }}>Website Engagement</h3>
+              <p style={{ color:'var(--app-muted)', fontSize:12, margin:'5px 0 0' }}>Real account activity from saved sign-ins and daily visits.</p>
+            </div>
+            <span style={{ fontSize:11, color:'#10B981', background:'rgba(16,185,129,0.10)', padding:'5px 10px', borderRadius:20 }}>Live account data</span>
+          </div>
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(130px,1fr))', gap:10 }}>
+            {[
+              { label:'Registered users', value:adminActivity?.total_users ?? '—', color:'#A78BFA' },
+              { label:'Active today', value:adminActivity?.active_today ?? '—', color:'#10B981' },
+              { label:'Active in 7 days', value:adminActivity?.active_7d ?? '—', color:'#06B6D4' },
+              { label:'Active in 30 days', value:adminActivity?.active_30d ?? '—', color:'#F59E0B' },
+            ].map(item => (
+              <div key={item.label} style={{ padding:'14px 16px', borderRadius:12, background:'var(--app-subtle)', border:'1px solid var(--app-border)' }}>
+                <div style={{ fontSize:25, fontWeight:800, color:item.color }}>{item.value}</div>
+                <div style={{ fontSize:11, color:'var(--app-muted)', marginTop:4 }}>{item.label}</div>
+              </div>
+            ))}
+          </div>
+          <div>
+            <div style={{ fontSize:13, fontWeight:700, color:'var(--app-text)', marginBottom:9 }}>Recent members</div>
+            {!adminActivity ? (
+              <div style={{ color:'var(--app-muted)', fontSize:12 }}>Loading engagement data…</div>
+            ) : adminActivity.recent_users?.length ? (
+              <div style={{ display:'flex', flexDirection:'column', gap:7 }}>
+                {adminActivity.recent_users.slice(0,8).map((member:any) => {
+                  const lastSeen = member.last_login ? new Date(member.last_login) : null
+                  const activeToday = lastSeen && lastSeen.toDateString() === new Date().toDateString()
+                  return (
+                    <div key={member.id} style={{ display:'flex', alignItems:'center', gap:10, padding:'9px 11px', borderRadius:10, background:'var(--app-subtle)' }}>
+                      <div style={{ width:32, height:32, borderRadius:'50%', overflow:'hidden', background:'rgba(108,99,255,0.18)', display:'grid', placeItems:'center', color:'#A78BFA', fontWeight:700, flexShrink:0 }}>
+                        {member.avatar ? <img src={member.avatar} alt="" style={{ width:'100%', height:'100%', objectFit:'cover' }} /> : (member.name || member.email || 'U').slice(0,1).toUpperCase()}
+                      </div>
+                      <div style={{ flex:1, minWidth:0 }}>
+                        <div style={{ color:'var(--app-text)', fontSize:12, fontWeight:600, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{member.name}</div>
+                        <div style={{ color:'var(--app-muted)', fontSize:11, overflow:'hidden', textOverflow:'ellipsis', whiteSpace:'nowrap' }}>{member.email}</div>
+                      </div>
+                      <div style={{ textAlign:'right', flexShrink:0 }}>
+                        <div style={{ fontSize:11, color:activeToday ? '#10B981' : 'var(--app-muted)', fontWeight:600 }}>{activeToday ? 'Active today' : lastSeen ? lastSeen.toLocaleDateString() : 'Never signed in'}</div>
+                        <div style={{ fontSize:10, color:'var(--app-muted)', marginTop:3 }}>{member.streak_days} day streak · {member.total_active_days} active days</div>
+                      </div>
+                    </div>
+                  )
+                })}
+              </div>
+            ) : <div style={{ color:'var(--app-muted)', fontSize:12 }}>No member activity recorded yet.</div>}
+          </div>
+        </section>
+      )}
 
       {/* ── 4 Stat Cards ─────────────────────────────────── */}
       <div className="dashboard-stat-grid" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>
