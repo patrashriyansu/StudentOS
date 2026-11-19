@@ -1,10 +1,11 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
 from sqlalchemy.ext.asyncio import AsyncSession
-from sqlalchemy import select
+from sqlalchemy import select, func
 from datetime import date
 from backend.core.database import get_db
 from backend.core.security import get_current_user
 from backend.users.models import User, UserProfile, UserActivity, UserBadge
+from backend.users.activity import record_daily_visit
 from backend.users.schemas import UserProfileUpdate, UserResponse
 from datetime import datetime, timezone, date, timedelta
 
@@ -109,40 +110,54 @@ async def get_badges(current_user: User = Depends(get_current_user), db: AsyncSe
 
 @router.post("/ping")
 async def daily_ping(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    """Call on every app visit. Increments streak if new day, resets if >1 day gap."""
-    today = date.today().isoformat()  # "YYYY-MM-DD"
-    last = current_user.last_streak_date
+    """Record today's visit once and keep the user's active-day streak."""
+    return await record_daily_visit(current_user, db)
 
-    if last == today:
-        # Already pinged today — no change
-        return {
-            "streak_days": current_user.streak_days or 0,
-            "last_streak_date": last,
-            "message": "already_pinged"
+
+@router.get("/activity-overview")
+async def activity_overview(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    """Admin-only engagement overview based on persisted user login/visit data."""
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Admin access required.")
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    week_start = now - timedelta(days=7)
+    month_start = now - timedelta(days=30)
+
+    total_users = await db.scalar(select(func.count(User.id))) or 0
+    active_today = await db.scalar(select(func.count(User.id)).where(User.last_login >= today_start)) or 0
+    active_7d = await db.scalar(select(func.count(User.id)).where(User.last_login >= week_start)) or 0
+    active_30d = await db.scalar(select(func.count(User.id)).where(User.last_login >= month_start)) or 0
+
+    rows = await db.execute(
+        select(User, func.count(UserActivity.id))
+        .outerjoin(UserActivity, UserActivity.user_id == User.id)
+        .group_by(User.id)
+        .order_by(User.last_login.desc())
+        .limit(25)
+    )
+    recent_users = [
+        {
+            "id": user.id,
+            "name": user.name,
+            "email": user.email,
+            "avatar": user.avatar,
+            "role": user.role,
+            "streak_days": user.streak_days or 0,
+            "last_login": user.last_login.isoformat() if user.last_login else None,
+            "total_active_days": activity_count,
         }
-
-    if last is None:
-        # First ever ping
-        current_user.streak_days = 1
-    else:
-        from datetime import date as _date
-        last_date = _date.fromisoformat(last)
-        today_date = _date.fromisoformat(today)
-        diff = (today_date - last_date).days
-        if diff == 1:
-            # Consecutive day — increment
-            current_user.streak_days = (current_user.streak_days or 0) + 1
-        else:
-            # Missed one or more days — reset to 1
-            current_user.streak_days = 1
-
-    current_user.last_streak_date = today
-    await db.commit()
+        for user, activity_count in rows.all()
+    ]
     return {
-        "streak_days": current_user.streak_days,
-        "last_streak_date": current_user.last_streak_date,
-        "message": "updated"
+        "total_users": total_users,
+        "active_today": active_today,
+        "active_7d": active_7d,
+        "active_30d": active_30d,
+        "recent_users": recent_users,
     }
+
 
 @router.get("/streak")
 async def get_streak(current_user: User = Depends(get_current_user)):
