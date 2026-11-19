@@ -132,7 +132,7 @@ async def activity_overview(current_user: User = Depends(get_current_user), db: 
 
     rows = await db.execute(
         select(User, func.count(UserActivity.id))
-        .outerjoin(UserActivity, UserActivity.user_id == User.id)
+        .outerjoin(UserActivity, (UserActivity.user_id == User.id) & (UserActivity.activity_type == "visit"))
         .group_by(User.id)
         .order_by(User.last_login.desc())
         .limit(25)
