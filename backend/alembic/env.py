@@ -7,6 +7,7 @@ from backend.users.models import *
 from backend.academics.models import *
 from backend.coding.models import *
 from backend.placements.models import *
+from backend.campus.models import *
 
 config = context.config
 if config.config_file_name is not None:
