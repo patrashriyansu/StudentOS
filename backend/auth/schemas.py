@@ -37,8 +37,12 @@ class RegisterRequest(BaseModel):
             raise ValueError('Registration number and section must be provided together')
         if self.registration_number is not None:
             self.registration_number = self.registration_number.strip().upper()
+            if not self.registration_number:
+                raise ValueError('Registration number cannot be blank')
         if self.section is not None:
             self.section = self.section.strip().upper()
+            if not self.section:
+                raise ValueError('Section cannot be blank')
         return self
 
     @field_validator('password')
