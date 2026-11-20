@@ -78,9 +78,9 @@ export const loginWithOAuthTokens = createAsyncThunk(
   },
 )
 
-export const register = createAsyncThunk('auth/register', async ({ email, password, name, role }: { email: string; password: string; name: string; role: string }, { rejectWithValue }) => {
+export const register = createAsyncThunk('auth/register', async ({ email, password, name, role, registration_number, section }: { email: string; password: string; name: string; role: string; registration_number?: string; section?: string }, { rejectWithValue }) => {
   try {
-    const { data } = await api.post('/auth/register', { email, password, name, role }, { timeout: 30000 })
+    const { data } = await api.post('/auth/register', { email, password, name, role, registration_number, section }, { timeout: 30000 })
     const userRes = await api.get<User>('/auth/me', { headers: { Authorization: `Bearer ${data.access_token}` } })
     saveAuth(data.access_token, data.refresh_token, userRes.data)
     return { token: data.access_token, refreshToken: data.refresh_token, user: userRes.data }

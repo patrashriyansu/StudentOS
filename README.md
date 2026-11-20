@@ -56,6 +56,21 @@ npm run lint
 npm run build
 ```
 
+## 🏫 Campus Portal (React web)
+
+The React web application includes a role-aware Campus Portal at `/campus`:
+
+- Student registration captures a unique college registration number and section.
+- Coding Hub shows the college LeetCode leaderboard in descending solved-count order, with a section filter; rankings use the existing verified profile sync.
+- Faculty/admin accounts can view the student directory, coding statistics and all-student attendance summaries.
+- Faculty can create class subjects/sessions and mark attendance for students in that class section.
+- Faculty can publish college-wide or section-specific notices. Students see only notices addressed to everyone or their own section.
+- Admins can grant faculty access to an existing account. Public signup cannot create faculty/admin accounts.
+
+Campus data is stored in new tables (`student_identities`, `campus_subjects`, `campus_class_sessions`, `campus_attendance`, `campus_notices`, `campus_notice_reads`). Existing `users`, personal academic subjects, attendance records and coding profiles are not overwritten. The backend's existing startup table-creation process creates these new tables. Existing students should open **Campus Portal → My details** once to add their registration number and section.
+
+To provision the first administrator, an owner must assign the `admin` role to a trusted account through the database/admin provisioning process. An admin can then grant faculty access inside Campus Portal.
+
 ## 🔧 FastAPI Backend
 
 The API is in `backend/`. All application endpoints use the `/api/v1` prefix.

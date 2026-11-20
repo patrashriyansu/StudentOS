@@ -1,7 +1,7 @@
 from typing import Literal
-from pydantic import BaseModel, EmailStr, Field, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator, model_validator
 
-ALLOWED_ROLES = {"student", "faculty", "recruiter", "mentor"}
+ALLOWED_ROLES = {"student", "recruiter", "mentor"}  # Faculty/admin accounts are granted by an administrator.
 
 class LoginRequest(BaseModel):
     email: EmailStr
@@ -12,6 +12,8 @@ class RegisterRequest(BaseModel):
     password: str = Field(..., min_length=8, description="Password must be at least 8 characters")
     name: str = Field(..., min_length=1, max_length=255)
     role: str = "student"
+    registration_number: str | None = Field(default=None, min_length=2, max_length=50)
+    section: str | None = Field(default=None, min_length=1, max_length=80)
 
     @field_validator('name')
     @classmethod
@@ -28,6 +30,20 @@ class RegisterRequest(BaseModel):
         if role not in ALLOWED_ROLES:
             raise ValueError('Invalid role')
         return role
+
+    @model_validator(mode='after')
+    def validate_student_identity_pair(self):
+        if bool(self.registration_number) != bool(self.section):
+            raise ValueError('Registration number and section must be provided together')
+        if self.registration_number is not None:
+            self.registration_number = self.registration_number.strip().upper()
+            if not self.registration_number:
+                raise ValueError('Registration number cannot be blank')
+        if self.section is not None:
+            self.section = self.section.strip().upper()
+            if not self.section:
+                raise ValueError('Section cannot be blank')
+        return self
 
     @field_validator('password')
     @classmethod

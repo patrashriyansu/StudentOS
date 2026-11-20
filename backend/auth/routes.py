@@ -11,6 +11,7 @@ import jwt as pyjwt
 from backend.core.database import get_db
 from backend.core.security import hash_password, verify_password, create_access_token, create_refresh_token, decode_token, get_current_user, oauth2_scheme
 from backend.users.models import User, OAuthIdentity
+from backend.campus.models import StudentIdentity
 from backend.users.activity import record_daily_visit
 from backend.auth.models import OTP, OTPPurpose
 from backend.auth.schemas import LoginRequest, RegisterRequest, TokenResponse, GoogleLoginRequest, OTPRequest, OTPVerifyRequest, PasswordResetRequest
@@ -105,6 +106,12 @@ async def register(request: Request, req: RegisterRequest, db: AsyncSession = De
     result = await db.execute(select(User).where(func.lower(User.email) == email))
     if result.scalar_one_or_none():
         raise HTTPException(status_code=409, detail="Email already registered")
+    if req.registration_number:
+        duplicate_registration = await db.execute(
+            select(StudentIdentity).where(StudentIdentity.registration_number == req.registration_number)
+        )
+        if duplicate_registration.scalar_one_or_none():
+            raise HTTPException(status_code=409, detail="Registration number already registered")
     user = User(
         email=email,
         password_hash=hash_password(req.password),
@@ -112,6 +119,9 @@ async def register(request: Request, req: RegisterRequest, db: AsyncSession = De
         role=req.role
     )
     db.add(user)
+    await db.flush()
+    if req.registration_number and req.section:
+        db.add(StudentIdentity(user_id=user.id, registration_number=req.registration_number, section=req.section))
     await db.commit()
     await db.refresh(user)
     return TokenResponse(
@@ -714,12 +724,16 @@ async def reset_password(request: Request, req: PasswordResetRequest, db: AsyncS
 
 
 @router.get("/me")
-async def get_me(current_user: User = Depends(get_current_user)):
+async def get_me(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    identity_result = await db.execute(select(StudentIdentity).where(StudentIdentity.user_id == current_user.id))
+    identity = identity_result.scalar_one_or_none()
     return {
         "id": current_user.id,
         "email": current_user.email,
         "name": current_user.name,
         "role": current_user.role,
+        "registration_number": identity.registration_number if identity else None,
+        "section": identity.section if identity else None,
         "avatar": current_user.avatar,
         "created_at": current_user.created_at.isoformat(),
         "xp_points": getattr(current_user, "xp_points", 0),

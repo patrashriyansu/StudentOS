@@ -7,7 +7,7 @@ import ThemeControl from '../theme/ThemeControl'
 import {
   LayoutDashboard, BookOpen, Code, Briefcase, Heart,
   Wallet, Bell, BarChart3, User, LogOut, Menu, X,
-  GraduationCap, Settings, Search, Sparkles,
+  GraduationCap, Settings, Search, Sparkles, Users,
 } from 'lucide-react'
 
 const S = {
@@ -26,6 +26,7 @@ const mainNav = [
   { to: '/productivity', icon: BookOpen,       label: 'Study Hub'    },
   { to: '/academics',  icon: GraduationCap,    label: 'Academic Hub' },
   { to: '/coding',     icon: Code,             label: 'Coding Hub'   },
+  { to: '/campus',     icon: Users,            label: 'Campus Portal' },
   { to: '/placements', icon: Briefcase,        label: 'Placement Hub'},
   { to: '/wellness',   icon: Heart,            label: 'Wellness Hub' },
   { to: '/expenses',   icon: Wallet,           label: 'Finance Hub'  },
@@ -290,7 +291,7 @@ export default function Layout() {
               <div className="app-user-name" style={{ fontSize: 13, fontWeight: 600, color: 'var(--app-text)', lineHeight: 1 }}>
                 {user?.name || 'Student'}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--app-muted)', marginTop: 2 }}>B.Tech CSE '28</div>
+              <div style={{ fontSize: 11, color: 'var(--app-muted)', marginTop: 2 }}>{user?.registration_number ? `${user.registration_number} · ${user.section || 'Section pending'}` : user?.role === 'student' ? 'Add registration number & section' : 'Faculty / Admin workspace'}</div>
             </div>
           </div>
 

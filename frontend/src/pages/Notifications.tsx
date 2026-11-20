@@ -111,7 +111,7 @@ export default function Notifications() {
   const emailStatusLabel = {
     checking: 'Checking email delivery',
     configured: 'Email delivery configured',
-    missing: 'SMTP setup required',
+    missing: 'Resend setup required',
     unavailable: 'Email status unavailable',
   }[emailStatus]
 
@@ -140,7 +140,7 @@ export default function Notifications() {
         <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2">
           <div>
             <h2 className="font-semibold flex items-center gap-2"><Mail size={17} className="text-primary" /> Email Reminders</h2>
-            <p className="text-xs text-dark-muted mt-1">Plan reminders for classes, deadlines, exams and anything else you need to remember.</p>
+            <p className="text-xs text-dark-muted mt-1">Plan reminders for classes, deadlines, exams and anything else you need to remember. StudentOS sends email through Resend HTTPS, not SMTP.</p>
           </div>
           <div className="flex items-center gap-2">
             <span className={`text-xs rounded-full px-3 py-1 ${

@@ -46,6 +46,7 @@ export default function Coding() {
   const [syncError, setSyncError] = useState('')
   const [syncMessage, setSyncMessage] = useState('')
   const [lastSynced, setLastSynced] = useState<string | null>(null)
+  const [collegeLeaderboard, setCollegeLeaderboard] = useState<any[]>([])
 
   const loadAnalytics = useCallback(async () => {
     const response = await api.get('/coding/analytics')
@@ -82,9 +83,10 @@ export default function Coding() {
     let active = true
 
     const loadPage = async () => {
-      const [profileResult, topicsResult] = await Promise.allSettled([
+      const [profileResult, topicsResult, leaderboardResult] = await Promise.allSettled([
         api.get('/coding/profile'),
         api.get('/coding/dsa-progress'),
+        api.get('/campus/leaderboard'),
       ])
 
       if (!active) return
@@ -105,6 +107,9 @@ export default function Coding() {
 
       if (active && topicsResult.status === 'fulfilled' && Array.isArray(topicsResult.value.data)) {
         setDsaTopics(topicsResult.value.data)
+      }
+      if (active && leaderboardResult.status === 'fulfilled' && Array.isArray(leaderboardResult.value.data?.students)) {
+        setCollegeLeaderboard(leaderboardResult.value.data.students)
       }
     }
 
@@ -174,6 +179,35 @@ export default function Coding() {
           <span>{syncMessage}</span>
         </div>
       )}
+
+      <section className="glass rounded-2xl p-5 border border-dark-border space-y-3">
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <h2 className="font-semibold flex items-center gap-2"><Trophy size={17} className="text-amber-400" /> College Coding Leaderboard</h2>
+            <p className="text-xs text-dark-muted mt-1">All registered students, ranked by verified LeetCode solved questions.</p>
+          </div>
+          <span className="text-xs text-dark-muted">{collegeLeaderboard.length} students</span>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead className="text-left text-dark-muted"><tr><th className="p-2">Rank</th><th className="p-2">Student</th><th className="p-2">Section</th><th className="p-2 text-right">Solved</th><th className="p-2 text-right">Easy</th><th className="p-2 text-right">Medium</th><th className="p-2 text-right">Hard</th></tr></thead>
+            <tbody>
+              {collegeLeaderboard.slice(0, 50).map((student: any, index: number) => (
+                <tr key={student.student_id ?? index} className="border-t border-dark-border/70">
+                  <td className="p-2 font-semibold">{student.rank ?? index + 1}</td>
+                  <td className="p-2">{student.name}</td>
+                  <td className="p-2">{student.section || '—'}</td>
+                  <td className="p-2 text-right font-bold">{student.total_solved ?? 0}</td>
+                  <td className="p-2 text-right">{student.easy_solved ?? 0}</td>
+                  <td className="p-2 text-right">{student.medium_solved ?? 0}</td>
+                  <td className="p-2 text-right">{student.hard_solved ?? 0}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+        {collegeLeaderboard.length === 0 && <p className="text-xs text-dark-muted py-4 text-center">No student profiles yet. Connect LeetCode and sync to appear in the rankings.</p>}
+      </section>
 
       <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
         {statCards.map(({ icon: Icon, label, value, color }) => (

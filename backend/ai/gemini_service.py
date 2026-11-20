@@ -11,6 +11,10 @@ from backend.core.config import settings
 
 logger = logging.getLogger(__name__)
 GEMINI_REQUEST_TIMEOUT_SECONDS = 45.0
+GEMINI_MAX_CONCURRENT_REQUESTS = 5
+GEMINI_QUEUE_TIMEOUT_SECONDS = 20.0
+# Bound simultaneous provider calls per worker without sharing student request state.
+_gemini_semaphore = asyncio.Semaphore(GEMINI_MAX_CONCURRENT_REQUESTS)
 
 
 def gemini_is_configured() -> bool:
@@ -46,15 +50,26 @@ async def _generate_text(
         if settings.GEMINI_MODEL.startswith("gemini-3"):
             config["thinking_config"] = types.ThinkingConfig(thinking_level=thinking_level)
 
-        async with genai.Client(api_key=settings.GEMINI_API_KEY).aio as client:
-            response = await asyncio.wait_for(
-                client.models.generate_content(
-                    model=settings.GEMINI_MODEL,
-                    contents=prompt,
-                    config=config,
-                ),
-                timeout=GEMINI_REQUEST_TIMEOUT_SECONDS,
-            )
+        try:
+            await asyncio.wait_for(_gemini_semaphore.acquire(), timeout=GEMINI_QUEUE_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="StudentOS AI is busy serving other students. Please retry in a few seconds.",
+                headers={"Retry-After": "10"},
+            ) from exc
+        try:
+            async with genai.Client(api_key=settings.GEMINI_API_KEY).aio as client:
+                response = await asyncio.wait_for(
+                    client.models.generate_content(
+                        model=settings.GEMINI_MODEL,
+                        contents=prompt,
+                        config=config,
+                    ),
+                    timeout=GEMINI_REQUEST_TIMEOUT_SECONDS,
+                )
+        finally:
+            _gemini_semaphore.release()
 
         output = (response.text or "").strip()
         if not output:

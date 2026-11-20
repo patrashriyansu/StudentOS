@@ -23,6 +23,7 @@ import Productivity from './pages/Productivity'
 import Expenses from './pages/Expenses'
 import Notifications from './pages/Notifications'
 import Projects from './pages/Projects'
+import Campus from './pages/Campus'
 
 function RootRoute() {
   const { isAuthenticated, initialized } = useAuth()
@@ -90,6 +91,7 @@ export default function App() {
         <Route path="expenses" element={<Expenses />} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="projects" element={<Projects />} />
+        <Route path="campus" element={<Campus />} />
       </Route>
     </Routes>
   )

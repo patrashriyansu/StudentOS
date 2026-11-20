@@ -12,7 +12,6 @@ const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const roles = [
   { value: 'student', label: 'Student', desc: 'Pursuing a degree', icon: BookOpen },
-  { value: 'faculty', label: 'Faculty', desc: 'Teaching staff', icon: GraduationCap },
   { value: 'recruiter', label: 'Recruiter', desc: 'Hiring talent', icon: Briefcase },
   { value: 'mentor', label: 'Mentor', desc: 'Guiding students', icon: ShieldCheck },
 ]
@@ -35,6 +34,8 @@ function getPasswordStrength(pw: string): { score: number; label: string; color:
 export default function Register() {
   const [name, setName] = useState('')
   const [email, setEmail] = useState('')
+  const [registrationNumber, setRegistrationNumber] = useState('')
+  const [section, setSection] = useState('')
   const [password, setPassword] = useState('')
   const [confirmPassword, setConfirmPassword] = useState('')
   const [role, setRole] = useState('student')
@@ -54,6 +55,8 @@ export default function Register() {
   const validate = () => {
     const errs: Record<string, string> = {}
     if (!name.trim()) errs.name = 'Full name is required.'
+    if (role === 'student' && !registrationNumber.trim()) errs.registrationNumber = 'Registration number is required.'
+    if (role === 'student' && !section.trim()) errs.section = 'Section is required.'
     const trimmedEmail = email.trim()
     if (!trimmedEmail) errs.email = 'Email is required.'
     else if (!emailPattern.test(trimmedEmail)) errs.email = 'Enter a valid email address.'
@@ -75,7 +78,7 @@ export default function Register() {
     if (!validate()) return
     const trimmedEmail = email.trim()
     const trimmedName = name.trim()
-    const result = await dispatch(registerUser({ email: trimmedEmail, password, name: trimmedName, role }))
+    const result = await dispatch(registerUser({ email: trimmedEmail, password, name: trimmedName, role, registration_number: role === 'student' ? registrationNumber.trim().toUpperCase() : undefined, section: role === 'student' ? section.trim().toUpperCase() : undefined }))
     if (registerUser.fulfilled.match(result)) {
       navigate('/dashboard', { replace: true })
     } else {
@@ -216,6 +219,21 @@ export default function Register() {
               </div>
               {fieldErrors.email && <p className="text-xs text-red-400 mt-1 flex items-center gap-1"><AlertCircle size={11} />{fieldErrors.email}</p>}
             </div>
+
+            {role === 'student' && (
+              <>
+                <div>
+                  <label htmlFor="reg-registration-number" className="text-xs text-dark-muted mb-1.5 block font-medium">College Registration Number</label>
+                  <input id="reg-registration-number" value={registrationNumber} onChange={(e) => { setRegistrationNumber(e.target.value); clearFieldError('registrationNumber') }} disabled={loading} required className={`w-full bg-dark-lighter border rounded-xl py-2.5 px-4 text-white text-sm ${fieldErrors.registrationNumber ? 'border-red-500/60' : 'border-dark-border'}`} placeholder="Enter your official registration number" />
+                  {fieldErrors.registrationNumber && <p className="text-xs text-red-400 mt-1">{fieldErrors.registrationNumber}</p>}
+                </div>
+                <div>
+                  <label htmlFor="reg-section" className="text-xs text-dark-muted mb-1.5 block font-medium">Section</label>
+                  <input id="reg-section" value={section} onChange={(e) => { setSection(e.target.value); clearFieldError('section') }} disabled={loading} required className={`w-full bg-dark-lighter border rounded-xl py-2.5 px-4 text-white text-sm ${fieldErrors.section ? 'border-red-500/60' : 'border-dark-border'}`} placeholder="Example: CSE-A" />
+                  {fieldErrors.section && <p className="text-xs text-red-400 mt-1">{fieldErrors.section}</p>}
+                </div>
+              </>
+            )}
 
             {/* Password */}
             <div>
