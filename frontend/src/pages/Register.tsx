@@ -12,7 +12,6 @@ const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
 
 const roles = [
   { value: 'student', label: 'Student', desc: 'Pursuing a degree', icon: BookOpen },
-  { value: 'faculty', label: 'Faculty', desc: 'Teaching staff', icon: GraduationCap },
   { value: 'recruiter', label: 'Recruiter', desc: 'Hiring talent', icon: Briefcase },
   { value: 'mentor', label: 'Mentor', desc: 'Guiding students', icon: ShieldCheck },
 ]
