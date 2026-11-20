@@ -1,5 +1,5 @@
 export interface User {
-  id: number; email: string; name: string; role: string; avatar?: string; xp_points: number; level: number; streak_days: number; created_at: string;
+  id: number; email: string; name: string; role: string; avatar?: string; registration_number?: string | null; section?: string | null; xp_points: number; level: number; streak_days: number; created_at: string;
 }
 export interface AuthState { user: User | null; token: string | null; refreshToken: string | null; isAuthenticated: boolean; loading: boolean; initialized: boolean; }
 export interface Subject { id: number; name: string; code?: string; faculty?: string; total_classes: number; attended_classes: number; credits: number; semester?: number; attendance: number; }
