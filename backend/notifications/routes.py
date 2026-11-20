@@ -41,8 +41,11 @@ async def get_reminder_status(current_user: User = Depends(get_current_user), db
     missing_settings = missing_email_settings()
     return {
         "email_configured": not missing_settings,
+        "provider": "Resend",
+        "delivery_method": "HTTPS API",
         "missing_settings": missing_settings,
         "pending_count": result.scalar() or 0,
+        "note": "Render Free may pause an idle web service; reminders are processed while the backend worker is running.",
     }
 
 
