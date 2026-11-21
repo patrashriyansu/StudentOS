@@ -37,25 +37,17 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL")
     @classmethod
     def normalize_database_url(cls, value: str) -> str:
-        """Normalize hosted PostgreSQL URLs for SQLAlchemy asyncpg connections.
+        """Use Psycopg 3 async for hosted PostgreSQL URLs.
 
-        Provider URLs commonly use libpq sslmode. SQLAlchemy forwards URL query
-        parameters to asyncpg.connect() as keyword arguments, where the supported
-        option is ssl. Leaving sslmode unchanged raises TypeError on DB startup.
+        Neon publishes libpq query parameters including sslmode and
+        channel_binding. Psycopg 3 supports these options; asyncpg.connect()
+        does not accept channel_binding and rejects libpq sslmode as a keyword.
+        SQLAlchemy selects Psycopg async automatically with create_async_engine().
         """
-        if value.startswith("postgres://"):
-            value = value.replace("postgres://", "postgresql+asyncpg://", 1)
-        elif value.startswith("postgresql://"):
-            value = value.replace("postgresql://", "postgresql+asyncpg://", 1)
-
         url = make_url(value)
-        if url.drivername == "postgresql+asyncpg" and "sslmode" in url.query:
-            query = dict(url.query)
-            sslmode = query.pop("sslmode")
-            query.setdefault("ssl", sslmode)
-            url = url.set(query=query)
+        if url.drivername in {"postgres", "postgresql", "postgresql+asyncpg"}:
+            url = url.set(drivername="postgresql+psycopg")
             value = url.render_as_string(hide_password=False)
-
         return value
     @model_validator(mode="after")
     def validate_production_configuration(self) -> "Settings":
