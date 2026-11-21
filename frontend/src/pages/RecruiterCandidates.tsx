@@ -115,7 +115,7 @@ export default function RecruiterCandidates() {
         <div className="glass rounded-2xl p-10 border border-dark-border text-center text-sm text-dark-muted">Loading shared candidate profiles…</div>
       ) : candidates.length === 0 ? (
         <div className="glass rounded-2xl p-10 border border-dark-border text-center">
-          <BriefcaseBusiness size={34} className="mx-auto text-dark-muted mb-3" />
+          <Briefcase size={34} className="mx-auto text-dark-muted mb-3" />
           <h2 className="font-semibold">{submittedQuery ? 'No matching candidates' : 'No shared profiles yet'}</h2>
           <p className="text-sm text-dark-muted mt-2 max-w-lg mx-auto">
             {submittedQuery
