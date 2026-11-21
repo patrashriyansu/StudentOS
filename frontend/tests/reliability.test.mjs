@@ -143,3 +143,38 @@ test('coding hub normalizes LeetCode profile URLs and syncs public solved stats'
   assert.match(backend, /total_problems_solved/)
   assert.match(backend, /leetcode\.com\/graphql/)
 })
+
+
+test('finance dashboard uses student-entered data instead of seeded sample amounts', async () => {
+  const finance = await read('../src/pages/Expenses.tsx')
+  const backend = await read('../../backend/finance/routes.py')
+  assert.match(finance, /\/finance\/expenses/)
+  assert.match(finance, /\/finance\/allowance/)
+  assert.match(finance, /\/finance\/budgets/)
+  assert.match(finance, /\/finance\/savings/)
+  assert.match(finance, /type="date"/)
+  assert.match(finance, /No expenses recorded for this month/)
+  assert.match(finance, /No savings goals yet/)
+  assert.doesNotMatch(finance, /\b4500\b|\b15000\b|\b18000\b|\b60000\b/)
+  assert.match(backend, /class MonthlyAllowance/)
+  assert.match(backend, /@router\.put\("\/allowance"\)/)
+})
+
+test('daily activity is counted on authenticated route visits using the India timezone', async () => {
+  const app = await read('../src/App.tsx')
+  const activity = await read('../../backend/users/activity.py')
+  assert.match(app, /api\.post\('\/users\/ping'\)/)
+  assert.match(app, /location\.pathname/)
+  assert.match(activity, /ZoneInfo\("Asia\/Kolkata"\)/)
+  assert.match(activity, /with_for_update\(\)/)
+})
+
+test('the Settings sidebar destination resolves to a real page with persistent theme controls', async () => {
+  const app = await read('../src/App.tsx')
+  const settings = await read('../src/pages/Settings.tsx')
+  const layout = await read('../src/components/layout/Layout.tsx')
+  assert.match(layout, /to: '\/settings'/)
+  assert.match(app, /<Route path="settings" element={<Settings \/>} \/>/)
+  assert.match(settings, /<ThemeControl \/>/)
+  assert.match(settings, /studentos-theme|saved in this browser/)
+})
