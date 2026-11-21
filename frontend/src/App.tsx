@@ -11,7 +11,9 @@ import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
 import AuthCallback from './pages/AuthCallback'
-import Dashboard from './pages/Dashboard'
+import RoleDashboard from './pages/RoleDashboard'
+import MentorStudents from './pages/MentorStudents'
+import RecruiterCandidates from './pages/RecruiterCandidates'
 import Academics from './pages/Academics'
 import Coding from './pages/Coding'
 import Placements from './pages/Placements'
@@ -58,6 +60,18 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   return <>{children}</>
 }
 
+function RoleRoute({ allowedRoles, children }: { allowedRoles: string[]; children: React.ReactNode }) {
+  const { user, initialized } = useAuth()
+  if (!initialized) return <div className="min-h-screen bg-dark flex items-center justify-center text-dark-muted">Checking permissions...</div>
+  if (!user || !allowedRoles.includes(user.role)) return <Navigate to="/dashboard" replace />
+  return <>{children}</>
+}
+
+const studentOnly = ['student']
+const mentorOnly = ['mentor']
+const recruiterOnly = ['recruiter']
+const campusRoles = ['student', 'faculty', 'admin']
+
 export default function App() {
   const dispatch = useDispatch<AppDispatch>()
   const location = useLocation()
@@ -91,22 +105,24 @@ export default function App() {
       <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/" element={<RootRoute />}>
-        <Route index element={<Dashboard />} />
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route path="academics" element={<Academics />} />
-        <Route path="coding" element={<Coding />} />
-        <Route path="placements" element={<Placements />} />
+        <Route index element={<RoleDashboard />} />
+        <Route path="dashboard" element={<RoleDashboard />} />
+        <Route path="academics" element={<RoleRoute allowedRoles={studentOnly}><Academics /></RoleRoute>} />
+        <Route path="coding" element={<RoleRoute allowedRoles={studentOnly}><Coding /></RoleRoute>} />
+        <Route path="placements" element={<RoleRoute allowedRoles={studentOnly}><Placements /></RoleRoute>} />
         <Route path="ai" element={<AIAssistant />} />
-        <Route path="wellness" element={<Wellness />} />
+        <Route path="wellness" element={<RoleRoute allowedRoles={studentOnly}><Wellness /></RoleRoute>} />
         <Route path="profile" element={<Profile />} />
-        <Route path="analytics" element={<Analytics />} />
-        <Route path="community" element={<Community />} />
-        <Route path="productivity" element={<Productivity />} />
-        <Route path="expenses" element={<Expenses />} />
+        <Route path="analytics" element={<RoleRoute allowedRoles={studentOnly}><Analytics /></RoleRoute>} />
+        <Route path="community" element={<RoleRoute allowedRoles={studentOnly}><Community /></RoleRoute>} />
+        <Route path="productivity" element={<RoleRoute allowedRoles={studentOnly}><Productivity /></RoleRoute>} />
+        <Route path="expenses" element={<RoleRoute allowedRoles={studentOnly}><Expenses /></RoleRoute>} />
         <Route path="notifications" element={<Notifications />} />
-        <Route path="projects" element={<Projects />} />
-        <Route path="campus" element={<Campus />} />
+        <Route path="projects" element={<RoleRoute allowedRoles={studentOnly}><Projects /></RoleRoute>} />
+        <Route path="campus" element={<RoleRoute allowedRoles={campusRoles}><Campus /></RoleRoute>} />
         <Route path="settings" element={<Settings />} />
+        <Route path="mentor/students" element={<RoleRoute allowedRoles={mentorOnly}><MentorStudents /></RoleRoute>} />
+        <Route path="recruiter/candidates" element={<RoleRoute allowedRoles={recruiterOnly}><RecruiterCandidates /></RoleRoute>} />
       </Route>
     </Routes>
   )
