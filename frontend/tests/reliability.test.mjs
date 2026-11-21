@@ -193,10 +193,10 @@ test('mentor and recruiter roles receive separate navigation and cannot open stu
   assert.match(app, /allowedRoles=\{mentorOnly\}/)
   assert.match(app, /allowedRoles=\{recruiterOnly\}/)
   assert.match(mentor, /campus\/mentor\/students/)
-  assert.doesNotMatch(mentor, /student\\.(cgpa|sgpa)|["'](cgpa|sgpa|placement|exam)["']/i)
+  assert.doesNotMatch(mentor, /student\.(cgpa|sgpa)|["'](cgpa|sgpa|placement|exam)["']/i)
   assert.match(recruiter, /campus\/recruiter\/candidates/)
   assert.match(recruiter, /No shared profiles yet/)
-  assert.doesNotMatch(recruiter, /candidate\\.(cgpa|sgpa|attendance)|["'](cgpa|sgpa|attendance|exam)["']/i)
+  assert.doesNotMatch(recruiter, /candidate\.(cgpa|sgpa|attendance)|["'](cgpa|sgpa|attendance|exam)["']/i)
 })
 
 test('academic onboarding and recruiter candidate data sharing are student-controlled', async () => {
