@@ -4,6 +4,7 @@ import { useDispatch } from 'react-redux'
 import { useAuth } from './hooks/useAuth'
 import { AppDispatch } from './store'
 import { initializeAuth, logout } from './store/slices/authSlice'
+import { api } from './services/api'
 import Layout from './components/layout/Layout'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
@@ -24,10 +25,20 @@ import Expenses from './pages/Expenses'
 import Notifications from './pages/Notifications'
 import Projects from './pages/Projects'
 import Campus from './pages/Campus'
+import Settings from './pages/Settings'
 
 function RootRoute() {
   const { isAuthenticated, initialized } = useAuth()
   const location = useLocation()
+
+  // Record an active day on every authenticated StudentOS visit, not only
+  // when the user opens the dashboard. The API is idempotent per IST date.
+  useEffect(() => {
+    if (!initialized || !isAuthenticated) return
+    api.post('/users/ping').catch(() => {
+      // A temporary activity endpoint failure must not block navigation.
+    })
+  }, [initialized, isAuthenticated, location.pathname])
 
   if (!initialized) {
     return <div className="min-h-screen bg-dark flex items-center justify-center text-dark-muted">Loading StudentOS...</div>
@@ -66,7 +77,10 @@ export default function App() {
     if (location.pathname === '/') {
       document.title = 'StudentOS | Your Student Academic, Coding & Career Workspace'
     } else if (noIndexPaths.includes(location.pathname)) {
-      document.title = `StudentOS | ${location.pathname === '/login' ? 'Sign in' : location.pathname === '/register' ? 'Create account' : location.pathname === '/forgot-password' ? 'Reset password' : 'Authentication'}`
+      const pageName = location.pathname === '/login' ? 'Sign in'
+        : location.pathname === '/register' ? 'Create account'
+          : location.pathname === '/forgot-password' ? 'Reset password' : 'Authentication'
+      document.title = 'StudentOS | ' + pageName
     }
   }, [location.pathname])
 
@@ -92,6 +106,7 @@ export default function App() {
         <Route path="notifications" element={<Notifications />} />
         <Route path="projects" element={<Projects />} />
         <Route path="campus" element={<Campus />} />
+        <Route path="settings" element={<Settings />} />
       </Route>
     </Routes>
   )
