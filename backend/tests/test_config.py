@@ -28,4 +28,4 @@ def test_production_normalizes_postgres_database_url() -> None:
         DATABASE_URL="postgresql://student:secret@localhost/studentos",
         SECRET_KEY="production-secret-key-for-tests-only-123456",
     )
-    assert config.DATABASE_URL.startswith("postgresql+asyncpg://")
+    assert config.DATABASE_URL.startswith("postgresql+psycopg://")
