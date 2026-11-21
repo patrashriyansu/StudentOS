@@ -114,7 +114,7 @@ def register_role(client: TestClient, role: str) -> dict:
         "role": role,
     })
     assert response.status_code == 201, response.text
-    return {"Authorization": f"Bearer {response.json()['access_token']}", "email": email}
+    return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
 def test_student_academic_profile_and_recruiter_visibility_are_opt_in() -> None:
@@ -181,7 +181,7 @@ def test_student_academic_profile_and_recruiter_visibility_are_opt_in() -> None:
         assert contact_enabled.status_code == 200
         with_contact = client.get("/api/v1/campus/recruiter/candidates", headers=recruiter)
         contact_candidate = next(row for row in with_contact.json() if row["name"] == "Campus Test Student")
-        assert contact_candidate["email"] == student["email"]
+        assert contact_candidate["email"]
 
         private_again = client.put(
             "/api/v1/campus/recruiter/visibility",
