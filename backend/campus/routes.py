@@ -388,7 +388,8 @@ async def grant_faculty_access(req: FacultyPromotion, current_user: User = Depen
 
 # ── Student academic profile and role-scoped visibility ────────────────────────
 class StudentAcademicProfileUpdate(BaseModel):
-    section: str | None = Field(default=None, max_length=80)
+    registration_number: str | None = Field(default=None, min_length=2, max_length=50)
+    section: str | None = Field(default=None, min_length=1, max_length=80)
     course: str | None = Field(default=None, max_length=100)
     branch: str | None = Field(default=None, max_length=100)
     admission_year: int | None = Field(default=None, ge=2000, le=2200)
@@ -429,6 +430,7 @@ async def get_academic_profile(
     ))
     identity = identity_result.scalar_one_or_none()
     data = {
+        "registration_number": identity.registration_number if identity else None,
         "section": identity.section if identity else None,
         "course": academic.course if academic else None,
         "branch": academic.branch if academic else None,
@@ -461,18 +463,43 @@ async def update_academic_profile(
         db.add(academic)
 
     values = req.model_dump(exclude_unset=True)
+    registration_number = values.pop("registration_number", None)
     section = values.pop("section", None)
     identity_result = await db.execute(select(StudentIdentity).where(
         StudentIdentity.user_id == current_user.id
     ))
     identity = identity_result.scalar_one_or_none()
+
+    if registration_number is not None:
+        registration_number = registration_number.strip().upper()
+        duplicate = await db.execute(select(StudentIdentity).where(
+            StudentIdentity.registration_number == registration_number
+        ))
+        existing_identity = duplicate.scalar_one_or_none()
+        if existing_identity and existing_identity.user_id != current_user.id:
+            raise HTTPException(status_code=409, detail="That registration number is already in use.")
     if section is not None:
-        if identity is None:
+        section = section.strip().upper()
+        if not section:
+            raise HTTPException(status_code=422, detail="Section cannot be blank.")
+
+    if identity is None:
+        if not registration_number or not section:
             raise HTTPException(
                 status_code=422,
-                detail="Add your registration number and section in the student identity form first.",
+                detail="Enter both your registration number and section to complete your student identity.",
             )
-        identity.section = section.strip().upper()
+        identity = StudentIdentity(
+            user_id=current_user.id,
+            registration_number=registration_number,
+            section=section,
+        )
+        db.add(identity)
+    else:
+        if registration_number is not None:
+            identity.registration_number = registration_number
+        if section is not None:
+            identity.section = section
 
     for field, value in values.items():
         if value is not None:
