@@ -502,8 +502,7 @@ async def update_academic_profile(
             identity.section = section
 
     for field, value in values.items():
-        if value is not None:
-            setattr(academic, field, value.strip() if isinstance(value, str) else value)
+        setattr(academic, field, value.strip() if isinstance(value, str) else value)
 
     if academic.admission_year and academic.passing_out_year:
         if academic.passing_out_year < academic.admission_year:
