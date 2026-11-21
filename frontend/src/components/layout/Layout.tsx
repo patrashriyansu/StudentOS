@@ -40,6 +40,22 @@ const secondNav = [
   { to: '/settings',       icon: Settings,  label: 'Settings'      },
 ]
 
+const mentorNav = [
+  { to: '/', icon: LayoutDashboard, label: 'Overview', exact: true },
+  { to: '/mentor/students', icon: Users, label: 'My Students' },
+]
+
+const recruiterNav = [
+  { to: '/', icon: LayoutDashboard, label: 'Overview', exact: true },
+  { to: '/recruiter/candidates', icon: Briefcase, label: 'Candidates' },
+]
+
+const roleSecondaryNav = [
+  { to: '/notifications', icon: Bell, label: 'Notifications' },
+  { to: '/profile', icon: User, label: 'Profile' },
+  { to: '/settings', icon: Settings, label: 'Settings' },
+]
+
 function NavItem({ to, icon: Icon, label, badge, end, collapsed }: {
   to: string; icon: any; label: string; badge?: number; end?: boolean; collapsed?: boolean
 }) {
@@ -87,6 +103,23 @@ export default function Layout() {
   const { user, logout } = useAuth()
   const navigate = useNavigate()
   const location = useLocation()
+  const currentMainNav = user?.role === 'mentor'
+    ? mentorNav
+    : user?.role === 'recruiter'
+      ? recruiterNav
+      : mainNav
+  const currentSecondNav = user?.role === 'mentor' || user?.role === 'recruiter'
+    ? roleSecondaryNav
+    : secondNav
+  const workspaceLabel = user?.role === 'student'
+    ? (user?.registration_number ? user.registration_number + ' · ' + (user?.section || 'Section pending') : 'Complete your student profile')
+    : user?.role === 'mentor'
+      ? 'Mentor workspace'
+      : user?.role === 'recruiter'
+        ? 'Recruiter workspace'
+        : user?.role === 'faculty' || user?.role === 'admin'
+          ? 'Faculty workspace'
+          : 'StudentOS workspace'
 
   useEffect(() => {
     setSidebarOpen(false)
@@ -174,14 +207,14 @@ export default function Layout() {
         </div>
 
         {/* Nav */}
-        <nav aria-label="StudentOS navigation" style={{ flex: 1, padding: sidebarCollapsed ? '10px 8px 0' : '10px 10px 0' }}>
-          {mainNav.map(({ to, icon, label, exact }) => (
+        <nav aria-label={user?.role === "mentor" ? "Mentor navigation" : user?.role === "recruiter" ? "Recruiter navigation" : "StudentOS navigation"} style={{ flex: 1, padding: sidebarCollapsed ? '10px 8px 0' : '10px 10px 0' }}>
+          {currentMainNav.map(({ to, icon, label, exact }) => (
             <NavItem key={label} to={to} icon={icon} label={label} end={exact || to === '/'} collapsed={sidebarCollapsed} />
           ))}
 
           <div style={{ height: 1, background: 'var(--app-border)', margin: '10px 4px' }} />
 
-          {secondNav.map(({ to, icon, label }) => (
+          {currentSecondNav.map(({ to, icon, label }) => (
             <NavItem key={label} to={to} icon={icon} label={label} badge={label === 'Notifications' ? unreadCount : undefined} collapsed={sidebarCollapsed} />
           ))}
         </nav>
@@ -291,7 +324,7 @@ export default function Layout() {
               <div className="app-user-name" style={{ fontSize: 13, fontWeight: 600, color: 'var(--app-text)', lineHeight: 1 }}>
                 {user?.name || 'Student'}
               </div>
-              <div style={{ fontSize: 11, color: 'var(--app-muted)', marginTop: 2 }}>{user?.registration_number ? `${user.registration_number} · ${user.section || 'Section pending'}` : user?.role === 'student' ? 'Add registration number & section' : 'Faculty / Admin workspace'}</div>
+              <div style={{ fontSize: 11, color: 'var(--app-muted)', marginTop: 2 }}>{workspaceLabel}</div>
             </div>
           </div>
 
