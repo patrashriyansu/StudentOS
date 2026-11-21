@@ -1,8 +1,8 @@
-from datetime import date, datetime, timezone, timedelta
+from datetime import date, datetime
 from typing import Optional
 from zoneinfo import ZoneInfo
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException
 from pydantic import BaseModel, Field
 from sqlalchemy import select, func, extract
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -14,10 +14,6 @@ from backend.finance.models import Expense, Budget, SavingsGoal, MonthlyAllowanc
 
 router = APIRouter()
 INDIA_TZ = ZoneInfo("Asia/Kolkata")
-CATEGORIES = ["food", "transport", "hostel", "education", "books", "entertainment",
-              "shopping", "subscriptions", "health", "other", "overall"]
-
-
 def current_india_date() -> date:
     return datetime.now(INDIA_TZ).date()
 
