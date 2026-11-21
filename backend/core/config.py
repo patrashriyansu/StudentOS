@@ -2,6 +2,7 @@ from pydantic import field_validator, model_validator
 from pydantic_settings import BaseSettings
 from functools import lru_cache
 from pathlib import Path
+from sqlalchemy.engine import make_url
 
 # Find .env file — check backend dir first, then project root
 _here = Path(__file__).parent.parent.parent  # project root
@@ -36,13 +37,26 @@ class Settings(BaseSettings):
     @field_validator("DATABASE_URL")
     @classmethod
     def normalize_database_url(cls, value: str) -> str:
-        """Use SQLAlchemy's async Postgres driver when hosts provide a plain URL."""
-        if value.startswith("postgres://"):
-            return value.replace("postgres://", "postgresql+asyncpg://", 1)
-        if value.startswith("postgresql://"):
-            value = value.replace("postgresql://", "postgresql+asyncpg://", 1)
-        return value
+        """Normalize hosted PostgreSQL URLs for SQLAlchemy asyncpg connections.
 
+        Provider URLs commonly use libpq sslmode. SQLAlchemy forwards URL query
+        parameters to asyncpg.connect() as keyword arguments, where the supported
+        option is ssl. Leaving sslmode unchanged raises TypeError on DB startup.
+        """
+        if value.startswith("postgres://"):
+            value = value.replace("postgres://", "postgresql+asyncpg://", 1)
+        elif value.startswith("postgresql://"):
+            value = value.replace("postgresql://", "postgresql+asyncpg://", 1)
+
+        url = make_url(value)
+        if url.drivername == "postgresql+asyncpg" and "sslmode" in url.query:
+            query = dict(url.query)
+            sslmode = query.pop("sslmode")
+            query.setdefault("ssl", sslmode)
+            url = url.set(query=query)
+            value = url.render_as_string(hide_password=False)
+
+        return value
     @model_validator(mode="after")
     def validate_production_configuration(self) -> "Settings":
         if self.ENVIRONMENT.lower() == "production":
