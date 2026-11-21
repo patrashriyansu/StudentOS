@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import Column, Date, DateTime, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, Column, Date, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from backend.core.database import Base
 
 
@@ -63,3 +63,41 @@ class NoticeRead(Base):
     notice_id = Column(Integer, ForeignKey("campus_notices.id", ondelete="CASCADE"), nullable=False, index=True)
     student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
     read_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+
+class StudentAcademicProfile(Base):
+    """Student-entered academic details kept separate from existing campus identity rows."""
+    __tablename__ = "student_academic_profiles"
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    course = Column(String(100), nullable=True)
+    branch = Column(String(100), nullable=True)
+    admission_year = Column(Integer, nullable=True)
+    passing_out_year = Column(Integer, nullable=True)
+    current_year = Column(Integer, nullable=True)
+    current_semester = Column(Integer, nullable=True)
+    cgpa = Column(Float, nullable=True)
+    sgpa = Column(Float, nullable=True)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class MentorStudentAssignment(Base):
+    """An administrator-approved link between an existing mentor and student account."""
+    __tablename__ = "mentor_student_assignments"
+    __table_args__ = (UniqueConstraint("mentor_id", "student_id", name="uq_mentor_student_assignment"),)
+    id = Column(Integer, primary_key=True, index=True)
+    mentor_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    assigned_by = Column(Integer, ForeignKey("users.id"), nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class RecruiterVisibility(Base):
+    """Student-controlled, opt-in visibility of a career profile to recruiter accounts."""
+    __tablename__ = "recruiter_visibility"
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    profile_visible = Column(Boolean, nullable=False, default=False)
+    contact_visible = Column(Boolean, nullable=False, default=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)

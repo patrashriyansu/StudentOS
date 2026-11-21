@@ -4,13 +4,16 @@ import { useDispatch } from 'react-redux'
 import { useAuth } from './hooks/useAuth'
 import { AppDispatch } from './store'
 import { initializeAuth, logout } from './store/slices/authSlice'
+import { api } from './services/api'
 import Layout from './components/layout/Layout'
 import Landing from './pages/Landing'
 import Login from './pages/Login'
 import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
 import AuthCallback from './pages/AuthCallback'
-import Dashboard from './pages/Dashboard'
+import RoleDashboard from './pages/RoleDashboard'
+import MentorStudents from './pages/MentorStudents'
+import RecruiterCandidates from './pages/RecruiterCandidates'
 import Academics from './pages/Academics'
 import Coding from './pages/Coding'
 import Placements from './pages/Placements'
@@ -24,10 +27,20 @@ import Expenses from './pages/Expenses'
 import Notifications from './pages/Notifications'
 import Projects from './pages/Projects'
 import Campus from './pages/Campus'
+import Settings from './pages/Settings'
 
 function RootRoute() {
   const { isAuthenticated, initialized } = useAuth()
   const location = useLocation()
+
+  // Record an active day on every authenticated StudentOS visit, not only
+  // when the user opens the dashboard. The API is idempotent per IST date.
+  useEffect(() => {
+    if (!initialized || !isAuthenticated) return
+    api.post('/users/ping').catch(() => {
+      // A temporary activity endpoint failure must not block navigation.
+    })
+  }, [initialized, isAuthenticated, location.pathname])
 
   if (!initialized) {
     return <div className="min-h-screen bg-dark flex items-center justify-center text-dark-muted">Loading StudentOS...</div>
@@ -46,6 +59,18 @@ function PublicRoute({ children }: { children: React.ReactNode }) {
   if (isAuthenticated) return <Navigate to="/dashboard" replace />
   return <>{children}</>
 }
+
+function RoleRoute({ allowedRoles, children }: { allowedRoles: string[]; children: React.ReactNode }) {
+  const { user, initialized } = useAuth()
+  if (!initialized) return <div className="min-h-screen bg-dark flex items-center justify-center text-dark-muted">Checking permissions...</div>
+  if (!user || !allowedRoles.includes(user.role)) return <Navigate to="/dashboard" replace />
+  return <>{children}</>
+}
+
+const studentOnly = ['student']
+const mentorOnly = ['mentor']
+const recruiterOnly = ['recruiter']
+const campusRoles = ['student', 'faculty', 'admin']
 
 export default function App() {
   const dispatch = useDispatch<AppDispatch>()
@@ -66,7 +91,10 @@ export default function App() {
     if (location.pathname === '/') {
       document.title = 'StudentOS | Your Student Academic, Coding & Career Workspace'
     } else if (noIndexPaths.includes(location.pathname)) {
-      document.title = `StudentOS | ${location.pathname === '/login' ? 'Sign in' : location.pathname === '/register' ? 'Create account' : location.pathname === '/forgot-password' ? 'Reset password' : 'Authentication'}`
+      const pageName = location.pathname === '/login' ? 'Sign in'
+        : location.pathname === '/register' ? 'Create account'
+          : location.pathname === '/forgot-password' ? 'Reset password' : 'Authentication'
+      document.title = 'StudentOS | ' + pageName
     }
   }, [location.pathname])
 
@@ -77,21 +105,24 @@ export default function App() {
       <Route path="/forgot-password" element={<PublicRoute><ForgotPassword /></PublicRoute>} />
       <Route path="/auth/callback" element={<AuthCallback />} />
       <Route path="/" element={<RootRoute />}>
-        <Route index element={<Dashboard />} />
-        <Route path="dashboard" element={<Dashboard />} />
-        <Route path="academics" element={<Academics />} />
-        <Route path="coding" element={<Coding />} />
-        <Route path="placements" element={<Placements />} />
+        <Route index element={<RoleDashboard />} />
+        <Route path="dashboard" element={<RoleDashboard />} />
+        <Route path="academics" element={<RoleRoute allowedRoles={studentOnly}><Academics /></RoleRoute>} />
+        <Route path="coding" element={<RoleRoute allowedRoles={studentOnly}><Coding /></RoleRoute>} />
+        <Route path="placements" element={<RoleRoute allowedRoles={studentOnly}><Placements /></RoleRoute>} />
         <Route path="ai" element={<AIAssistant />} />
-        <Route path="wellness" element={<Wellness />} />
+        <Route path="wellness" element={<RoleRoute allowedRoles={studentOnly}><Wellness /></RoleRoute>} />
         <Route path="profile" element={<Profile />} />
-        <Route path="analytics" element={<Analytics />} />
-        <Route path="community" element={<Community />} />
-        <Route path="productivity" element={<Productivity />} />
-        <Route path="expenses" element={<Expenses />} />
+        <Route path="analytics" element={<RoleRoute allowedRoles={studentOnly}><Analytics /></RoleRoute>} />
+        <Route path="community" element={<RoleRoute allowedRoles={studentOnly}><Community /></RoleRoute>} />
+        <Route path="productivity" element={<RoleRoute allowedRoles={studentOnly}><Productivity /></RoleRoute>} />
+        <Route path="expenses" element={<RoleRoute allowedRoles={studentOnly}><Expenses /></RoleRoute>} />
         <Route path="notifications" element={<Notifications />} />
-        <Route path="projects" element={<Projects />} />
-        <Route path="campus" element={<Campus />} />
+        <Route path="projects" element={<RoleRoute allowedRoles={studentOnly}><Projects /></RoleRoute>} />
+        <Route path="campus" element={<RoleRoute allowedRoles={campusRoles}><Campus /></RoleRoute>} />
+        <Route path="settings" element={<Settings />} />
+        <Route path="mentor/students" element={<RoleRoute allowedRoles={mentorOnly}><MentorStudents /></RoleRoute>} />
+        <Route path="recruiter/candidates" element={<RoleRoute allowedRoles={recruiterOnly}><RecruiterCandidates /></RoleRoute>} />
       </Route>
     </Routes>
   )

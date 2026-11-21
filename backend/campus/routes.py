@@ -8,9 +8,12 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from backend.core.database import get_db
 from backend.core.security import get_current_user
-from backend.users.models import User, Notification
+from backend.users.models import User, UserProfile, Notification
 from backend.coding.models import CodingProfile
-from .models import StudentIdentity, ClassSubject, ClassSession, ClassAttendance, Notice, NoticeRead
+from .models import (
+    StudentIdentity, ClassSubject, ClassSession, ClassAttendance, Notice, NoticeRead,
+    StudentAcademicProfile, MentorStudentAssignment, RecruiterVisibility,
+)
 
 router = APIRouter()
 
@@ -381,3 +384,303 @@ async def grant_faculty_access(req: FacultyPromotion, current_user: User = Depen
     target.role = "faculty"
     await db.commit()
     return {"message": "Faculty access granted", "email": target.email, "role": target.role}
+
+
+# ── Student academic profile and role-scoped visibility ────────────────────────
+class StudentAcademicProfileUpdate(BaseModel):
+    registration_number: str | None = Field(default=None, min_length=2, max_length=50)
+    section: str | None = Field(default=None, min_length=1, max_length=80)
+    course: str | None = Field(default=None, max_length=100)
+    branch: str | None = Field(default=None, max_length=100)
+    admission_year: int | None = Field(default=None, ge=2000, le=2200)
+    passing_out_year: int | None = Field(default=None, ge=2000, le=2200)
+    current_year: int | None = Field(default=None, ge=1, le=8)
+    current_semester: int | None = Field(default=None, ge=1, le=16)
+    cgpa: float | None = Field(default=None, ge=0, le=10)
+    sgpa: float | None = Field(default=None, ge=0, le=10)
+
+
+class MentorAssignmentCreate(BaseModel):
+    mentor_email: str = Field(min_length=5, max_length=255)
+    student_email: str = Field(min_length=5, max_length=255)
+
+
+class RecruiterVisibilityUpdate(BaseModel):
+    profile_visible: bool | None = None
+    contact_visible: bool | None = None
+
+
+def require_role(user: User, role: str) -> None:
+    if user.role != role:
+        raise HTTPException(status_code=403, detail=f"{role.capitalize()} access required.")
+
+
+@router.get("/academic-profile")
+async def get_academic_profile(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, "student")
+    result = await db.execute(select(StudentAcademicProfile).where(
+        StudentAcademicProfile.student_id == current_user.id
+    ))
+    academic = result.scalar_one_or_none()
+    identity_result = await db.execute(select(StudentIdentity).where(
+        StudentIdentity.user_id == current_user.id
+    ))
+    identity = identity_result.scalar_one_or_none()
+    data = {
+        "registration_number": identity.registration_number if identity else None,
+        "section": identity.section if identity else None,
+        "course": academic.course if academic else None,
+        "branch": academic.branch if academic else None,
+        "admission_year": academic.admission_year if academic else None,
+        "passing_out_year": academic.passing_out_year if academic else None,
+        "current_year": academic.current_year if academic else None,
+        "current_semester": academic.current_semester if academic else None,
+        "cgpa": academic.cgpa if academic else None,
+        "sgpa": academic.sgpa if academic else None,
+    }
+    data["complete"] = all(data.get(field) not in (None, "") for field in (
+        "section", "course", "branch", "passing_out_year", "current_year", "current_semester"
+    ))
+    return data
+
+
+@router.put("/academic-profile")
+async def update_academic_profile(
+    req: StudentAcademicProfileUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, "student")
+    result = await db.execute(select(StudentAcademicProfile).where(
+        StudentAcademicProfile.student_id == current_user.id
+    ))
+    academic = result.scalar_one_or_none()
+    if academic is None:
+        academic = StudentAcademicProfile(student_id=current_user.id)
+        db.add(academic)
+
+    values = req.model_dump(exclude_unset=True)
+    registration_number = values.pop("registration_number", None)
+    section = values.pop("section", None)
+    identity_result = await db.execute(select(StudentIdentity).where(
+        StudentIdentity.user_id == current_user.id
+    ))
+    identity = identity_result.scalar_one_or_none()
+
+    if registration_number is not None:
+        registration_number = registration_number.strip().upper()
+        duplicate = await db.execute(select(StudentIdentity).where(
+            StudentIdentity.registration_number == registration_number
+        ))
+        existing_identity = duplicate.scalar_one_or_none()
+        if existing_identity and existing_identity.user_id != current_user.id:
+            raise HTTPException(status_code=409, detail="That registration number is already in use.")
+    if section is not None:
+        section = section.strip().upper()
+        if not section:
+            raise HTTPException(status_code=422, detail="Section cannot be blank.")
+
+    if identity is None:
+        if not registration_number or not section:
+            raise HTTPException(
+                status_code=422,
+                detail="Enter both your registration number and section to complete your student identity.",
+            )
+        identity = StudentIdentity(
+            user_id=current_user.id,
+            registration_number=registration_number,
+            section=section,
+        )
+        db.add(identity)
+    else:
+        if registration_number is not None:
+            identity.registration_number = registration_number
+        if section is not None:
+            identity.section = section
+
+    for field, value in values.items():
+        setattr(academic, field, value.strip() if isinstance(value, str) else value)
+
+    if academic.admission_year and academic.passing_out_year:
+        if academic.passing_out_year < academic.admission_year:
+            raise HTTPException(status_code=422, detail="Passing-out year cannot be earlier than admission year.")
+
+    await db.commit()
+    return {"message": "Academic profile saved", "complete": bool(
+        identity and identity.section and academic.course and academic.branch
+        and academic.passing_out_year and academic.current_year and academic.current_semester
+    )}
+
+
+@router.post("/mentor/assignments", status_code=201)
+async def create_mentor_assignment(
+    req: MentorAssignmentCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role != "admin":
+        raise HTTPException(status_code=403, detail="Only an administrator can assign mentor-student relationships.")
+
+    mentor_result = await db.execute(select(User).where(
+        User.email == req.mentor_email.strip().lower(), User.role == "mentor"
+    ))
+    mentor = mentor_result.scalar_one_or_none()
+    student_result = await db.execute(select(User).where(
+        User.email == req.student_email.strip().lower(), User.role == "student"
+    ))
+    student = student_result.scalar_one_or_none()
+    if mentor is None or student is None:
+        raise HTTPException(status_code=404, detail="Check that the mentor and student accounts exist with the correct roles.")
+
+    existing = await db.execute(select(MentorStudentAssignment).where(
+        MentorStudentAssignment.mentor_id == mentor.id,
+        MentorStudentAssignment.student_id == student.id,
+    ))
+    if existing.scalar_one_or_none():
+        return {"message": "This student is already assigned to the mentor."}
+
+    db.add(MentorStudentAssignment(
+        mentor_id=mentor.id,
+        student_id=student.id,
+        assigned_by=current_user.id,
+    ))
+    await db.commit()
+    return {"message": "Mentor assignment created"}
+
+
+@router.get("/mentor/students")
+async def get_mentor_students(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, "mentor")
+    statement = (
+        select(User, StudentIdentity, StudentAcademicProfile, UserProfile)
+        .join(MentorStudentAssignment, MentorStudentAssignment.student_id == User.id)
+        .outerjoin(StudentIdentity, StudentIdentity.user_id == User.id)
+        .outerjoin(StudentAcademicProfile, StudentAcademicProfile.student_id == User.id)
+        .outerjoin(UserProfile, UserProfile.user_id == User.id)
+        .where(
+            MentorStudentAssignment.mentor_id == current_user.id,
+            User.role == "student",
+            User.is_active.is_(True),
+        )
+        .order_by(User.name.asc())
+    )
+    rows = (await db.execute(statement)).all()
+    # CGPA/SGPA, placements, exams and private study data are intentionally not
+    # included in the mentor response.
+    return [{
+        "student_id": student.id,
+        "name": student.name,
+        "section": identity.section if identity else None,
+        "course": academic.course if academic else None,
+        "branch": academic.branch if academic else None,
+        "college": profile.college if profile else None,
+        "passing_out_year": academic.passing_out_year if academic else None,
+        "current_year": academic.current_year if academic else None,
+        "current_semester": academic.current_semester if academic else None,
+    } for student, identity, academic, profile in rows]
+
+
+@router.get("/recruiter/visibility")
+async def get_recruiter_visibility(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, "student")
+    result = await db.execute(select(RecruiterVisibility).where(
+        RecruiterVisibility.user_id == current_user.id
+    ))
+    visibility = result.scalar_one_or_none()
+    return {
+        "profile_visible": visibility.profile_visible if visibility else False,
+        "contact_visible": visibility.contact_visible if visibility else False,
+    }
+
+
+@router.put("/recruiter/visibility")
+async def update_recruiter_visibility(
+    req: RecruiterVisibilityUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, "student")
+    result = await db.execute(select(RecruiterVisibility).where(
+        RecruiterVisibility.user_id == current_user.id
+    ))
+    visibility = result.scalar_one_or_none()
+    if visibility is None:
+        visibility = RecruiterVisibility(user_id=current_user.id)
+        db.add(visibility)
+
+    if req.profile_visible is not None:
+        visibility.profile_visible = req.profile_visible
+    if req.contact_visible is not None:
+        visibility.contact_visible = req.contact_visible
+
+    if not visibility.profile_visible:
+        visibility.contact_visible = False
+
+    await db.commit()
+    return {
+        "profile_visible": visibility.profile_visible,
+        "contact_visible": visibility.contact_visible,
+        "message": "Recruiter visibility preferences saved",
+    }
+
+
+@router.get("/recruiter/candidates")
+async def get_recruiter_candidates(
+    q: str | None = Query(default=None, max_length=120),
+    limit: int = Query(default=50, ge=1, le=100),
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, "recruiter")
+    statement = (
+        select(User, UserProfile, StudentAcademicProfile, CodingProfile, RecruiterVisibility)
+        .join(RecruiterVisibility, RecruiterVisibility.user_id == User.id)
+        .outerjoin(UserProfile, UserProfile.user_id == User.id)
+        .outerjoin(StudentAcademicProfile, StudentAcademicProfile.student_id == User.id)
+        .outerjoin(CodingProfile, CodingProfile.user_id == User.id)
+        .where(
+            User.role == "student",
+            User.is_active.is_(True),
+            RecruiterVisibility.profile_visible.is_(True),
+        )
+    )
+    if q and q.strip():
+        term = "%" + q.strip() + "%"
+        statement = statement.where(or_(
+            User.name.ilike(term),
+            UserProfile.department.ilike(term),
+            UserProfile.college.ilike(term),
+            StudentAcademicProfile.branch.ilike(term),
+        ))
+    rows = (await db.execute(statement.order_by(User.name.asc()).limit(limit))).all()
+
+    # Candidate search returns only student-approved career data. No CGPA,
+    # SGPA, semester marks, attendance, expenses, study data or mentor notes.
+    return [{
+        "student_id": student.id,
+        "name": student.name,
+        "email": student.email if visibility.contact_visible else None,
+        "college": profile.college if profile else None,
+        "course": academic.course if academic else None,
+        "branch": academic.branch if academic else (profile.department if profile else None),
+        "passing_out_year": academic.passing_out_year if academic else None,
+        "skills": profile.skills or [] if profile else [],
+        "github_url": profile.github_url if profile else None,
+        "linkedin_url": profile.linkedin_url if profile else None,
+        "portfolio_url": profile.portfolio_url if profile else None,
+        "resume_url": profile.resume_url if profile else None,
+        "leetcode_username": coding.leetcode_username if coding else None,
+        "total_problems_solved": coding.total_problems_solved if coding else 0,
+        "easy_solved": coding.easy_solved if coding else 0,
+        "medium_solved": coding.medium_solved if coding else 0,
+        "hard_solved": coding.hard_solved if coding else 0,
+    } for student, profile, academic, coding, visibility in rows]
