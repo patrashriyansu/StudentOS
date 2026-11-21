@@ -11,40 +11,50 @@ def normalize_database_url(value: str) -> str:
     ).DATABASE_URL
 
 
-def test_libpq_postgres_url_translates_sslmode_for_asyncpg() -> None:
+def test_neon_url_uses_psycopg_async_and_preserves_tls_channel_binding() -> None:
     normalized = normalize_database_url(
         "postgresql://student:secret@db.example.test:5432/studentos"
-        "?sslmode=require&application_name=StudentOS"
+        "?sslmode=require&channel_binding=require&application_name=StudentOS"
     )
     url = make_url(normalized)
 
-    assert url.drivername == "postgresql+asyncpg"
+    assert url.drivername == "postgresql+psycopg"
     assert url.password == "secret"
-    assert url.query["ssl"] == "require"
-    assert "sslmode" not in url.query
+    assert url.query["sslmode"] == "require"
+    assert url.query["channel_binding"] == "require"
     assert url.query["application_name"] == "StudentOS"
 
 
-def test_legacy_postgres_scheme_also_translates_sslmode() -> None:
+def test_legacy_postgres_scheme_uses_psycopg_async() -> None:
     normalized = normalize_database_url(
-        "postgres://student:secret@db.example.test/studentos?sslmode=verify-full"
+        "postgres://student:secret@db.example.test/studentos"
+        "?sslmode=verify-full&channel_binding=require"
     )
     url = make_url(normalized)
 
-    assert url.drivername == "postgresql+asyncpg"
-    assert url.query["ssl"] == "verify-full"
-    assert "sslmode" not in url.query
+    assert url.drivername == "postgresql+psycopg"
+    assert url.query["sslmode"] == "verify-full"
+    assert url.query["channel_binding"] == "require"
 
 
-def test_explicit_asyncpg_ssl_setting_takes_precedence() -> None:
+def test_previous_asyncpg_url_migrates_to_psycopg() -> None:
     normalized = normalize_database_url(
         "postgresql+asyncpg://student:secret@db.example.test/studentos"
-        "?ssl=verify-full&sslmode=require"
+        "?sslmode=require&channel_binding=require"
     )
     url = make_url(normalized)
 
-    assert url.query["ssl"] == "verify-full"
-    assert "sslmode" not in url.query
+    assert url.drivername == "postgresql+psycopg"
+    assert url.query["sslmode"] == "require"
+    assert url.query["channel_binding"] == "require"
+
+
+def test_existing_psycopg_url_is_preserved() -> None:
+    value = (
+        "postgresql+psycopg://student:secret@db.example.test/studentos"
+        "?sslmode=require&channel_binding=require"
+    )
+    assert normalize_database_url(value) == value
 
 
 def test_non_postgres_url_is_unchanged() -> None:
