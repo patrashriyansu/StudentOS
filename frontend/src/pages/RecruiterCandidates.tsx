@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import {
-  AlertCircle, BriefcaseBusiness, Code2, ExternalLink, FileText,
+  AlertCircle, Briefcase, Code2, ExternalLink, FileText,
   Github, Globe, Linkedin, Search, Users,
 } from 'lucide-react'
 import { api } from '../services/api'
