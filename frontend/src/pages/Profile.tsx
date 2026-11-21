@@ -7,6 +7,7 @@ import { useState, useEffect, type FormEvent } from 'react'
 import { api } from '../services/api'
 
 type AcademicProfile = {
+  registration_number: string
   section: string
   course: string
   branch: string
@@ -19,6 +20,7 @@ type AcademicProfile = {
 }
 
 const emptyAcademicProfile: AcademicProfile = {
+  registration_number: '',
   section: '',
   course: '',
   branch: '',
@@ -68,6 +70,7 @@ export default function Profile() {
         .then((res) => {
           const data = res.data || {}
           setAcademicData({
+            registration_number: data.registration_number || '',
             section: data.section || '',
             course: data.course || '',
             branch: data.branch || '',
@@ -115,6 +118,7 @@ export default function Profile() {
     setFeedback('')
     try {
       await api.put('/campus/academic-profile', {
+        registration_number: academicData.registration_number,
         section: academicData.section,
         course: academicData.course,
         branch: academicData.branch,
@@ -253,8 +257,11 @@ export default function Profile() {
                 <label className="text-xs text-dark-muted">Branch / Department
                   <input value={academicData.branch} onChange={(e) => setAcademicData({ ...academicData, branch: e.target.value })} placeholder="e.g. Computer Science" className="mt-1 w-full bg-dark-lighter border border-dark-border rounded-xl p-2.5 text-sm text-white" />
                 </label>
+                <label className="text-xs text-dark-muted">Registration number
+                  <input required value={academicData.registration_number} onChange={(e) => setAcademicData({ ...academicData, registration_number: e.target.value })} placeholder="Your college registration number" className="mt-1 w-full bg-dark-lighter border border-dark-border rounded-xl p-2.5 text-sm text-white" />
+                </label>
                 <label className="text-xs text-dark-muted">Section
-                  <input value={academicData.section} onChange={(e) => setAcademicData({ ...academicData, section: e.target.value })} placeholder="e.g. CSE-A" className="mt-1 w-full bg-dark-lighter border border-dark-border rounded-xl p-2.5 text-sm text-white" />
+                  <input required value={academicData.section} onChange={(e) => setAcademicData({ ...academicData, section: e.target.value })} placeholder="e.g. CSE-A" className="mt-1 w-full bg-dark-lighter border border-dark-border rounded-xl p-2.5 text-sm text-white" />
                 </label>
                 <label className="text-xs text-dark-muted">Admission year
                   <input type="number" min="2000" max="2200" value={academicData.admission_year} onChange={(e) => setAcademicData({ ...academicData, admission_year: e.target.value })} placeholder="e.g. 2024" className="mt-1 w-full bg-dark-lighter border border-dark-border rounded-xl p-2.5 text-sm text-white" />
