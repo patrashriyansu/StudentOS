@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   TrendingDown, Wallet, PiggyBank, Plus, Trash2, X, CalendarDays,
-  Target, IndianRupee, AlertCircle, PencilLine, Check,
+  Target, IndianRupee, AlertCircle, Check,
 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { api } from '../services/api'
@@ -104,28 +104,40 @@ export default function Expenses() {
   const loadData = async () => {
     setError('')
     try {
-      const [expenseResult, summaryResult, savingsResult, budgetResult, allowanceResult] = await Promise.all([
+      const results = await Promise.allSettled([
         api.get('/finance/expenses'),
         api.get('/finance/expenses/summary'),
         api.get('/finance/savings'),
         api.get('/finance/budgets'),
         api.get('/finance/allowance'),
       ])
-      const expenseItems = Array.isArray(expenseResult.data) ? expenseResult.data : []
-      const savingItems = Array.isArray(savingsResult.data) ? savingsResult.data : []
-      const budgetItems = Array.isArray(budgetResult.data) ? budgetResult.data : []
+      const [expenseResult, summaryResult, savingsResult, budgetResult, allowanceResult] = results
+      if (expenseResult.status === 'rejected' || summaryResult.status === 'rejected') {
+        throw new Error('Could not load your expense records.')
+      }
+
+      const expenseItems = Array.isArray(expenseResult.value.data) ? expenseResult.value.data : []
+      const savingItems = savingsResult.status === 'fulfilled' && Array.isArray(savingsResult.value.data)
+        ? savingsResult.value.data : []
+      const budgetItems = budgetResult.status === 'fulfilled' && Array.isArray(budgetResult.value.data)
+        ? budgetResult.value.data : []
       setExpenses(expenseItems)
-      setSummary(summaryResult.data || null)
+      setSummary(summaryResult.value.data || null)
       setSavings(savingItems)
       setBudgets(budgetItems)
-      const allowanceAmount = allowanceResult.data?.configured
-        ? Number(allowanceResult.data.amount)
+
+      const allowanceAmount = allowanceResult.status === 'fulfilled' && allowanceResult.value.data?.configured
+        ? Number(allowanceResult.value.data.amount)
         : null
       setAllowance(allowanceAmount)
       setAllowanceInput(allowanceAmount == null ? '' : String(allowanceAmount))
       setSavingAmounts(Object.fromEntries(savingItems.map((goal: SavingsGoal) => [
         goal.id, String(goal.current_amount || 0),
       ])))
+
+      if (allowanceResult.status === 'rejected' || savingsResult.status === 'rejected' || budgetResult.status === 'rejected') {
+        setError('Some finance settings could not be loaded. Your available expense records are still shown.')
+      }
     } catch (loadError: any) {
       setError(loadError?.response?.data?.detail || 'Could not load your finance records. Please refresh and try again.')
     } finally {
