@@ -36,7 +36,7 @@ services:
     ports:
       - "8000:8000"
     environment:
-      DATABASE_URL: postgresql+asyncpg://studentos:studentos123@postgres:5432/studentos
+      DATABASE_URL: postgresql+psycopg://studentos:studentos123@postgres:5432/studentos
       REDIS_URL: redis://redis:6379/0
       SECRET_KEY: ${SECRET_KEY:-studentos-production-secret-key-change-this}
       GEMINI_API_KEY: ${GEMINI_API_KEY:-}
