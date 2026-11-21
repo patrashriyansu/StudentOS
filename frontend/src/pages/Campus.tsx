@@ -42,6 +42,8 @@ export default function Campus() {
   const [noticeForm, setNoticeForm] = useState({ title: '', message: '', audience_type: 'all', section: '', priority: 'normal' })
   const [subjectForm, setSubjectForm] = useState({ name: '', code: '', section: '' })
   const [facultyEmail, setFacultyEmail] = useState('')
+  const [mentorEmail, setMentorEmail] = useState('')
+  const [mentorStudentEmail, setMentorStudentEmail] = useState('')
   const [sessionSubject, setSessionSubject] = useState('')
   const [sessionDate, setSessionDate] = useState(new Date().toISOString().slice(0, 10))
   const [sessionId, setSessionId] = useState<number | null>(null)
@@ -164,6 +166,24 @@ export default function Campus() {
     finally { setSaving(false) }
   }
 
+  const assignMentor = async (event: FormEvent) => {
+    event.preventDefault()
+    setSaving(true); setError(''); setProfileMessage('')
+    try {
+      await api.post('/campus/mentor/assignments', {
+        mentor_email: mentorEmail.trim(),
+        student_email: mentorStudentEmail.trim(),
+      })
+      setMentorEmail('')
+      setMentorStudentEmail('')
+      setProfileMessage('Student assigned to mentor.')
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Could not assign this student to the mentor.')
+    } finally {
+      setSaving(false)
+    }
+  }
+
   if (loading) return <div className="min-h-[50vh] flex items-center justify-center text-dark-muted"><Loader2 className="animate-spin mr-2" size={18}/>Loading campus workspace…</div>
 
   return (
@@ -216,6 +236,17 @@ export default function Campus() {
       {tab === 'profile' && <section className="glass border border-dark-border rounded-2xl p-4 sm:p-5 max-w-xl space-y-3"><h2 className="font-semibold">Student registration details</h2>{isFaculty ? <p className="text-sm text-dark-muted">Faculty/admin identity is managed by the administrator.</p> : <form onSubmit={saveProfile} className="space-y-3"><label className="block text-sm">Registration number<input required value={profile.registration_number} onChange={(e) => setProfile({ ...profile, registration_number: e.target.value })} className="mt-1 w-full bg-dark-lighter border border-dark-border rounded-lg px-3 py-2"/></label><label className="block text-sm">Section<input required value={profile.section} onChange={(e) => setProfile({ ...profile, section: e.target.value })} className="mt-1 w-full bg-dark-lighter border border-dark-border rounded-lg px-3 py-2"/></label><button disabled={saving} className="bg-primary text-white rounded-lg px-4 py-2 text-sm">{saving ? 'Saving…' : 'Save details'}</button><p className="text-xs text-emerald-300">{profileMessage}</p></form>}</section>}
 
       {isAdmin && <form onSubmit={grantFaculty} className="glass border border-dark-border rounded-2xl p-4 space-y-3"><h2 className="font-semibold">Grant faculty access</h2><p className="text-xs text-dark-muted">Create the staff account first, then enter its email here. Only admins can grant faculty permissions.</p><div className="flex gap-2"><input type="email" required value={facultyEmail} onChange={(e) => setFacultyEmail(e.target.value)} placeholder="faculty@college.edu" className="flex-1 bg-dark-lighter border border-dark-border rounded-lg px-3 py-2 text-sm"/><button disabled={saving} className="bg-primary text-white rounded-lg px-4 py-2 text-sm">Grant access</button></div>{profileMessage && <p className="text-xs text-emerald-300">{profileMessage}</p>}</form>}
+      {isAdmin && (
+        <form onSubmit={assignMentor} className="glass border border-dark-border rounded-2xl p-4 space-y-3">
+          <h2 className="font-semibold">Assign a student to a mentor</h2>
+          <p className="text-xs text-dark-muted">Both accounts must already exist with Mentor and Student roles. Mentors see only students assigned to them.</p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <input type="email" required value={mentorEmail} onChange={(e) => setMentorEmail(e.target.value)} placeholder="mentor@college.edu" className="bg-dark-lighter border border-dark-border rounded-lg px-3 py-2 text-sm"/>
+            <input type="email" required value={mentorStudentEmail} onChange={(e) => setMentorStudentEmail(e.target.value)} placeholder="student@college.edu" className="bg-dark-lighter border border-dark-border rounded-lg px-3 py-2 text-sm"/>
+          </div>
+          <button disabled={saving} className="bg-primary text-white rounded-lg px-4 py-2 text-sm">{saving ? 'Assigning…' : 'Assign student'}</button>
+        </form>
+      )}
     </div>
   )
 }
