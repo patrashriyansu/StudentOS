@@ -253,3 +253,78 @@ def test_social_login_provider_status_and_authorization_redirects(monkeypatch) -
         assert "login.microsoftonline.com/common/oauth2/v2.0/authorize" in microsoft.headers["location"]
         assert "openid" in microsoft.headers["location"]
         assert microsoft.cookies.get("studentos_oauth_state_microsoft")
+
+
+def test_finance_manual_allowance_expenses_budget_and_savings() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        headers = register_student(client)
+        today = datetime.now(INDIA_TZ).date().isoformat()
+
+        initial_allowance = client.get("/api/v1/finance/allowance", headers=headers)
+        assert initial_allowance.status_code == 200, initial_allowance.text
+        assert initial_allowance.json()["configured"] is False
+        assert initial_allowance.json()["amount"] is None
+
+        saved_allowance = client.put(
+            "/api/v1/finance/allowance",
+            headers=headers,
+            json={"amount": 12500},
+        )
+        assert saved_allowance.status_code == 200, saved_allowance.text
+        assert saved_allowance.json()["amount"] == 12500
+
+        expense = client.post(
+            "/api/v1/finance/expenses",
+            headers=headers,
+            json={
+                "amount": 145,
+                "category": "food",
+                "description": "Campus lunch",
+                "date": today,
+                "payment_method": "upi",
+            },
+        )
+        assert expense.status_code == 201, expense.text
+        transactions = client.get("/api/v1/finance/expenses", headers=headers)
+        assert transactions.status_code == 200
+        assert any(
+            item["description"] == "Campus lunch" and item["date"] == today
+            for item in transactions.json()
+        )
+
+        budget = client.post(
+            "/api/v1/finance/budgets",
+            headers=headers,
+            json={"category": "overall", "monthly_limit": 6000},
+        )
+        assert budget.status_code == 201, budget.text
+        summary = client.get("/api/v1/finance/expenses/summary", headers=headers)
+        assert summary.status_code == 200
+        assert summary.json()["total_spent"] == 145
+        assert summary.json()["budgets"]["overall"] == 6000
+
+        goal = client.post(
+            "/api/v1/finance/savings",
+            headers=headers,
+            json={"title": "Emergency fund", "current_amount": 500, "target_amount": 5000},
+        )
+        assert goal.status_code == 201, goal.text
+        goals = client.get("/api/v1/finance/savings", headers=headers)
+        assert goals.status_code == 200
+        assert any(item["title"] == "Emergency fund" for item in goals.json())
+
+
+def test_daily_visit_ping_uses_indian_calendar_date_and_is_idempotent() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        headers = register_student(client)
+        expected_date = datetime.now(INDIA_TZ).date().isoformat()
+
+        first = client.post("/api/v1/users/ping", headers=headers)
+        second = client.post("/api/v1/users/ping", headers=headers)
+        assert first.status_code == 200, first.text
+        assert second.status_code == 200, second.text
+        assert first.json()["streak_days"] == second.json()["streak_days"]
+        assert second.json()["last_streak_date"] == expected_date
+        assert second.json()["message"] == "already_active_today"
