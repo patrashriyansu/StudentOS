@@ -10,7 +10,10 @@ from backend.core.database import get_db
 from backend.core.security import get_current_user
 from backend.users.models import User, UserProfile, Notification
 from backend.coding.models import CodingProfile
-from .models import (StudentIdentity, ClassSubject, ClassSession, ClassAttendance, Notice, NoticeRead,\n                     StudentAcademicProfile, MentorStudentAssignment, RecruiterVisibility)
+from .models import (
+    StudentIdentity, ClassSubject, ClassSession, ClassAttendance, Notice, NoticeRead,
+    StudentAcademicProfile, MentorStudentAssignment, RecruiterVisibility,
+)
 
 router = APIRouter()
 
