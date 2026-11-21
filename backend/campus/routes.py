@@ -459,11 +459,11 @@ async def update_academic_profile(
 
     values = req.model_dump(exclude_unset=True)
     section = values.pop("section", None)
+    identity_result = await db.execute(select(StudentIdentity).where(
+        StudentIdentity.user_id == current_user.id
+    ))
+    identity = identity_result.scalar_one_or_none()
     if section is not None:
-        identity_result = await db.execute(select(StudentIdentity).where(
-            StudentIdentity.user_id == current_user.id
-        ))
-        identity = identity_result.scalar_one_or_none()
         if identity is None:
             raise HTTPException(
                 status_code=422,
@@ -481,7 +481,7 @@ async def update_academic_profile(
 
     await db.commit()
     return {"message": "Academic profile saved", "complete": bool(
-        (section or current_user.id) and academic.course and academic.branch
+        identity and identity.section and academic.course and academic.branch
         and academic.passing_out_year and academic.current_year and academic.current_semester
     )}
 
