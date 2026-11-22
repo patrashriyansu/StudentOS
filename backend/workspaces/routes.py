@@ -189,6 +189,10 @@ class AdminClassAssign(BaseModel):
     code: str | None = Field(default=None, max_length=50)
     section: str = Field(min_length=1, max_length=80)
 
+class AdminStaffUpdate(BaseModel):
+    role: Literal["faculty", "mentor", "recruiter"] | None = None
+    is_active: bool | None = None
+
 
 # ---------------------------------------------------------------------------
 # Recruiter workspace
@@ -923,6 +927,27 @@ async def admin_staff(user: User = Depends(get_current_user), db: AsyncSession =
     ).order_by(User.role, User.name))).scalars().all()
     return [{"id": staff.id, "name": staff.name, "email": staff.email, "role": staff.role,
              "active": staff.is_active} for staff in rows]
+
+
+@router.patch("/admin/staff/{staff_id}")
+async def update_admin_staff(staff_id: int, req: AdminStaffUpdate,
+                             user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    require_role(user, "admin")
+    if req.role is None and req.is_active is None:
+        raise HTTPException(status_code=422, detail="Provide a role or account status change.")
+    target = (await db.execute(select(User).where(
+        User.id == staff_id,
+        User.role.in_(["faculty", "mentor", "recruiter"]),
+    ))).scalar_one_or_none()
+    if target is None:
+        raise HTTPException(status_code=404, detail="Staff account not found.")
+    if req.role is not None:
+        target.role = req.role
+    if req.is_active is not None:
+        target.is_active = req.is_active
+    await db.commit()
+    return {"id": target.id, "name": target.name, "email": target.email,
+            "role": target.role, "active": target.is_active}
 
 
 @router.post("/admin/classes", status_code=201)
