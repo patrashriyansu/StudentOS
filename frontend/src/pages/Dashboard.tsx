@@ -108,6 +108,7 @@ export default function Dashboard() {
   const navigate = useNavigate()
 
   const [academics, setAcademics] = useState<any>(null)
+  const [gradeHistory, setGradeHistory] = useState<any[]>([])
   const [codingProfile, setCodingProfile] = useState<any>(null)
   const [taskStats, setTaskStats] = useState<any>({ completed: 0, total: 0 })
   const [tasks, setTasks] = useState<any[]>([])
@@ -129,13 +130,23 @@ export default function Dashboard() {
       api.get('/academics/subjects').catch(() => ({ data: [] })),
       api.get('/academics/cgpa').catch(() => ({ data: null })),
       api.get('/academics/exams').catch(() => ({ data: [] })),
-    ]).then(([subjRes, cgpaRes, examRes]) => {
+      api.get('/campus/academic-profile').catch(() => ({ data: null })),
+      api.get('/academics/grades').catch(() => ({ data: [] })),
+    ]).then(([subjRes, cgpaRes, examRes, profileRes, gradesRes]) => {
       const subjects = subjRes.data || []
       const avgAttendance = subjects.length
         ? Math.round(subjects.reduce((s: number, sub: any) =>
             s + (sub.total_classes > 0 ? sub.attended_classes / sub.total_classes * 100 : 0), 0) / subjects.length)
         : null
-      setAcademics({ cgpa: cgpaRes.data?.cgpa, attendance: avgAttendance })
+      const savedCgpa = profileRes.data?.cgpa
+      const gradeCgpa = Number(cgpaRes.data?.cgpa) > 0 ? Number(cgpaRes.data.cgpa) : null
+      const grades = Array.isArray(gradesRes.data) ? gradesRes.data : []
+      setGradeHistory(grades)
+      setAcademics({
+        cgpa: savedCgpa != null ? Number(savedCgpa) : gradeCgpa,
+        attendance: avgAttendance,
+        totalCredits: grades.reduce((total: number, grade: any) => total + (Number(grade.credits) || 0), 0),
+      })
       setExams((examRes.data || [])
         .filter((e: any) => !e.completed)
         .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
@@ -180,7 +191,6 @@ export default function Dashboard() {
   const hardSolved = codingProfile?.hard_solved ?? 0
   const tasksTotal = taskStats?.total ?? 0
   const tasksDone  = taskStats?.completed ?? 0
-  const predictedCgpa = cgpa != null ? Math.min(10, cgpa + 0.52).toFixed(2) : null
 
   const daysUntil = (dateStr: string) => {
     const d = Math.ceil((new Date(dateStr).getTime() - Date.now()) / 86400000)
@@ -195,24 +205,35 @@ export default function Dashboard() {
     return '#6C63FF'
   }
 
-  /* chart data */
-  const cgpaChartData = [
-    { sem: 'S1', sgpa: 0, cgpa: 0 },
-    { sem: 'S2', sgpa: 0, cgpa: 0 },
-    { sem: 'S3', sgpa: 0, cgpa: 0 },
-    { sem: 'S4', sgpa: cgpa || 0, cgpa: cgpa || 0 },
-  ]
+  /* Only saved semester-grade records are plotted; no placeholder history is generated. */
+  const semesterTotals = new Map<number, { weighted: number; credits: number }>()
+  gradeHistory.forEach((grade: any) => {
+    const semester = Number(grade.semester)
+    const credits = Number(grade.credits) || 0
+    const gradePoint = Number(grade.grade_point) || 0
+    if (!semester || credits <= 0) return
+    const current = semesterTotals.get(semester) || { weighted: 0, credits: 0 }
+    current.weighted += gradePoint * credits
+    current.credits += credits
+    semesterTotals.set(semester, current)
+  })
+  let cumulativeWeighted = 0
+  let cumulativeCredits = 0
+  const cgpaChartData = [...semesterTotals.entries()].sort((a, b) => a[0] - b[0]).map(([semester, total]) => {
+    cumulativeWeighted += total.weighted
+    cumulativeCredits += total.credits
+    return {
+      sem: `S${semester}`,
+      sgpa: Number((total.weighted / total.credits).toFixed(2)),
+      cgpa: Number((cumulativeWeighted / cumulativeCredits).toFixed(2)),
+    }
+  })
   const lcData = [
     { name: 'Easy',   value: easySolved, color: '#4ADE80' },
     { name: 'Medium', value: medSolved,  color: '#F59E0B' },
     { name: 'Hard',   value: hardSolved, color: '#EF4444' },
   ]
-  const attTrend = ['Jun','Jul','Aug','Sep','Oct','Nov'].map((month, i) => ({
-    month, val: i === 5 ? (attendance ?? 0) : 0,
-  }))
-
-  const now = new Date()
-  const dateLabel = now.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric', year: 'numeric' })
+  const attTrend = attendance != null ? [{ month: 'Current', val: attendance }] : []
 
   /* panel style shorthand */
   const panel: React.CSSProperties = {
@@ -270,17 +291,6 @@ export default function Dashboard() {
           </div>
         </div>
 
-        <div className="dashboard-date-chip" style={{
-          display:'flex', alignItems:'center', gap:12,
-          background:'var(--app-panel)', border:'1px solid var(--app-border)',
-          borderRadius:14, padding:'12px 20px', flexShrink:0,
-        }}>
-          <Calendar size={18} style={{ color:'#A78BFA' }} />
-          <div>
-            <div style={{ fontSize:13, fontWeight:600, color:'var(--app-text)' }}>{dateLabel}</div>
-            <div style={{ fontSize:11, color:'var(--app-muted)', marginTop:3 }}>5th Semester • ITER, SOA</div>
-          </div>
-        </div>
       </div>
 
       {user?.role === 'admin' && (
@@ -337,11 +347,11 @@ export default function Dashboard() {
       )}
 
       {/* ── 4 Stat Cards ─────────────────────────────────── */}
-      <div className="dashboard-stat-grid" style={{ display:'grid', gridTemplateColumns:'repeat(4,1fr)', gap:14 }}>
+      <div className="dashboard-stat-grid" style={{ display:'grid', gridTemplateColumns:'repeat(3,1fr)', gap:14 }}>
         <StatCard
           icon={GraduationCap} iconColor="#06B6D4" label="Attendance"
           value={attendance != null ? `${attendance}%` : '—'}
-          trendLabel={attendance != null ? (attendance >= 75 ? `+${(attendance-75).toFixed(1)}%` : '⚠ Below 75%') : 'No subjects added'}
+          trendLabel={attendance != null ? (attendance >= 75 ? 'At or above 75% requirement' : 'Below 75% requirement') : 'No subjects added'}
           trend={attendance != null && attendance >= 75 ? 'up' : 'down'}
           ringVal={attendance ?? 0} ringMax={100} ringColor="#06B6D4"
           gradFrom="rgba(6,182,212,0.14)" gradTo="rgba(8,145,178,0.04)"
@@ -357,18 +367,10 @@ export default function Dashboard() {
         <StatCard
           icon={Code} iconColor="#F59E0B" label="LeetCode"
           value={lc != null ? `${lc}` : '—'} unit="Solved"
-          trendLabel={lc ? '+8 this week' : 'Connect profile'}
+          trendLabel={lc ? 'Verified profile total' : 'Connect profile'}
           trend={lc ? 'up' : null}
           ringVal={Math.min(lc ?? 0, 500)} ringMax={500} ringColor="#F59E0B"
           gradFrom="rgba(245,158,11,0.14)" gradTo="rgba(217,119,6,0.04)"
-        />
-        <StatCard
-          icon={TrendingUp} iconColor="#3B82F6" label="Predicted CGPA"
-          value={predictedCgpa ?? '—'}
-          trendLabel={predictedCgpa ? '+0.52 (proj.)' : 'No CGPA yet'}
-          trend={predictedCgpa ? 'up' : null}
-          ringVal={predictedCgpa ? parseFloat(predictedCgpa) * 10 : 0} ringMax={100} ringColor="#3B82F6"
-          gradFrom="rgba(59,130,246,0.14)" gradTo="rgba(37,99,235,0.04)"
         />
       </div>
 
@@ -518,7 +520,7 @@ export default function Dashboard() {
           </div>
           <div style={{ display:'flex', gap:16 }}>
             <div style={{ flex:1 }}>
-              <ResponsiveContainer width="100%" height={160}>
+              {cgpaChartData.length > 0 ? <ResponsiveContainer width="100%" height={160}>
                 <ComposedChart data={cgpaChartData} margin={{ top:4, right:4, bottom:0, left:-20 }}>
                   <defs>
                     <linearGradient id="barGrad" x1="0" y1="0" x2="0" y2="1">
@@ -528,12 +530,12 @@ export default function Dashboard() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.03)" />
                   <XAxis dataKey="sem" axisLine={false} tickLine={false} tick={{ fill:'#6B7280', fontSize:11 }} />
-                  <YAxis domain={[7, 10]} axisLine={false} tickLine={false} tick={{ fill:'#6B7280', fontSize:11 }} />
+                  <YAxis domain={[0, 10]} axisLine={false} tickLine={false} tick={{ fill:'#6B7280', fontSize:11 }} />
                   <Tooltip contentStyle={{ background:'#141430', border:'1px solid #2A2A4E', borderRadius:8, fontSize:12 }} />
                   <Bar dataKey="sgpa" fill="url(#barGrad)" radius={[4,4,0,0]} />
                   <Line type="monotone" dataKey="cgpa" stroke="#06B6D4" strokeWidth={2} dot={{ fill:'#06B6D4', r:3 }} />
                 </ComposedChart>
-              </ResponsiveContainer>
+              </ResponsiveContainer> : <div className="h-40 flex items-center justify-center text-xs text-dark-muted text-center px-4">Semester-wise CGPA history will appear after you record grades in Academic Hub.</div>}
               <div style={{ display:'flex', gap:14, marginTop:6 }}>
                 <div style={{ display:'flex', alignItems:'center', gap:5 }}>
                   <div style={{ width:10, height:10, borderRadius:2, background:'#6C63FF' }} />
@@ -547,9 +549,8 @@ export default function Dashboard() {
             </div>
             <div style={{ width:140, display:'flex', flexDirection:'column', gap:9 }}>
               {[
-                { icon:BarChart3,     label:'CGPA (Current)',    value: cgpa != null ? cgpa.toFixed(2) : '—', color:'#6C63FF' },
-                { icon:TrendingUp,    label:'Target CGPA',       value:'9.00+',                              color:'#10B981' },
-                { icon:GraduationCap, label:'Credits Completed', value:'84 / 100',                          color:'#F59E0B' },
+                { icon:BarChart3, label:'CGPA (Current)', value: cgpa != null ? cgpa.toFixed(2) : '—', color:'#6C63FF' },
+                { icon:GraduationCap, label:'Credits Recorded', value: academics?.totalCredits ? String(academics.totalCredits) : '—', color:'#F59E0B' },
               ].map(({ icon:Icon2, label, value, color }) => (
                 <div key={label} style={{ padding:'10px 12px', borderRadius:10, background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.05)' }}>
                   <div style={{ display:'flex', alignItems:'center', gap:5, marginBottom:4 }}>
@@ -615,17 +616,13 @@ export default function Dashboard() {
         <div className="dashboard-panel" style={panel}>
           <div style={panelHead}>
             <TrendingUp size={15} style={{ color:'#10B981' }} />
-            <h3 style={h3}>Attendance Trend</h3>
+            <h3 style={h3}>Current Attendance</h3>
           </div>
           <div style={{ display:'flex', alignItems:'baseline', gap:8, marginBottom:14 }}>
             <span style={{ fontSize:30, fontWeight:800, color:'#fff' }}>
               {attendance != null ? `${attendance}%` : '—'}
             </span>
-            {attendance != null && attendance > 0 && (
-              <span style={{ fontSize:12, color:'#4ADE80', display:'flex', alignItems:'center', gap:3 }}>
-                <TrendingUp size={12} /> +3.2%
-              </span>
-            )}
+
           </div>
           <ResponsiveContainer width="100%" height={100}>
             <BarChart data={attTrend} barSize={20} margin={{ top:0, right:0, bottom:0, left:-30 }}>
