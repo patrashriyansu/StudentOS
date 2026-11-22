@@ -213,3 +213,35 @@ test('academic onboarding and recruiter candidate data sharing are student-contr
   assert.match(campus, /RecruiterVisibility\.profile_visible\.is_\(True\)/)
   assert.doesNotMatch(campus.slice(campus.indexOf('async def get_mentor_students'), campus.indexOf('@router.get("/recruiter/visibility")')), /"cgpa"|"sgpa"/)
 })
+
+
+test('student dashboard displays saved academic data and removes invented CGPA and attendance values', async () => {
+  const dashboard = await read('../src/pages/Dashboard.tsx')
+  assert.match(dashboard, /\/academics\/grades/)
+  assert.match(dashboard, /\/campus\/academic-profile/)
+  assert.match(dashboard, /semesterTotals/)
+  assert.match(dashboard, /Semester-wise CGPA history will appear/)
+  assert.doesNotMatch(dashboard, /Predicted CGPA|\+0\.52|\+8 this week|\+3\.2%|84 \/ 100|9\.00\+|5th Semester • ITER, SOA/)
+})
+
+test('all account roles receive distinct workspaces and the student classroom is protected', async () => {
+  const app = await read('../src/App.tsx')
+  const layout = await read('../src/components/layout/Layout.tsx')
+  const pages = await read('../src/pages/RoleWorkspaces.tsx')
+  const backend = await read('../../backend/workspaces/routes.py')
+  assert.match(layout, /facultyNav/)
+  assert.match(layout, /adminNav/)
+  assert.match(layout, /recruiterNav/)
+  assert.match(layout, /mentorNav/)
+  for (const path of ['recruiter/jobs', 'recruiter/applications', 'recruiter/shortlisted', 'mentor/sessions', 'mentor/goals', 'mentor/notes', 'faculty/assignments', 'faculty/marks', 'faculty/timetable', 'faculty/materials', 'admin/classes', 'admin/mentors']) {
+    assert.ok(app.includes(path), path)
+  }
+  assert.match(app, /path="classroom".*studentOnly/)
+  assert.match(pages, /Create job opening/)
+  assert.match(pages, /Private mentor notes/)
+  assert.match(pages, /Publish assignment/)
+  assert.match(pages, /Classroom & opportunities/)
+  assert.match(backend, /RecruiterVisibility\.profile_visible\.is_\(True\)/)
+  assert.match(backend, /assigned_student\(user, req\.student_id, db\)/)
+  assert.match(backend, /You can only manage your assigned classes/)
+})
