@@ -21,6 +21,7 @@ import backend.wellness.models       # noqa: F401
 import backend.productivity.models   # noqa: F401
 import backend.finance.models        # noqa: F401
 import backend.campus.models         # noqa: F401
+import backend.workspaces.models     # noqa: F401
 
 from backend.api import router as api_router
 from backend.notifications.service import reminder_worker
