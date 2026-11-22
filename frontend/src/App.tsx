@@ -12,8 +12,6 @@ import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
 import AuthCallback from './pages/AuthCallback'
 import RoleDashboard from './pages/RoleDashboard'
-import MentorStudents from './pages/MentorStudents'
-import RecruiterCandidates from './pages/RecruiterCandidates'
 import Academics from './pages/Academics'
 import Coding from './pages/Coding'
 import Placements from './pages/Placements'
@@ -28,6 +26,7 @@ import Notifications from './pages/Notifications'
 import Projects from './pages/Projects'
 import Campus from './pages/Campus'
 import Settings from './pages/Settings'
+import { AdminWorkspace, FacultyWorkspace, RecruiterWorkspace, StudentClassroom, MentorWorkspace } from './pages/RoleWorkspaces'
 
 function RootRoute() {
   const { isAuthenticated, initialized } = useAuth()
@@ -70,7 +69,8 @@ function RoleRoute({ allowedRoles, children }: { allowedRoles: string[]; childre
 const studentOnly = ['student']
 const mentorOnly = ['mentor']
 const recruiterOnly = ['recruiter']
-const campusRoles = ['student', 'faculty', 'admin']
+const facultyOnly = ['faculty']
+const adminOnly = ['admin']
 
 export default function App() {
   const dispatch = useDispatch<AppDispatch>()
@@ -119,10 +119,29 @@ export default function App() {
         <Route path="expenses" element={<RoleRoute allowedRoles={studentOnly}><Expenses /></RoleRoute>} />
         <Route path="notifications" element={<Notifications />} />
         <Route path="projects" element={<RoleRoute allowedRoles={studentOnly}><Projects /></RoleRoute>} />
-        <Route path="campus" element={<RoleRoute allowedRoles={campusRoles}><Campus /></RoleRoute>} />
+        <Route path="campus" element={<RoleRoute allowedRoles={studentOnly}><Campus /></RoleRoute>} />
+        <Route path="classroom" element={<RoleRoute allowedRoles={studentOnly}><StudentClassroom /></RoleRoute>} />
         <Route path="settings" element={<Settings />} />
-        <Route path="mentor/students" element={<RoleRoute allowedRoles={mentorOnly}><MentorStudents /></RoleRoute>} />
-        <Route path="recruiter/candidates" element={<RoleRoute allowedRoles={recruiterOnly}><RecruiterCandidates /></RoleRoute>} />
+        <Route path="mentor/students" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
+        <Route path="mentor/sessions" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
+        <Route path="mentor/goals" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
+        <Route path="mentor/notes" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
+        <Route path="recruiter/candidates" element={<RoleRoute allowedRoles={recruiterOnly}><RecruiterWorkspace /></RoleRoute>} />
+        <Route path="recruiter/shortlisted" element={<RoleRoute allowedRoles={recruiterOnly}><RecruiterWorkspace /></RoleRoute>} />
+        <Route path="recruiter/jobs" element={<RoleRoute allowedRoles={recruiterOnly}><RecruiterWorkspace /></RoleRoute>} />
+        <Route path="recruiter/applications" element={<RoleRoute allowedRoles={recruiterOnly}><RecruiterWorkspace /></RoleRoute>} />
+        <Route path="faculty/classes" element={<RoleRoute allowedRoles={facultyOnly}><FacultyWorkspace /></RoleRoute>} />
+        <Route path="faculty/students" element={<RoleRoute allowedRoles={facultyOnly}><FacultyWorkspace /></RoleRoute>} />
+        <Route path="faculty/attendance" element={<RoleRoute allowedRoles={facultyOnly}><FacultyWorkspace /></RoleRoute>} />
+        <Route path="faculty/assignments" element={<RoleRoute allowedRoles={facultyOnly}><FacultyWorkspace /></RoleRoute>} />
+        <Route path="faculty/marks" element={<RoleRoute allowedRoles={facultyOnly}><FacultyWorkspace /></RoleRoute>} />
+        <Route path="faculty/timetable" element={<RoleRoute allowedRoles={facultyOnly}><FacultyWorkspace /></RoleRoute>} />
+        <Route path="faculty/notices" element={<RoleRoute allowedRoles={facultyOnly}><FacultyWorkspace /></RoleRoute>} />
+        <Route path="faculty/materials" element={<RoleRoute allowedRoles={facultyOnly}><FacultyWorkspace /></RoleRoute>} />
+        <Route path="admin/students" element={<RoleRoute allowedRoles={adminOnly}><AdminWorkspace /></RoleRoute>} />
+        <Route path="admin/staff" element={<RoleRoute allowedRoles={adminOnly}><AdminWorkspace /></RoleRoute>} />
+        <Route path="admin/classes" element={<RoleRoute allowedRoles={adminOnly}><AdminWorkspace /></RoleRoute>} />
+        <Route path="admin/mentors" element={<RoleRoute allowedRoles={adminOnly}><AdminWorkspace /></RoleRoute>} />
       </Route>
     </Routes>
   )

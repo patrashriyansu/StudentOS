@@ -90,9 +90,20 @@ async def update_student_identity(req: StudentIdentityUpdate, current_user: User
 
 @router.get("/sections")
 async def list_sections(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    result = await db.execute(select(StudentIdentity.section).distinct().order_by(StudentIdentity.section.asc()))
-    return [{"name": row[0]} for row in result.all()]
-
+    if current_user.role == "admin":
+        result = await db.execute(select(StudentIdentity.section).distinct().order_by(StudentIdentity.section.asc()))
+        return [{"name": row[0]} for row in result.all()]
+    if current_user.role == "faculty":
+        result = await db.execute(select(ClassSubject.section).where(
+            ClassSubject.faculty_user_id == current_user.id
+        ).distinct().order_by(ClassSubject.section.asc()))
+        return [{"name": row[0]} for row in result.all()]
+    if current_user.role == "student":
+        identity = (await db.execute(select(StudentIdentity).where(
+            StudentIdentity.user_id == current_user.id
+        ))).scalar_one_or_none()
+        return [{"name": identity.section}] if identity else []
+    return []
 
 @router.get("/students")
 async def list_students(section: str | None = None, q: str | None = Query(default=None, max_length=120),
@@ -103,8 +114,18 @@ async def list_students(section: str | None = None, q: str | None = Query(defaul
             .outerjoin(StudentIdentity, StudentIdentity.user_id == User.id)
             .outerjoin(CodingProfile, CodingProfile.user_id == User.id)
             .where(User.role == "student"))
+    if current_user.role == "faculty":
+        owned_sections = select(ClassSubject.section).where(ClassSubject.faculty_user_id == current_user.id)
+        stmt = stmt.where(StudentIdentity.section.in_(owned_sections))
     if section:
-        stmt = stmt.where(StudentIdentity.section == section.strip().upper())
+        normalized = section.strip().upper()
+        if current_user.role == "faculty":
+            owns = await db.execute(select(ClassSubject.id).where(
+                ClassSubject.faculty_user_id == current_user.id, ClassSubject.section == normalized
+            ).limit(1))
+            if owns.scalar_one_or_none() is None:
+                return []
+        stmt = stmt.where(StudentIdentity.section == normalized)
     if q:
         term = f"%{q.strip()}%"
         stmt = stmt.where(or_(User.name.ilike(term), User.email.ilike(term), StudentIdentity.registration_number.ilike(term)))
@@ -122,16 +143,27 @@ async def list_students(section: str | None = None, q: str | None = Query(defaul
         "created_at": user.created_at.isoformat() if user.created_at else None,
     } for user, identity, coding in result.all()]
 
-
 @router.get("/leaderboard")
 async def coding_leaderboard(section: str | None = None, current_user: User = Depends(get_current_user),
                              db: AsyncSession = Depends(get_db)):
+    if current_user.role not in {"student", "faculty", "admin"}:
+        raise HTTPException(status_code=403, detail="Campus coding rankings are not available to this account.")
     stmt = (select(User, StudentIdentity, CodingProfile)
             .outerjoin(StudentIdentity, StudentIdentity.user_id == User.id)
             .outerjoin(CodingProfile, CodingProfile.user_id == User.id)
             .where(User.role == "student", User.is_active.is_(True)))
+    if current_user.role == "faculty":
+        owned_sections = select(ClassSubject.section).where(ClassSubject.faculty_user_id == current_user.id)
+        stmt = stmt.where(StudentIdentity.section.in_(owned_sections))
     if section:
-        stmt = stmt.where(StudentIdentity.section == section.strip().upper())
+        normalized = section.strip().upper()
+        if current_user.role == "faculty":
+            owns = await db.execute(select(ClassSubject.id).where(
+                ClassSubject.faculty_user_id == current_user.id, ClassSubject.section == normalized
+            ).limit(1))
+            if owns.scalar_one_or_none() is None:
+                return {"count": 0, "section": normalized, "students": []}
+        stmt = stmt.where(StudentIdentity.section == normalized)
     stmt = stmt.order_by(func.coalesce(CodingProfile.total_problems_solved, 0).desc(),
                          func.coalesce(CodingProfile.hard_solved, 0).desc(),
                          func.coalesce(CodingProfile.medium_solved, 0).desc(), User.name.asc())
@@ -174,13 +206,13 @@ async def list_class_subjects(section: str | None = None, current_user: User = D
 @router.post("/subjects")
 async def create_class_subject(req: SubjectCreate, current_user: User = Depends(get_current_user),
                                db: AsyncSession = Depends(get_db)):
-    require_faculty(current_user)
-    subject = ClassSubject(faculty_user_id=current_user.id, section=req.section.strip().upper(),
-                           name=req.name.strip(), code=req.code.strip().upper() if req.code else None)
-    db.add(subject)
-    await db.commit()
-    await db.refresh(subject)
-    return {"id": subject.id, "name": subject.name, "section": subject.section, "code": subject.code}
+    # Class ownership is provisioned centrally so faculty cannot expand their
+    # own scope by registering another section through this legacy endpoint.
+    require_role(current_user, "admin")
+    raise HTTPException(
+        status_code=410,
+        detail="Use the administrator workspace to assign a class to its faculty account.",
+    )
 
 
 @router.post("/subjects/{subject_id}/sessions")
@@ -235,28 +267,42 @@ async def mark_class_attendance(session_id: int, req: AttendanceBatch, current_u
 async def get_campus_attendance(section: str | None = None, current_user: User = Depends(get_current_user),
                                 db: AsyncSession = Depends(get_db)):
     if current_user.role in {"faculty", "admin"}:
-        student_stmt = select(User, StudentIdentity).outerjoin(StudentIdentity, StudentIdentity.user_id == User.id).where(User.role == "student")
-        if section:
-            student_stmt = student_stmt.where(StudentIdentity.section == section.strip().upper())
-        students = (await db.execute(student_stmt.order_by(StudentIdentity.section, User.name))).all()
+        student_stmt = (select(User, StudentIdentity)
+            .join(StudentIdentity, StudentIdentity.user_id == User.id)
+            .where(User.role == "student"))
         rows_stmt = (select(ClassAttendance.student_id, ClassAttendance.status, ClassSubject.section)
-                     .join(ClassSession, ClassSession.id == ClassAttendance.session_id)
-                     .join(ClassSubject, ClassSubject.id == ClassSession.subject_id))
+            .join(ClassSession, ClassSession.id == ClassAttendance.session_id)
+            .join(ClassSubject, ClassSubject.id == ClassSession.subject_id))
+        if current_user.role == "faculty":
+            owned_sections = select(ClassSubject.section).where(ClassSubject.faculty_user_id == current_user.id)
+            student_stmt = student_stmt.where(StudentIdentity.section.in_(owned_sections))
+            rows_stmt = rows_stmt.where(ClassSubject.faculty_user_id == current_user.id)
         if section:
-            rows_stmt = rows_stmt.where(ClassSubject.section == section.strip().upper())
+            normalized = section.strip().upper()
+            if current_user.role == "faculty":
+                owns = await db.execute(select(ClassSubject.id).where(
+                    ClassSubject.faculty_user_id == current_user.id, ClassSubject.section == normalized
+                ).limit(1))
+                if owns.scalar_one_or_none() is None:
+                    return []
+            student_stmt = student_stmt.where(StudentIdentity.section == normalized)
+            rows_stmt = rows_stmt.where(ClassSubject.section == normalized)
+        students = (await db.execute(student_stmt.order_by(StudentIdentity.section, User.name))).all()
         counts = {}
         for student_id, status, _ in (await db.execute(rows_stmt)).all():
             total, present = counts.get(student_id, (0, 0))
             counts[student_id] = (total + 1, present + (1 if status == "present" else 0))
         return [{
             "student_id": user.id, "name": user.name,
-            "registration_number": identity.registration_number if identity else None,
-            "section": identity.section if identity else None,
+            "registration_number": identity.registration_number,
+            "section": identity.section,
             "total_classes": counts.get(user.id, (0, 0))[0],
             "present": counts.get(user.id, (0, 0))[1],
             "absent": counts.get(user.id, (0, 0))[0] - counts.get(user.id, (0, 0))[1],
             "percentage": round(100 * counts.get(user.id, (0, 0))[1] / counts.get(user.id, (0, 0))[0], 1) if counts.get(user.id, (0, 0))[0] else 0,
         } for user, identity in students]
+    if current_user.role != "student":
+        raise HTTPException(status_code=403, detail="Student or faculty access required.")
     identity = (await db.execute(select(StudentIdentity).where(StudentIdentity.user_id == current_user.id))).scalar_one_or_none()
     if not identity:
         return {"registration_required": True, "subjects": []}
@@ -272,7 +318,6 @@ async def get_campus_attendance(section: str | None = None, current_user: User =
                  "percentage": round(100*present/total, 1) if total else 0}
                 for name, (total, present) in sorted(totals.items())]
     return {"registration_required": False, "section": identity.section, "subjects": subjects}
-
 
 @router.get("/sessions")
 async def list_class_sessions(section: str | None = None, current_user: User = Depends(get_current_user),
@@ -291,6 +336,8 @@ async def list_class_sessions(section: str | None = None, current_user: User = D
 
 @router.get("/notices")
 async def list_notices(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if current_user.role not in {"student", "faculty", "admin"}:
+        raise HTTPException(status_code=403, detail="Campus notices are not available to this account.")
     stmt = select(Notice).where(or_(Notice.expires_at.is_(None), Notice.expires_at > datetime.now(timezone.utc)))
     if current_user.role == "student":
         identity = (await db.execute(select(StudentIdentity).where(StudentIdentity.user_id == current_user.id))).scalar_one_or_none()
@@ -314,6 +361,15 @@ async def create_notice(req: NoticeCreate, current_user: User = Depends(get_curr
                         db: AsyncSession = Depends(get_db)):
     require_faculty(current_user)
     section = req.section.strip().upper() if req.section else None
+    if current_user.role == "faculty":
+        if req.audience_type != "section" or not section:
+            raise HTTPException(status_code=403, detail="Faculty notices must target one of your assigned sections.")
+        assigned = await db.execute(select(ClassSubject.id).where(
+            ClassSubject.faculty_user_id == current_user.id,
+            ClassSubject.section == section,
+        ).limit(1))
+        if assigned.scalar_one_or_none() is None:
+            raise HTTPException(status_code=403, detail="You can only publish notices to your assigned sections.")
     if req.audience_type == "section":
         if not section:
             raise HTTPException(status_code=422, detail="Choose a section for this notice.")

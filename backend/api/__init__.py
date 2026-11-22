@@ -11,6 +11,7 @@ from backend.analytics.routes import router as analytics_router
 from backend.productivity.routes import router as productivity_router
 from backend.finance.routes import router as finance_router
 from backend.campus.routes import router as campus_router
+from backend.workspaces.routes import router as workspaces_router
 
 router = APIRouter()
 router.include_router(auth_router, prefix="/auth", tags=["Authentication"])
@@ -25,3 +26,4 @@ router.include_router(analytics_router, prefix="/analytics", tags=["Analytics"])
 router.include_router(productivity_router, prefix="/productivity", tags=["Productivity"])
 router.include_router(finance_router, prefix="/finance", tags=["Finance"])
 router.include_router(campus_router, prefix="/campus", tags=["Campus Management"])
+router.include_router(workspaces_router, prefix="/workspaces", tags=["Role Workspaces"])
