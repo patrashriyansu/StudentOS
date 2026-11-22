@@ -182,6 +182,13 @@ def test_faculty_is_limited_to_assigned_sections_and_can_publish_and_grade_class
         assert assigned_class.status_code == 201, assigned_class.text
         subject_id = assigned_class.json()["id"]
 
+        self_assigned = client.post("/api/v1/campus/subjects", headers=faculty, json={
+            "name": "Unauthorized extra class",
+            "code": "BAD101",
+            "section": "CSE-B",
+        })
+        assert self_assigned.status_code == 403
+
         rankings = client.get("/api/v1/campus/leaderboard", headers=faculty)
         assert rankings.status_code == 200
         assert all(row["section"] == "CSE-A" for row in rankings.json()["students"])
@@ -246,3 +253,34 @@ def test_faculty_is_limited_to_assigned_sections_and_can_publish_and_grade_class
             "instructions": "Should be rejected.",
         })
         assert forbidden.status_code == 404
+
+
+
+def test_admin_can_manage_staff_roles_and_status_but_other_roles_cannot() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        admin = register(client, "student")
+        promote(admin["email"], "admin")
+        mentor = register(client, "mentor")
+        current = client.get("/api/v1/auth/me", headers=mentor)
+        assert current.status_code == 200
+        staff_id = current.json()["id"]
+
+        denied = client.patch(f"/api/v1/workspaces/admin/staff/{staff_id}",
+                              headers=mentor, json={"role": "recruiter"})
+        assert denied.status_code == 403
+
+        changed = client.patch(f"/api/v1/workspaces/admin/staff/{staff_id}",
+                               headers=admin, json={"role": "recruiter"})
+        assert changed.status_code == 200, changed.text
+        assert changed.json()["role"] == "recruiter"
+
+        disabled = client.patch(f"/api/v1/workspaces/admin/staff/{staff_id}",
+                                headers=admin, json={"is_active": False})
+        assert disabled.status_code == 200
+        assert disabled.json()["active"] is False
+
+        updated_staff = client.get("/api/v1/workspaces/admin/staff", headers=admin)
+        item = next(row for row in updated_staff.json() if row["id"] == staff_id)
+        assert item["role"] == "recruiter"
+        assert item["active"] is False
