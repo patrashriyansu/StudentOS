@@ -8,6 +8,7 @@ import {
   LayoutDashboard, BookOpen, Code, Briefcase, Heart,
   Wallet, Bell, BarChart3, User, LogOut, Menu, X,
   GraduationCap, Settings, Search, Sparkles, Users,
+  Shield, ClipboardList, CheckCircle2, Calendar,
 } from 'lucide-react'
 
 const S = {
