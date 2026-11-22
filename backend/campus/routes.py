@@ -146,12 +146,24 @@ async def list_students(section: str | None = None, q: str | None = Query(defaul
 @router.get("/leaderboard")
 async def coding_leaderboard(section: str | None = None, current_user: User = Depends(get_current_user),
                              db: AsyncSession = Depends(get_db)):
+    if current_user.role not in {"student", "faculty", "admin"}:
+        raise HTTPException(status_code=403, detail="Campus coding rankings are not available to this account.")
     stmt = (select(User, StudentIdentity, CodingProfile)
             .outerjoin(StudentIdentity, StudentIdentity.user_id == User.id)
             .outerjoin(CodingProfile, CodingProfile.user_id == User.id)
             .where(User.role == "student", User.is_active.is_(True)))
+    if current_user.role == "faculty":
+        owned_sections = select(ClassSubject.section).where(ClassSubject.faculty_user_id == current_user.id)
+        stmt = stmt.where(StudentIdentity.section.in_(owned_sections))
     if section:
-        stmt = stmt.where(StudentIdentity.section == section.strip().upper())
+        normalized = section.strip().upper()
+        if current_user.role == "faculty":
+            owns = await db.execute(select(ClassSubject.id).where(
+                ClassSubject.faculty_user_id == current_user.id, ClassSubject.section == normalized
+            ).limit(1))
+            if owns.scalar_one_or_none() is None:
+                return {"count": 0, "section": normalized, "students": []}
+        stmt = stmt.where(StudentIdentity.section == normalized)
     stmt = stmt.order_by(func.coalesce(CodingProfile.total_problems_solved, 0).desc(),
                          func.coalesce(CodingProfile.hard_solved, 0).desc(),
                          func.coalesce(CodingProfile.medium_solved, 0).desc(), User.name.asc())
@@ -324,6 +336,8 @@ async def list_class_sessions(section: str | None = None, current_user: User = D
 
 @router.get("/notices")
 async def list_notices(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if current_user.role not in {"student", "faculty", "admin"}:
+        raise HTTPException(status_code=403, detail="Campus notices are not available to this account.")
     stmt = select(Notice).where(or_(Notice.expires_at.is_(None), Notice.expires_at > datetime.now(timezone.utc)))
     if current_user.role == "student":
         identity = (await db.execute(select(StudentIdentity).where(StudentIdentity.user_id == current_user.id))).scalar_one_or_none()
@@ -347,6 +361,15 @@ async def create_notice(req: NoticeCreate, current_user: User = Depends(get_curr
                         db: AsyncSession = Depends(get_db)):
     require_faculty(current_user)
     section = req.section.strip().upper() if req.section else None
+    if current_user.role == "faculty":
+        if req.audience_type != "section" or not section:
+            raise HTTPException(status_code=403, detail="Faculty notices must target one of your assigned sections.")
+        assigned = await db.execute(select(ClassSubject.id).where(
+            ClassSubject.faculty_user_id == current_user.id,
+            ClassSubject.section == section,
+        ).limit(1))
+        if assigned.scalar_one_or_none() is None:
+            raise HTTPException(status_code=403, detail="You can only publish notices to your assigned sections.")
     if req.audience_type == "section":
         if not section:
             raise HTTPException(status_code=422, detail="Choose a section for this notice.")
