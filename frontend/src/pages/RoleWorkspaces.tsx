@@ -207,7 +207,12 @@ export function MentorWorkspace() {
   useEffect(() => { void load() }, [])
   const submit = async (event: FormEvent, endpoint: string, payload: Row, reset: () => void) => {
     event.preventDefault(); setSaving(true); setError('')
-    try { await api.post(endpoint, payload); reset(); await load() }
+    try {
+      const body = endpoint === '/workspaces/mentor/sessions' && typeof payload.scheduled_at === 'string'
+        ? { ...payload, scheduled_at: new Date(payload.scheduled_at).toISOString() }
+        : payload
+      await api.post(endpoint, body); reset(); await load()
+    }
     catch (e: any) { setError(e?.response?.data?.detail || 'Could not save this item.') }
     finally { setSaving(false) }
   }
