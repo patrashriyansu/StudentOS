@@ -182,6 +182,31 @@ def test_faculty_is_limited_to_assigned_sections_and_can_publish_and_grade_class
         assert assigned_class.status_code == 201, assigned_class.text
         subject_id = assigned_class.json()["id"]
 
+        rankings = client.get("/api/v1/campus/leaderboard", headers=faculty)
+        assert rankings.status_code == 200
+        assert all(row["section"] == "CSE-A" for row in rankings.json()["students"])
+
+        broadcast = client.post("/api/v1/campus/notices", headers=faculty, json={
+            "title": "Unauthorized broadcast",
+            "message": "Faculty cannot publish a college-wide notice.",
+            "audience_type": "all",
+        })
+        assert broadcast.status_code == 403
+        outside_section = client.post("/api/v1/campus/notices", headers=faculty, json={
+            "title": "Wrong section",
+            "message": "Faculty cannot target a section they do not teach.",
+            "audience_type": "section",
+            "section": "CSE-B",
+        })
+        assert outside_section.status_code == 403
+        assigned_section = client.post("/api/v1/campus/notices", headers=faculty, json={
+            "title": "CSE-A notice",
+            "message": "Class announcement.",
+            "audience_type": "section",
+            "section": "CSE-A",
+        })
+        assert assigned_section.status_code == 200
+
         teacher_students = client.get("/api/v1/campus/students", headers=faculty)
         assert teacher_students.status_code == 200
         visible_emails = {row["email"] for row in teacher_students.json()}
