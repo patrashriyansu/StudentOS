@@ -1,12 +1,10 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { useLocation } from 'react-router-dom'
 import {
   AlertCircle, ArrowRight, BookOpen, Briefcase, CalendarDays, CheckCircle2,
-  ClipboardCheck, Clock3, FileText, GraduationCap, Link2, Loader2, Megaphone,
-  Plus, RefreshCw, Search, ShieldCheck, Target, Users, XCircle,
+  FileText, GraduationCap, Plus, RefreshCw, Search, ShieldCheck, Target, Users,
 } from 'lucide-react'
 import { api } from '../services/api'
-import { useAuth } from '../hooks/useAuth'
 
 type Row = Record<string, any>
 type Subject = { id: number; name: string; code?: string | null; section: string }
