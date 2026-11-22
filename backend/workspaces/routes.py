@@ -5,6 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
+from sqlalchemy.orm import aliased
 
 from backend.core.database import get_db
 from backend.core.security import get_current_user
@@ -177,8 +178,8 @@ class ResourceCreate(BaseModel):
 class TimetableCreate(BaseModel):
     subject_id: int
     weekday: int = Field(ge=0, le=6)
-    starts_at: str = Field(pattern=r"^(?:[01]\\d|2[0-3]):[0-5]\\d$")
-    ends_at: str = Field(pattern=r"^(?:[01]\\d|2[0-3]):[0-5]\\d$")
+    starts_at: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
+    ends_at: str = Field(pattern=r"^(?:[01]\d|2[0-3]):[0-5]\d$")
     room: str | None = Field(default=None, max_length=100)
 
 
@@ -648,20 +649,19 @@ async def faculty_assignment_submissions(assignment_id: int, user: User = Depend
     if user.role != "admin" and subject.faculty_user_id != user.id:
         raise HTTPException(status_code=403, detail="You can only review submissions for your own classes.")
     rows = (await db.execute(
-        select(AssignmentSubmission, User)
+        select(AssignmentSubmission, User, StudentIdentity)
         .join(User, User.id == AssignmentSubmission.student_id)
+        .outerjoin(StudentIdentity, StudentIdentity.user_id == User.id)
         .where(AssignmentSubmission.assignment_id == assignment_id)
         .order_by(AssignmentSubmission.submitted_at.desc())
     )).all()
     return [{
         "id": submission.id, "student_id": student.id, "student_name": student.name,
-        "registration_number": (await db.execute(select(StudentIdentity.registration_number).where(
-            StudentIdentity.user_id == student.id
-        ))).scalar_one_or_none(),
+        "registration_number": identity.registration_number if identity else None,
         "submission_text": submission.submission_text, "attachment_url": submission.attachment_url,
         "submitted_at": submission.submitted_at.isoformat(), "marks_awarded": submission.marks_awarded,
         "feedback": submission.feedback,
-    } for submission, student in rows]
+    } for submission, student, identity in rows]
 
 
 @router.post("/faculty/submissions/{submission_id}/grade")
@@ -910,8 +910,8 @@ async def admin_summary(user: User = Depends(get_current_user), db: AsyncSession
         counts[role] = (await db.execute(select(func.count(User.id)).where(
             User.role == role, User.is_active.is_(True)
         ))).scalar_one()
-    counts["classes"] = (await db.execute(select(func.count(ClassSubject.id))).scalar_one()
-    counts["mentor_assignments"] = (await db.execute(select(func.count(MentorStudentAssignment.id))).scalar_one()
+    counts["classes"] = (await db.execute(select(func.count(ClassSubject.id)))).scalar_one()
+    counts["mentor_assignments"] = (await db.execute(select(func.count(MentorStudentAssignment.id)))).scalar_one()
     return counts
 
 
@@ -947,10 +947,12 @@ async def admin_assign_class(req: AdminClassAssign, user: User = Depends(get_cur
 @router.get("/admin/mentor-assignments")
 async def admin_mentor_assignments(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     require_role(user, "admin")
+    mentor_user = aliased(User)
+    student_user = aliased(User)
     rows = (await db.execute(
-        select(MentorStudentAssignment, User, User)
-        .join(User, User.id == MentorStudentAssignment.mentor_id)
-        .join(User, User.id == MentorStudentAssignment.student_id)
+        select(MentorStudentAssignment, mentor_user, student_user)
+        .join(mentor_user, mentor_user.id == MentorStudentAssignment.mentor_id)
+        .join(student_user, student_user.id == MentorStudentAssignment.student_id)
     )).all()
     return [{
         "id": assignment.id, "mentor_id": mentor.id, "mentor_name": mentor.name,
