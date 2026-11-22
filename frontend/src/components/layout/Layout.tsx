@@ -22,15 +22,16 @@ const S = {
 }
 
 const mainNav = [
-  { to: '/',           icon: LayoutDashboard, label: 'Dashboard',    exact: true },
-  { to: '/productivity', icon: BookOpen,       label: 'Study Hub'    },
-  { to: '/academics',  icon: GraduationCap,    label: 'Academic Hub' },
-  { to: '/coding',     icon: Code,             label: 'Coding Hub'   },
-  { to: '/campus',     icon: Users,            label: 'Campus Portal' },
-  { to: '/placements', icon: Briefcase,        label: 'Placement Hub'},
-  { to: '/wellness',   icon: Heart,            label: 'Wellness Hub' },
-  { to: '/expenses',   icon: Wallet,           label: 'Finance Hub'  },
-  { to: '/ai',         icon: Sparkles,         label: 'Chatbot'   },
+  { to: '/',              icon: LayoutDashboard, label: 'Dashboard', exact: true },
+  { to: '/productivity',  icon: BookOpen,         label: 'Study Hub' },
+  { to: '/classroom',     icon: GraduationCap,    label: 'Classroom' },
+  { to: '/academics',     icon: GraduationCap,    label: 'Academic Hub' },
+  { to: '/coding',        icon: Code,              label: 'Coding Hub' },
+  { to: '/campus',        icon: Users,             label: 'Campus Portal' },
+  { to: '/placements',    icon: Briefcase,         label: 'Placement Hub' },
+  { to: '/wellness',      icon: Heart,             label: 'Wellness Hub' },
+  { to: '/expenses',      icon: Wallet,            label: 'Finance Hub' },
+  { to: '/ai',            icon: Sparkles,          label: 'Chatbot' },
 ]
 
 const secondNav = [
@@ -43,11 +44,37 @@ const secondNav = [
 const mentorNav = [
   { to: '/', icon: LayoutDashboard, label: 'Overview', exact: true },
   { to: '/mentor/students', icon: Users, label: 'My Students' },
+  { to: '/mentor/sessions', icon: Bell, label: 'Sessions' },
+  { to: '/mentor/goals', icon: GraduationCap, label: 'Goals & Plans' },
+  { to: '/mentor/notes', icon: BookOpen, label: 'Private Notes' },
 ]
 
 const recruiterNav = [
   { to: '/', icon: LayoutDashboard, label: 'Overview', exact: true },
-  { to: '/recruiter/candidates', icon: Briefcase, label: 'Candidates' },
+  { to: '/recruiter/candidates', icon: Users, label: 'Find Candidates' },
+  { to: '/recruiter/shortlisted', icon: Shield, label: 'Shortlisted' },
+  { to: '/recruiter/jobs', icon: Briefcase, label: 'Job Openings' },
+  { to: '/recruiter/applications', icon: ClipboardList, label: 'Applications' },
+]
+
+const facultyNav = [
+  { to: '/', icon: LayoutDashboard, label: 'Overview', exact: true },
+  { to: '/faculty/classes', icon: BookOpen, label: 'My Classes' },
+  { to: '/faculty/students', icon: Users, label: 'My Students' },
+  { to: '/faculty/attendance', icon: CheckCircle2, label: 'Attendance' },
+  { to: '/faculty/assignments', icon: ClipboardList, label: 'Assignments' },
+  { to: '/faculty/marks', icon: BarChart3, label: 'Marks & Results' },
+  { to: '/faculty/timetable', icon: Calendar, label: 'Timetable' },
+  { to: '/faculty/notices', icon: Bell, label: 'Notices' },
+  { to: '/faculty/materials', icon: BookOpen, label: 'Learning Materials' },
+]
+
+const adminNav = [
+  { to: '/', icon: LayoutDashboard, label: 'Overview', exact: true },
+  { to: '/admin/students', icon: Users, label: 'Students' },
+  { to: '/admin/staff', icon: Shield, label: 'Staff & Roles' },
+  { to: '/admin/classes', icon: BookOpen, label: 'Class Assignments' },
+  { to: '/admin/mentors', icon: GraduationCap, label: 'Mentor Assignments' },
 ]
 
 const roleSecondaryNav = [
@@ -107,8 +134,12 @@ export default function Layout() {
     ? mentorNav
     : user?.role === 'recruiter'
       ? recruiterNav
-      : mainNav
-  const currentSecondNav = user?.role === 'mentor' || user?.role === 'recruiter'
+      : user?.role === 'faculty'
+        ? facultyNav
+        : user?.role === 'admin'
+          ? adminNav
+          : mainNav
+  const currentSecondNav = ['mentor', 'recruiter', 'faculty', 'admin'].includes(user?.role || '')
     ? roleSecondaryNav
     : secondNav
   const workspaceLabel = user?.role === 'student'
@@ -207,7 +238,7 @@ export default function Layout() {
         </div>
 
         {/* Nav */}
-        <nav aria-label={user?.role === "mentor" ? "Mentor navigation" : user?.role === "recruiter" ? "Recruiter navigation" : "StudentOS navigation"} style={{ flex: 1, padding: sidebarCollapsed ? '10px 8px 0' : '10px 10px 0' }}>
+        <nav aria-label={user?.role === "mentor" ? "Mentor navigation" : user?.role === "recruiter" ? "Recruiter navigation" : user?.role === "faculty" ? "Faculty navigation" : user?.role === "admin" ? "Admin navigation" : "StudentOS navigation"} style={{ flex: 1, padding: sidebarCollapsed ? '10px 8px 0' : '10px 10px 0' }}>
           {currentMainNav.map(({ to, icon, label, exact }) => (
             <NavItem key={label} to={to} icon={icon} label={label} end={exact || to === '/'} collapsed={sidebarCollapsed} />
           ))}
