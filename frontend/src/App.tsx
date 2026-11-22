@@ -12,8 +12,6 @@ import Register from './pages/Register'
 import ForgotPassword from './pages/ForgotPassword'
 import AuthCallback from './pages/AuthCallback'
 import RoleDashboard from './pages/RoleDashboard'
-import MentorStudents from './pages/MentorStudents'
-import RecruiterCandidates from './pages/RecruiterCandidates'
 import Academics from './pages/Academics'
 import Coding from './pages/Coding'
 import Placements from './pages/Placements'
@@ -73,7 +71,6 @@ const mentorOnly = ['mentor']
 const recruiterOnly = ['recruiter']
 const facultyOnly = ['faculty']
 const adminOnly = ['admin']
-const campusRoles = ['student', 'faculty', 'admin']
 
 export default function App() {
   const dispatch = useDispatch<AppDispatch>()
@@ -140,11 +137,11 @@ export default function App() {
         <Route path="faculty/marks" element={<RoleRoute allowedRoles={facultyOnly}><FacultyWorkspace /></RoleRoute>} />
         <Route path="faculty/timetable" element={<RoleRoute allowedRoles={facultyOnly}><FacultyWorkspace /></RoleRoute>} />
         <Route path="faculty/notices" element={<RoleRoute allowedRoles={facultyOnly}><FacultyWorkspace /></RoleRoute>} />
-        <Route path="faculty/materials" element={<RoleRoute allowedRoles={facultyOnly}><FacultyWorkspace /></Route>} />
+        <Route path="faculty/materials" element={<RoleRoute allowedRoles={facultyOnly}><FacultyWorkspace /></RoleRoute>} />
         <Route path="admin/students" element={<RoleRoute allowedRoles={adminOnly}><AdminWorkspace /></RoleRoute>} />
         <Route path="admin/staff" element={<RoleRoute allowedRoles={adminOnly}><AdminWorkspace /></RoleRoute>} />
         <Route path="admin/classes" element={<RoleRoute allowedRoles={adminOnly}><AdminWorkspace /></RoleRoute>} />
-        <Route path="admin/mentors" element={<RoleRoute allowedRoles={adminOnly}><AdminWorkspace /></Route>} />
+        <Route path="admin/mentors" element={<RoleRoute allowedRoles={adminOnly}><AdminWorkspace /></RoleRoute>} />
       </Route>
     </Routes>
   )
