@@ -330,8 +330,8 @@ async def recruiter_applications(job_id: int | None = None, user: User = Depends
         select(RecruiterApplication, RecruiterJob, User, RecruiterVisibility)
         .join(RecruiterJob, RecruiterJob.id == RecruiterApplication.job_id)
         .join(User, User.id == RecruiterApplication.student_id)
-        .outerjoin(RecruiterVisibility, RecruiterVisibility.user_id == User.id)
-        .where(RecruiterJob.recruiter_id == user.id)
+        .join(RecruiterVisibility, RecruiterVisibility.user_id == User.id)
+        .where(RecruiterJob.recruiter_id == user.id, RecruiterVisibility.profile_visible.is_(True))
     )
     if job_id:
         statement = statement.where(RecruiterJob.id == job_id)
