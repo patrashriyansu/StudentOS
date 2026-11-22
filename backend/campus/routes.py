@@ -206,13 +206,13 @@ async def list_class_subjects(section: str | None = None, current_user: User = D
 @router.post("/subjects")
 async def create_class_subject(req: SubjectCreate, current_user: User = Depends(get_current_user),
                                db: AsyncSession = Depends(get_db)):
-    require_faculty(current_user)
-    subject = ClassSubject(faculty_user_id=current_user.id, section=req.section.strip().upper(),
-                           name=req.name.strip(), code=req.code.strip().upper() if req.code else None)
-    db.add(subject)
-    await db.commit()
-    await db.refresh(subject)
-    return {"id": subject.id, "name": subject.name, "section": subject.section, "code": subject.code}
+    # Class ownership is provisioned centrally so faculty cannot expand their
+    # own scope by registering another section through this legacy endpoint.
+    require_role(current_user, "admin")
+    raise HTTPException(
+        status_code=410,
+        detail="Use the administrator workspace to assign a class to its faculty account.",
+    )
 
 
 @router.post("/subjects/{subject_id}/sessions")
