@@ -7,7 +7,7 @@ import {
 import { api } from '../services/api'
 
 type Row = Record<string, any>
-type Subject = { id: number; name: string; code?: string | null; section: string }
+type Subject = { id: number; name: string; code?: string | null; section: string; faculty_user_id?: number }
 type Student = { id: number; name: string; email?: string; section?: string; registration_number?: string; total_problems_solved?: number }
 type Job = { id: number; title: string; company: string; description: string; location?: string; employment_type: string; skills: string[]; graduation_year_min?: number; graduation_year_max?: number; deadline?: string; status: string; applied?: boolean }
 type Candidate = { student_id: number; name: string; email?: string | null; college?: string | null; course?: string | null; branch?: string | null; passing_out_year?: number | null; skills: string[]; github_url?: string | null; linkedin_url?: string | null; portfolio_url?: string | null; resume_url?: string | null; leetcode_username?: string | null; total_problems_solved: number; easy_solved: number; medium_solved: number; hard_solved: number }
