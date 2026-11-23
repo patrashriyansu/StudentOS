@@ -47,11 +47,13 @@ const secondNav = [
 const mentorNav = [
   { to: '/', icon: LayoutDashboard, label: 'Overview', exact: true },
   { to: '/mentor/students', icon: Users, label: 'Mentees' },
+  { to: '/mentor/requests', icon: ClipboardList, label: 'Mentor Requests' },
   { to: '/mentor/programmes', icon: ClipboardList, label: 'Programmes' },
   { to: '/mentor/sessions', icon: Calendar, label: 'Sessions' },
   { to: '/mentor/goals', icon: Target, label: 'Growth Goals' },
   { to: '/mentor/actions', icon: CheckSquare, label: 'Action Items' },
   { to: '/mentor/check-ins', icon: MessageSquare, label: 'Check-ins' },
+  { to: '/mentor/messages', icon: MessageSquare, label: 'Messages' },
   { to: '/mentor/notes', icon: BookOpen, label: 'Private Notes' },
 ]
 

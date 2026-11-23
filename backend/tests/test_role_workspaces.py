@@ -465,3 +465,82 @@ def test_resume_download_is_private_to_the_document_owner() -> None:
                           headers=first).content == pdf
         assert client.get(f"/api/v1/placements/resume/documents/{doc_id}/download",
                           headers=second).status_code == 404
+
+
+def test_student_can_request_mentor_and_message_only_after_acceptance() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        mentor = register(client, "mentor")
+        student = register(client, "student")
+        other_student = register(client, "student")
+        mentor_id = _user_id(client, mentor)
+        student_id = _user_id(client, student)
+
+        available = client.get("/api/v1/workspaces/student/mentors", headers=student)
+        assert available.status_code == 200
+        assert any(item["id"] == mentor_id for item in available.json())
+
+        request = client.post("/api/v1/workspaces/student/mentoring/requests", headers=student, json={
+            "mentor_id": mentor_id,
+            "message": "I would like guidance on software engineering and internship preparation.",
+        })
+        assert request.status_code == 201, request.text
+        request_id = request.json()["id"]
+        duplicate = client.post("/api/v1/workspaces/student/mentoring/requests", headers=student, json={
+            "mentor_id": mentor_id,
+            "message": "Following up.",
+        })
+        assert duplicate.status_code == 409
+
+        mentor_requests = client.get("/api/v1/workspaces/mentor/requests", headers=mentor)
+        assert mentor_requests.status_code == 200
+        assert mentor_requests.json()[0]["student_name"] == student["name"]
+
+        premature = client.post(
+            f"/api/v1/workspaces/student/mentoring/messages/{mentor_id}",
+            headers=student,
+            json={"content": "Can we schedule a first meeting?"},
+        )
+        assert premature.status_code == 404
+
+        accepted = client.patch(
+            f"/api/v1/workspaces/mentor/requests/{request_id}",
+            headers=mentor,
+            json={"status": "accepted"},
+        )
+        assert accepted.status_code == 200
+        assert accepted.json()["status"] == "accepted"
+
+        student_message = client.post(
+            f"/api/v1/workspaces/student/mentoring/messages/{mentor_id}",
+            headers=student,
+            json={"content": "Can we schedule a first meeting?"},
+        )
+        assert student_message.status_code == 201
+
+        mentor_thread = client.get(
+            f"/api/v1/workspaces/mentor/messages/{student_id}",
+            headers=mentor,
+        )
+        assert mentor_thread.status_code == 200
+        assert mentor_thread.json()[0]["content"] == "Can we schedule a first meeting?"
+
+        mentor_reply = client.post(
+            f"/api/v1/workspaces/mentor/messages/{student_id}",
+            headers=mentor,
+            json={"content": "Yes. Please share your availability for this week."},
+        )
+        assert mentor_reply.status_code == 201
+
+        student_thread = client.get(
+            f"/api/v1/workspaces/student/mentoring/messages/{mentor_id}",
+            headers=student,
+        )
+        assert [item["sender_id"] for item in student_thread.json()] == [student_id, mentor_id]
+        assert student_thread.json()[1]["content"].startswith("Yes.")
+
+        intruder = client.get(
+            f"/api/v1/workspaces/student/mentoring/messages/{mentor_id}",
+            headers=other_student,
+        )
+        assert intruder.status_code == 404

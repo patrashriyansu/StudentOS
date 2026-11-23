@@ -726,9 +726,24 @@ export function StudentMentoring() {
   const [selectedProgram,setSelectedProgram]=useState('')
   const [checkIn,setCheckIn]=useState({confidence_rating:'3',progress_status:'on_track',wins:'',blockers:'',support_needed:''})
   const [feedback,setFeedback]=useState<Record<number,{rating:string;takeaways:string;next_steps:string}>>({})
+  const [availableMentors,setAvailableMentors]=useState<Row[]>([])
+  const [mentorRequests,setMentorRequests]=useState<Row[]>([])
+  const [requestMentorId,setRequestMentorId]=useState('')
+  const [requestMessage,setRequestMessage]=useState('')
+  const [selectedMentorId,setSelectedMentorId]=useState('')
+  const [mentorMessages,setMentorMessages]=useState<Row[]>([])
+  const [messageDraft,setMessageDraft]=useState('')
   const load=async()=>{
     setError('')
-    try{const r=await api.get('/workspaces/student/mentoring');setData(r.data||{programmes:[],goals:[],action_items:[],sessions:[],check_ins:[]})}
+    try{
+      const [r,m,requests]=await Promise.all([
+        api.get('/workspaces/student/mentoring'),
+        api.get('/workspaces/student/mentors'),
+        api.get('/workspaces/student/mentoring/requests'),
+      ])
+      setData(r.data||{programmes:[],goals:[],action_items:[],sessions:[],check_ins:[]})
+      setAvailableMentors(m.data||[]);setMentorRequests(requests.data||[])
+    }
     catch(e:any){setError(e?.response?.data?.detail||'Could not load your mentoring plan.')}
   }
   useEffect(()=>{void load()},[])
@@ -761,11 +776,65 @@ export function StudentMentoring() {
     finally{setBusy(false)}
   }
   const activePrograms=(data.programmes||[]).filter((p:Row)=>p.status==='active')
+
+  const requestMentor=async(event:FormEvent)=>{
+    event.preventDefault()
+    if(!requestMentorId){setError('Choose a mentor first.');return}
+    setBusy(true);setError('')
+    try{
+      await api.post('/workspaces/student/mentoring/requests',{mentor_id:Number(requestMentorId),message:requestMessage.trim()})
+      setRequestMessage('')
+      await load()
+    }catch(e:any){setError(e?.response?.data?.detail||'Could not send the mentor request.')}
+    finally{setBusy(false)}
+  }
+  const loadMentorMessages=async(mentorId:string)=>{
+    if(!mentorId){setMentorMessages([]);return}
+    try{
+      const response=await api.get('/workspaces/student/mentoring/messages/'+mentorId)
+      setMentorMessages(response.data||[])
+    }catch(e:any){setMentorMessages([]);setError(e?.response?.data?.detail||'Messaging is available after a mentor assignment is accepted.')}
+  }
+  const sendMentorMessage=async(event:FormEvent)=>{
+    event.preventDefault()
+    if(!selectedMentorId||!messageDraft.trim())return
+    setBusy(true);setError('')
+    try{
+      await api.post('/workspaces/student/mentoring/messages/'+selectedMentorId,{content:messageDraft.trim()})
+      setMessageDraft('')
+      await loadMentorMessages(selectedMentorId)
+    }catch(e:any){setError(e?.response?.data?.detail||'Could not send your message.')}
+    finally{setBusy(false)}
+  }
+
   useEffect(()=>{if(!selectedProgram&&activePrograms.length)setSelectedProgram(String(activePrograms[0].id))},[activePrograms.length,selectedProgram])
+  useEffect(()=>{if(!selectedMentorId&&data.programmes?.length)setSelectedMentorId(String(data.programmes[0].mentor_id))},[data.programmes?.length,selectedMentorId])
+  useEffect(()=>{void loadMentorMessages(selectedMentorId)},[selectedMentorId])
   return <div className="max-w-6xl mx-auto space-y-6">
     <Header eyebrow="Mentee workspace" title="My mentoring & growth plan" description="Review your mentor's plan, work through agreed actions, check in on progress and reflect after meetings." onRefresh={()=>void load()}/>
     <ErrorLine message={error}/>
-    {(data.programmes||[]).length===0?<Panel><Empty title="No mentoring programme yet" detail="When a mentor creates a development plan for you, it will appear here for your review and acceptance."/></Panel>:
+
+    <div className="grid gap-4 lg:grid-cols-2">
+      <Panel><h2 className="font-semibold">Find a mentor</h2><p className="text-xs text-dark-muted">Browse mentor profiles and send a short request explaining what guidance you need. Your mentor must accept before a mentoring relationship is created.</p>
+        {availableMentors.length===0?<Empty title="No mentor profiles available" detail="Your college administrator can add active mentor accounts."/>:<form onSubmit={requestMentor} className="space-y-3">
+          <SelectField label="Available mentor" value={requestMentorId} onChange={setRequestMentorId} options={[{value:'',label:'Choose a mentor'},...availableMentors.map((mentor:Row)=>({value:String(mentor.id),label:mentor.name+' · '+(mentor.department||'Mentor')}))]}/>
+          {requestMentorId&&<div className="rounded-xl bg-dark-lighter p-3"><p className="font-medium">{availableMentors.find((mentor:Row)=>String(mentor.id)===requestMentorId)?.name}</p><p className="mt-1 text-xs text-dark-muted">{availableMentors.find((mentor:Row)=>String(mentor.id)===requestMentorId)?.bio||'No mentor bio provided.'}</p><div className="mt-2 flex flex-wrap gap-1">{(availableMentors.find((mentor:Row)=>String(mentor.id)===requestMentorId)?.skills||[]).map((skill:string)=><span key={skill} className="rounded-md bg-primary/10 px-2 py-1 text-xs text-primary">{skill}</span>)}</div></div>}
+          <TextArea label="Your request (optional)" value={requestMessage} onChange={setRequestMessage} placeholder="I would like help preparing for software engineering internships and technical interviews."/>
+          <Action disabled={busy||!requestMentorId}>Send mentor request</Action>
+        </form>}
+        <div className="border-t border-dark-border pt-3"><h3 className="mb-2 text-sm font-semibold">My mentor requests</h3>{mentorRequests.length===0?<p className="text-xs text-dark-muted">You have not sent any mentor requests.</p>:<div className="space-y-2">{mentorRequests.map((request:Row)=><div key={request.id} className="flex items-center justify-between gap-2 rounded-lg border border-dark-border p-2"><div><p className="text-sm font-medium">{request.mentor_name}</p><p className="text-xs text-dark-muted">{request.message||'Mentoring request'}</p></div><span className="rounded-full bg-dark-lighter px-2.5 py-1 text-xs capitalize">{request.status}</span></div>)}</div>}</div>
+      </Panel>
+      <Panel><h2 className="font-semibold">Private mentor messages</h2><p className="text-xs text-dark-muted">Your conversation is visible only to you and the mentor assigned to your account.</p>
+        {(data.programmes||[]).length===0?<Empty title="No assigned mentor yet" detail="Send a mentor request and wait for acceptance, or wait for your college administrator to assign a mentor."/>:<>
+          <SelectField label="Mentor" value={selectedMentorId} onChange={setSelectedMentorId} options={(data.programmes||[]).filter((program:Row)=>program.status!=='declined').map((program:Row)=>({value:String(program.mentor_id),label:program.mentor_name}))}/>
+          <div className="max-h-64 min-h-[160px] space-y-2 overflow-y-auto rounded-xl border border-dark-border p-3">
+            {mentorMessages.length===0?<p className="py-8 text-center text-sm text-dark-muted">No messages yet. Start a conversation with your mentor.</p>:mentorMessages.map((message:Row)=><div key={message.id} className={'max-w-[88%] rounded-xl p-3 '+(message.sender_id===Number(selectedMentorId)?'mr-auto bg-dark-lighter':'ml-auto bg-primary/15')}><p className="text-[10px] text-dark-muted">{message.sender_name} · {new Date(message.created_at).toLocaleString()}</p><p className="mt-1 whitespace-pre-wrap text-sm">{message.content}</p></div>)}
+          </div>
+          <form onSubmit={sendMentorMessage} className="flex flex-col gap-2 sm:flex-row"><input value={messageDraft} onChange={e=>setMessageDraft(e.target.value)} maxLength={5000} placeholder="Write a message…" className="min-w-0 flex-1 rounded-xl border border-dark-border bg-dark-lighter px-3 py-2.5 text-sm text-white"/><Action disabled={busy||!messageDraft.trim()}>Send</Action></form>
+        </>}
+      </Panel>
+    </div>
+\n    {(data.programmes||[]).length===0?<Panel><Empty title="No mentoring programme yet" detail="When a mentor creates a development plan for you, it will appear here for your review and acceptance."/></Panel>:
       <Panel><h2 className="font-semibold">Mentoring programmes</h2><div className="space-y-3">{data.programmes.map((p:Row)=><article key={p.id} className="rounded-xl border border-dark-border p-4 space-y-2"><div className="flex flex-wrap justify-between gap-2"><div><h3 className="font-semibold">{p.title}</h3><p className="text-xs text-dark-muted">{p.mentor_name} · {p.focus_area} · {p.meeting_cadence} meetings</p></div><span className="text-xs rounded-full bg-dark-lighter px-3 py-1 capitalize">{p.status.replace('_',' ')}</span></div><p className="text-sm text-dark-muted">{p.description}</p><p className="text-xs text-dark-muted">{p.start_date}{p.target_end_date?' → '+p.target_end_date:''}</p>{p.status==='awaiting_student'&&<div className="flex gap-2 pt-2"><Action onClick={()=>void respond(p.id,true)} disabled={busy}>Accept plan</Action><Action secondary onClick={()=>void respond(p.id,false)} disabled={busy}>Decline</Action></div>}</article>)}</div></Panel>}
     <Panel><h2 className="font-semibold">Growth goals</h2>{(data.goals||[]).length===0?<Empty title="No growth goals yet" detail="Goals agreed with your mentor will appear here after you accept a programme."/>:<div className="space-y-3">{data.goals.map((g:Row)=><div key={g.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap justify-between gap-2"><div><b>{g.title}</b><p className="text-xs text-dark-muted">{g.category} · due {g.due_date||'not set'} · {g.priority} priority</p></div><b className="text-sm">{g.progress_percent}%</b></div><p className="text-sm mt-2">{g.desired_outcome}</p><p className="text-xs text-dark-muted mt-1">Success measure: {g.success_measure}</p><div className="h-2 rounded-full bg-dark-lighter overflow-hidden mt-3"><div className="h-full bg-primary rounded-full" style={{width:`${g.progress_percent}%`}}/></div></div>)}</div>}</Panel>
     <Panel><h2 className="font-semibold">My action items</h2>{(data.action_items||[]).length===0?<Empty title="No actions assigned" detail="Your agreed next steps will appear here."/>:<div className="space-y-2">{data.action_items.map((item:Row)=><div key={item.id} className="rounded-xl border border-dark-border p-3 flex flex-wrap items-center justify-between gap-3"><div><b>{item.title}</b><p className="text-xs text-dark-muted">{item.owner==='student'?'Your task':'Mentor task'} · due {item.due_date||'not set'}</p>{item.description&&<p className="text-sm mt-1">{item.description}</p>}{item.resource_url&&<a href={item.resource_url} target="_blank" rel="noreferrer" className="text-xs text-primary">Open resource ↗</a>}</div>{item.owner==='student'?<SelectField label="Status" value={item.status} onChange={v=>void updateAction(item.id,v)} options={['not_started','in_progress','completed','blocked'].map(v=>({value:v,label:v.replace('_',' ')}))}/>:<span className="text-xs text-dark-muted capitalize">{item.status.replace('_',' ')}</span>}</div>)}</div>}</Panel>
