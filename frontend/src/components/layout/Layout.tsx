@@ -8,7 +8,7 @@ import {
   LayoutDashboard, BookOpen, Code, Briefcase, Heart,
   Wallet, Bell, BarChart3, User, LogOut, Menu, X,
   GraduationCap, Settings, Search, Sparkles, Users,
-  Shield, ClipboardList, CheckCircle2, Calendar,
+  Shield, ClipboardList, CheckCircle2, Calendar, Target, CheckSquare, MessageSquare,
 } from 'lucide-react'
 
 const S = {
@@ -26,6 +26,7 @@ const mainNav = [
   { to: '/',              icon: LayoutDashboard, label: 'Dashboard', exact: true },
   { to: '/productivity',  icon: BookOpen,         label: 'Study Hub' },
   { to: '/classroom',     icon: GraduationCap,    label: 'Classroom' },
+  { to: '/mentoring',     icon: Target,            label: 'My Mentoring' },
   { to: '/academics',     icon: GraduationCap,    label: 'Academic Hub' },
   { to: '/coding',        icon: Code,              label: 'Coding Hub' },
   { to: '/campus',        icon: Users,             label: 'Campus Portal' },
@@ -44,9 +45,12 @@ const secondNav = [
 
 const mentorNav = [
   { to: '/', icon: LayoutDashboard, label: 'Overview', exact: true },
-  { to: '/mentor/students', icon: Users, label: 'My Students' },
-  { to: '/mentor/sessions', icon: Bell, label: 'Sessions' },
-  { to: '/mentor/goals', icon: GraduationCap, label: 'Goals & Plans' },
+  { to: '/mentor/students', icon: Users, label: 'Mentees' },
+  { to: '/mentor/programmes', icon: ClipboardList, label: 'Programmes' },
+  { to: '/mentor/sessions', icon: Calendar, label: 'Sessions' },
+  { to: '/mentor/goals', icon: Target, label: 'Growth Goals' },
+  { to: '/mentor/actions', icon: CheckSquare, label: 'Action Items' },
+  { to: '/mentor/check-ins', icon: MessageSquare, label: 'Check-ins' },
   { to: '/mentor/notes', icon: BookOpen, label: 'Private Notes' },
 ]
 
