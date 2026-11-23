@@ -50,6 +50,12 @@ def promote(email: str, role: str) -> None:
         connection.commit()
 
 
+def _user_id(client: TestClient, headers: dict) -> int:
+    response = client.get("/api/v1/auth/me", headers=headers)
+    assert response.status_code == 200, response.text
+    return response.json()["id"]
+
+
 def test_recruiter_jobs_candidates_shortlist_and_application_stages_are_persisted() -> None:
     with TestClient(app) as client:
         wait_until_ready(client)
@@ -85,8 +91,14 @@ def test_recruiter_jobs_candidates_shortlist_and_application_stages_are_persiste
         assert saved.status_code == 201
         assert client.get("/api/v1/workspaces/recruiter/shortlist", headers=recruiter).json()[0]["name"] == student["name"]
 
+        pdf = b"%PDF-1.4\\n% StudentOS test resume\\n%%EOF"
+        upload = client.post("/api/v1/placements/resume/upload", headers=student,
+                             files={"file": ("Student Resume.pdf", pdf, "application/pdf")})
+        assert upload.status_code == 201, upload.text
+        resume_id = upload.json()["resume_document_id"]
         applied = client.post(f"/api/v1/workspaces/student/jobs/{job_id}/apply", headers=student,
-                              json={"cover_note": "I would like to be considered."})
+                              json={"resume_document_id": resume_id,
+                                    "cover_note": "I would like to be considered."})
         assert applied.status_code == 201, applied.text
         applications = client.get("/api/v1/workspaces/recruiter/applications", headers=recruiter)
         assert applications.status_code == 200
@@ -94,6 +106,13 @@ def test_recruiter_jobs_candidates_shortlist_and_application_stages_are_persiste
         assert application["student_name"] == student["name"]
         assert application["email"] is None
         assert application["status"] == "applied"
+        assert application["resume_available"] is True
+        assert application["resume_filename"] == "Student Resume.pdf"
+        resume_download = client.get(
+            f"/api/v1/workspaces/recruiter/applications/{application['id']}/resume", headers=recruiter
+        )
+        assert resume_download.status_code == 200
+        assert resume_download.content.startswith(b"%PDF-1.4")
 
         changed = client.patch(f"/api/v1/workspaces/recruiter/applications/{application['id']}",
                                headers=recruiter, json={"status": "interview", "recruiter_note": "Invite for interview"})
@@ -284,3 +303,165 @@ def test_admin_can_manage_staff_roles_and_status_but_other_roles_cannot() -> Non
         item = next(row for row in updated_staff.json() if row["id"] == staff_id)
         assert item["role"] == "recruiter"
         assert item["active"] is False
+
+
+
+def test_resume_library_and_candidate_details_respect_field_level_student_consent() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        recruiter = register(client, "recruiter")
+        student = register(client, "student", "CSE-A")
+        student_id = _user_id(client, student)
+
+        master = client.put("/api/v1/campus/recruiter/visibility", headers=student,
+                            json={"profile_visible": True, "contact_visible": False})
+        assert master.status_code == 200
+        hidden = client.get(f"/api/v1/workspaces/recruiter/candidates/{student_id}", headers=recruiter)
+        assert hidden.status_code == 200
+        assert hidden.json()["academic"] is None
+        assert hidden.json()["phone"] is None
+        assert hidden.json()["resume_documents"] == []
+
+        saved = client.put("/api/v1/users/profile", headers=student, json={
+            "bio": "Computer science student focused on software engineering.",
+            "phone": "+91 9000000000", "college": "Example Institute",
+            "github_url": "https://github.com/example-student",
+            "linkedin_url": "https://www.linkedin.com/in/example-student",
+            "portfolio_url": "https://example.dev", "skills": ["Python", "React", "SQL"],
+        })
+        assert saved.status_code == 200
+
+        academic = client.put("/api/v1/campus/academic-profile", headers=student, json={
+            "registration_number": "TEST-ACADEMIC-01", "section": "CSE-A",
+            "course": "B.Tech", "branch": "Computer Science", "admission_year": 2024,
+            "passing_out_year": 2028, "current_year": 3, "current_semester": 5,
+            "cgpa": 8.39, "sgpa": 8.6,
+        })
+        assert academic.status_code == 200, academic.text
+
+        pdf = b"%PDF-1.4\\n% StudentOS consent test\\n%%EOF"
+        upload = client.post("/api/v1/placements/resume/upload", headers=student,
+                             files={"file": ("Career Resume.pdf", pdf, "application/pdf")})
+        assert upload.status_code == 201, upload.text
+
+        disclosures = client.put("/api/v1/campus/recruiter/disclosures", headers=student, json={
+            "academics_visible": True, "phone_visible": True, "resume_visible": True,
+        })
+        assert disclosures.status_code == 200
+        detail = client.get(f"/api/v1/workspaces/recruiter/candidates/{student_id}", headers=recruiter)
+        assert detail.status_code == 200, detail.text
+        payload = detail.json()
+        assert payload["phone"] == "+91 9000000000"
+        assert payload["academic"]["cgpa"] == 8.39
+        assert payload["academic"]["sgpa"] == 8.6
+        assert payload["resume_documents"][0]["filename"] == "Career Resume.pdf"
+        download = client.get(f"/api/v1/workspaces/recruiter/candidates/{student_id}/resume",
+                              headers=recruiter)
+        assert download.status_code == 200
+        assert download.content == pdf
+
+        client.put("/api/v1/campus/recruiter/disclosures", headers=student, json={
+            "academics_visible": False, "phone_visible": False, "resume_visible": False,
+        })
+        hidden_again = client.get(f"/api/v1/workspaces/recruiter/candidates/{student_id}", headers=recruiter)
+        assert hidden_again.status_code == 200
+        assert hidden_again.json()["academic"] is None
+        assert hidden_again.json()["phone"] is None
+        assert hidden_again.json()["resume_documents"] == []
+        assert client.get(f"/api/v1/workspaces/recruiter/candidates/{student_id}/resume",
+                          headers=recruiter).status_code == 404
+
+        invalid = client.post("/api/v1/placements/resume/upload", headers=student,
+                              files={"file": ("bad.pdf", b"not pdf", "application/pdf")})
+        assert invalid.status_code == 415
+
+
+def test_professional_mentor_programme_requires_acceptance_and_tracks_progress() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        admin = register(client, "student")
+        promote(admin["email"], "admin")
+        mentor = register(client, "mentor")
+        student = register(client, "student", "CSE-M")
+        assignment = client.post("/api/v1/campus/mentor/assignments", headers=admin, json={
+            "mentor_email": mentor["email"], "student_email": student["email"],
+        })
+        assert assignment.status_code == 201
+
+        student_id = _user_id(client, student)
+        created = client.post("/api/v1/workspaces/mentor/programmes", headers=mentor, json={
+            "student_id": student_id, "title": "Career readiness and full-stack growth",
+            "focus_area": "Career readiness",
+            "description": "A structured development programme covering technical growth, portfolio quality and interview readiness.",
+            "start_date": "2026-12-01", "target_end_date": "2027-03-31", "meeting_cadence": "biweekly",
+        })
+        assert created.status_code == 201, created.text
+        programme_id = created.json()["id"]
+
+        pending = client.get("/api/v1/workspaces/student/mentoring", headers=student)
+        assert pending.status_code == 200
+        assert pending.json()["programmes"][0]["status"] == "awaiting_student"
+
+        blocked = client.post("/api/v1/workspaces/mentor/development-goals", headers=mentor, json={
+            "program_id": programme_id, "title": "Publish portfolio projects",
+            "desired_outcome": "Publish two complete project case studies.",
+            "success_measure": "Two public case-study pages with code and screenshots.",
+        })
+        assert blocked.status_code == 409
+
+        accepted = client.post(f"/api/v1/workspaces/student/mentoring/programmes/{programme_id}/respond",
+                               headers=student, json={"accepted": True})
+        assert accepted.status_code == 200
+
+        goal = client.post("/api/v1/workspaces/mentor/development-goals", headers=mentor, json={
+            "program_id": programme_id, "title": "Publish portfolio projects",
+            "category": "Technical skills", "desired_outcome": "Publish two complete project case studies.",
+            "success_measure": "Two public case-study pages with README, architecture and demo.",
+            "baseline": "0 case studies", "target": "2 case studies", "priority": "high",
+            "due_date": "2027-01-31",
+        })
+        assert goal.status_code == 201, goal.text
+        goal_id = goal.json()["id"]
+        action = client.post("/api/v1/workspaces/mentor/action-items", headers=mentor, json={
+            "goal_id": goal_id, "title": "Write the first case-study draft",
+            "owner": "student", "due_date": "2026-12-15",
+        })
+        assert action.status_code == 201
+
+        plan = client.get("/api/v1/workspaces/student/mentoring", headers=student)
+        assert len(plan.json()["goals"]) == 1
+        action_id = plan.json()["action_items"][0]["id"]
+        assert client.patch(f"/api/v1/workspaces/student/mentoring/action-items/{action_id}",
+                            headers=student, json={"status": "completed"}).status_code == 200
+
+        checkin = client.post(
+            f"/api/v1/workspaces/student/mentoring/programmes/{programme_id}/check-ins",
+            headers=student, json={"confidence_rating": 4, "progress_status": "on_track",
+                "wins": "Completed the first draft.", "blockers": "Need review feedback.",
+                "support_needed": "Please review the project outline."},
+        )
+        assert checkin.status_code == 201
+        inbox = client.get("/api/v1/workspaces/mentor/check-ins", headers=mentor)
+        assert inbox.status_code == 200
+        checkin_id = inbox.json()[0]["id"]
+        replied = client.post(f"/api/v1/workspaces/mentor/check-ins/{checkin_id}/reply",
+                              headers=mentor, json={"mentor_reply": "Good progress. Share the draft before our next meeting."})
+        assert replied.status_code == 200
+        latest = client.get("/api/v1/workspaces/student/mentoring", headers=student)
+        assert latest.json()["check_ins"][0]["mentor_reply"].startswith("Good progress")
+
+
+def test_resume_download_is_private_to_the_document_owner() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        first = register(client, "student")
+        second = register(client, "student")
+        pdf = b"%PDF-1.4\\n% private file\\n%%EOF"
+        upload = client.post("/api/v1/placements/resume/upload", headers=first,
+                             files={"file": ("private.pdf", pdf, "application/pdf")})
+        assert upload.status_code == 201
+        doc_id = upload.json()["id"]
+        assert client.get(f"/api/v1/placements/resume/documents/{doc_id}/download",
+                          headers=first).content == pdf
+        assert client.get(f"/api/v1/placements/resume/documents/{doc_id}/download",
+                          headers=second).status_code == 404
