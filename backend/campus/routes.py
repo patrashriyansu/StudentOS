@@ -12,7 +12,7 @@ from backend.users.models import User, UserProfile, Notification
 from backend.coding.models import CodingProfile
 from .models import (
     StudentIdentity, ClassSubject, ClassSession, ClassAttendance, Notice, NoticeRead,
-    StudentAcademicProfile, MentorStudentAssignment, RecruiterVisibility,
+    StudentAcademicProfile, MentorStudentAssignment, RecruiterVisibility, RecruiterDisclosure,
 )
 
 router = APIRouter()
@@ -465,6 +465,11 @@ class RecruiterVisibilityUpdate(BaseModel):
     profile_visible: bool | None = None
     contact_visible: bool | None = None
 
+class RecruiterDisclosureUpdate(BaseModel):
+    academics_visible: bool | None = None
+    phone_visible: bool | None = None
+    resume_visible: bool | None = None
+
 
 def require_role(user: User, role: str) -> None:
     if user.role != role:
@@ -642,6 +647,46 @@ async def get_mentor_students(
     } for student, identity, academic, profile in rows]
 
 
+@router.get("/recruiter/disclosures")
+async def get_recruiter_disclosures(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, "student")
+    row = (await db.execute(select(RecruiterDisclosure).where(
+        RecruiterDisclosure.user_id == current_user.id
+    ))).scalar_one_or_none()
+    return {
+        "academics_visible": row.academics_visible if row else False,
+        "phone_visible": row.phone_visible if row else False,
+        "resume_visible": row.resume_visible if row else False,
+    }
+
+
+@router.put("/recruiter/disclosures")
+async def update_recruiter_disclosures(
+    req: RecruiterDisclosureUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(current_user, "student")
+    row = (await db.execute(select(RecruiterDisclosure).where(
+        RecruiterDisclosure.user_id == current_user.id
+    ))).scalar_one_or_none()
+    if row is None:
+        row = RecruiterDisclosure(user_id=current_user.id)
+        db.add(row)
+    for field, value in req.model_dump(exclude_unset=True).items():
+        setattr(row, field, value)
+    await db.commit()
+    return {
+        "academics_visible": row.academics_visible,
+        "phone_visible": row.phone_visible,
+        "resume_visible": row.resume_visible,
+        "message": "Recruiter detail sharing preferences saved.",
+    }
+
+
 @router.get("/recruiter/visibility")
 async def get_recruiter_visibility(
     current_user: User = Depends(get_current_user),
@@ -680,6 +725,13 @@ async def update_recruiter_visibility(
 
     if not visibility.profile_visible:
         visibility.contact_visible = False
+        disclosure = (await db.execute(select(RecruiterDisclosure).where(
+            RecruiterDisclosure.user_id == current_user.id
+        ))).scalar_one_or_none()
+        if disclosure is not None:
+            disclosure.academics_visible = False
+            disclosure.phone_visible = False
+            disclosure.resume_visible = False
 
     await db.commit()
     return {
