@@ -140,3 +140,100 @@ class TimetableEntry(Base):
     ends_at = Column(String(5), nullable=False)
     room = Column(String(100), nullable=True)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+
+class MentorProgram(Base):
+    """A structured mentor-student development agreement with student acceptance."""
+    __tablename__ = "workspace_mentor_programs"
+    id = Column(Integer, primary_key=True, index=True)
+    assignment_id = Column(Integer, ForeignKey("mentor_student_assignments.id", ondelete="CASCADE"),
+                           nullable=False, unique=True, index=True)
+    mentor_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(180), nullable=False)
+    focus_area = Column(String(80), nullable=False)
+    description = Column(Text, nullable=True)
+    start_date = Column(Date, nullable=False)
+    target_end_date = Column(Date, nullable=True)
+    meeting_cadence = Column(String(24), nullable=False, default="biweekly")
+    status = Column(String(24), nullable=False, default="awaiting_student", index=True)
+    student_accepted_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class MentorDevelopmentGoal(Base):
+    """A measurable development outcome agreed by mentor and mentee."""
+    __tablename__ = "workspace_mentor_development_goals"
+    id = Column(Integer, primary_key=True, index=True)
+    program_id = Column(Integer, ForeignKey("workspace_mentor_programs.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    mentor_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(180), nullable=False)
+    category = Column(String(60), nullable=False, default="Career development")
+    desired_outcome = Column(Text, nullable=False)
+    success_measure = Column(String(500), nullable=False)
+    baseline = Column(String(180), nullable=True)
+    target = Column(String(180), nullable=True)
+    priority = Column(String(16), nullable=False, default="medium")
+    progress_percent = Column(Integer, nullable=False, default=0)
+    status = Column(String(20), nullable=False, default="not_started", index=True)
+    due_date = Column(Date, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class MentorActionItem(Base):
+    """Small, owned actions that move a development goal forward."""
+    __tablename__ = "workspace_mentor_action_items"
+    id = Column(Integer, primary_key=True, index=True)
+    goal_id = Column(Integer, ForeignKey("workspace_mentor_development_goals.id", ondelete="CASCADE"),
+                     nullable=False, index=True)
+    program_id = Column(Integer, ForeignKey("workspace_mentor_programs.id", ondelete="CASCADE"),
+                         nullable=False, index=True)
+    mentor_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(180), nullable=False)
+    description = Column(Text, nullable=True)
+    owner = Column(String(12), nullable=False, default="student")
+    due_date = Column(Date, nullable=True)
+    status = Column(String(20), nullable=False, default="not_started", index=True)
+    resource_url = Column(String(1000), nullable=True)
+    completed_at = Column(DateTime(timezone=True), nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class MentorCheckIn(Base):
+    """Student-owned periodic progress signal with a mentor response."""
+    __tablename__ = "workspace_mentor_check_ins"
+    id = Column(Integer, primary_key=True, index=True)
+    program_id = Column(Integer, ForeignKey("workspace_mentor_programs.id", ondelete="CASCADE"),
+                        nullable=False, index=True)
+    mentor_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    confidence_rating = Column(Integer, nullable=False)
+    progress_status = Column(String(20), nullable=False, default="on_track")
+    wins = Column(Text, nullable=True)
+    blockers = Column(Text, nullable=True)
+    support_needed = Column(Text, nullable=True)
+    mentor_reply = Column(Text, nullable=True)
+    replied_at = Column(DateTime(timezone=True), nullable=True)
+    submitted_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class MentorSessionFeedback(Base):
+    """Student reflection submitted after a completed mentoring session."""
+    __tablename__ = "workspace_mentor_session_feedback"
+    id = Column(Integer, primary_key=True, index=True)
+    session_id = Column(Integer, ForeignKey("workspace_mentor_sessions.id", ondelete="CASCADE"),
+                        nullable=False, unique=True, index=True)
+    mentor_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    rating = Column(Integer, nullable=False)
+    takeaways = Column(Text, nullable=False)
+    next_steps = Column(Text, nullable=True)
+    submitted_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
