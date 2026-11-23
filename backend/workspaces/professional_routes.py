@@ -55,8 +55,8 @@ class ProgramCreate(BaseModel):
     title: str = Field(min_length=3, max_length=180)
     focus_area: Literal["Career readiness", "Technical skills", "Academic progress", "Communication", "Leadership", "Professional growth"] = "Career readiness"
     description: str = Field(min_length=10, max_length=5000)
-    start_date: datetime
-    target_end_date: datetime | None = None
+    start_date: date
+    target_end_date: date | None = None
     meeting_cadence: Literal["weekly", "biweekly", "monthly"] = "biweekly"
 
 
@@ -77,7 +77,7 @@ class DevelopmentGoalCreate(BaseModel):
     baseline: str | None = Field(default=None, max_length=180)
     target: str | None = Field(default=None, max_length=180)
     priority: Literal["low", "medium", "high"] = "medium"
-    due_date: datetime | None = None
+    due_date: date | None = None
 
 
 class DevelopmentGoalUpdate(BaseModel):
@@ -90,7 +90,7 @@ class ActionItemCreate(BaseModel):
     title: str = Field(min_length=3, max_length=180)
     description: str | None = Field(default=None, max_length=2000)
     owner: Literal["student", "mentor"] = "student"
-    due_date: datetime | None = None
+    due_date: date | None = None
     resource_url: str | None = Field(default=None, max_length=1000)
 
 
@@ -179,16 +179,12 @@ async def create_mentor_programme(req: ProgramCreate, user: User = Depends(get_c
     ))).scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=409, detail="A mentoring programme already exists for this mentee.")
-    start = req.start_date.replace(tzinfo=timezone.utc) if req.start_date.tzinfo is None else req.start_date
-    end = req.target_end_date
-    if end is not None:
-        end = end.replace(tzinfo=timezone.utc) if end.tzinfo is None else end
-        if end.date() < start.date():
-            raise HTTPException(status_code=422, detail="Target end date must be on or after the start date.")
+    if req.target_end_date is not None and req.target_end_date < req.start_date:
+        raise HTTPException(status_code=422, detail="Target end date must be on or after the start date.")
     programme = MentorProgram(
         assignment_id=assignment.id, mentor_id=user.id, student_id=req.student_id,
         title=req.title.strip(), focus_area=req.focus_area, description=req.description.strip(),
-        start_date=start.date(), target_end_date=end.date() if end else None,
+        start_date=req.start_date, target_end_date=req.target_end_date,
         meeting_cadence=req.meeting_cadence, status="awaiting_student",
     )
     db.add(programme)
@@ -242,7 +238,7 @@ async def create_development_goal(req: DevelopmentGoalCreate, user: User = Depen
         program_id=programme.id, mentor_id=user.id, student_id=programme.student_id,
         title=req.title.strip(), category=req.category, desired_outcome=req.desired_outcome.strip(),
         success_measure=req.success_measure.strip(), baseline=req.baseline, target=req.target,
-        priority=req.priority, due_date=req.due_date.date() if req.due_date else None,
+        priority=req.priority, due_date=req.due_date,
     )
     db.add(goal)
     await db.commit()
@@ -302,7 +298,7 @@ async def create_mentor_action_item(req: ActionItemCreate, user: User = Depends(
     item = MentorActionItem(
         goal_id=goal.id, program_id=programme.id, mentor_id=user.id, student_id=goal.student_id,
         title=req.title.strip(), description=req.description, owner=req.owner,
-        due_date=req.due_date.date() if req.due_date else None, resource_url=req.resource_url,
+        due_date=req.due_date, resource_url=req.resource_url,
     )
     db.add(item)
     await db.commit()
@@ -383,7 +379,14 @@ async def student_mentoring(user: User = Depends(get_current_user), db: AsyncSes
         .join(User, User.id == MentorProgram.mentor_id)
         .where(MentorProgram.student_id == user.id)
         .order_by(MentorProgram.created_at.desc()))).all()
-    programmes = [program_summary(program, mentor) for program, mentor in rows]
+    programmes = [{
+        "id": program.id, "mentor_id": mentor.id, "mentor_name": mentor.name,
+        "title": program.title, "focus_area": program.focus_area, "description": program.description,
+        "start_date": program.start_date.isoformat(),
+        "target_end_date": program.target_end_date.isoformat() if program.target_end_date else None,
+        "meeting_cadence": program.meeting_cadence, "status": program.status,
+        "student_accepted_at": program.student_accepted_at.isoformat() if program.student_accepted_at else None,
+    } for program, mentor in rows]
     plan_ids = [program["id"] for program in programmes]
     if not plan_ids:
         return {"programmes": [], "goals": [], "action_items": [], "sessions": [], "check_ins": []}
@@ -450,17 +453,6 @@ async def respond_to_mentoring_programme(program_id: int, req: ProgramResponse,
     await db.commit()
     return {"message": "Mentoring programme accepted." if req.accepted else "Mentoring programme declined.",
             "status": programme.status}
-
-
-@router.post("/student/mentoring/check-ins", status_code=201)
-async def submit_mentoring_checkin(req: CheckInCreate, user: User = Depends(get_current_user),
-                                   db: AsyncSession = Depends(get_db)):
-    require_role(user, "student")
-    programme = (await db.execute(select(MentorProgram).where(
-        MentorProgram.id == req.program_id if hasattr(req, "program_id") else False
-    ))).scalar_one_or_none()
-    # Check-ins are attached to the student's active programme selected in the URL-free payload below.
-    raise HTTPException(status_code=422, detail="Choose an active mentoring programme.")
 
 
 @router.post("/student/mentoring/programmes/{program_id}/check-ins", status_code=201)
