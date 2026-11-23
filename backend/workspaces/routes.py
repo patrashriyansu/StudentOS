@@ -2,24 +2,29 @@ from datetime import date, datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field
 from sqlalchemy import func, or_, select
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import aliased
+import io
 
 from backend.core.database import get_db
 from backend.core.security import get_current_user
 from backend.users.models import User, UserProfile
+from backend.academics.models import Grade
+from backend.placements.models import ResumeDocument, ApplicationResumeSnapshot
 from backend.campus.models import (
     ClassSubject, StudentIdentity, StudentAcademicProfile,
-    MentorStudentAssignment, RecruiterVisibility,
+    MentorStudentAssignment, RecruiterVisibility, RecruiterDisclosure,
 )
 from backend.coding.models import CodingProfile
 from .models import (
     RecruiterJob, RecruiterShortlist, RecruiterApplication,
     MentorSession, MentorGoal, MentorNote,
     ClassAssignment, AssignmentSubmission, ClassMark,
-    LearningResource, TimetableEntry,
+    LearningResource, TimetableEntry, MentorProgram, MentorDevelopmentGoal,
+    MentorActionItem, MentorCheckIn, MentorSessionFeedback,
 )
 
 router = APIRouter()
@@ -100,6 +105,7 @@ class JobStatusUpdate(BaseModel):
 
 
 class ApplicationCreate(BaseModel):
+    resume_document_id: int
     cover_note: str | None = Field(default=None, max_length=5000)
 
 
@@ -138,6 +144,75 @@ class MentorGoalUpdate(BaseModel):
 class MentorNoteCreate(BaseModel):
     student_id: int
     body: str = Field(min_length=1, max_length=10000)
+
+class MentorProgramCreate(BaseModel):
+    student_id: int
+    title: str = Field(min_length=3, max_length=180)
+    focus_area: Literal["Career readiness", "Technical skills", "Academic progress", "Communication", "Leadership", "Professional growth"] = "Career readiness"
+    description: str = Field(min_length=10, max_length=5000)
+    start_date: date
+    target_end_date: date | None = None
+    meeting_cadence: Literal["weekly", "biweekly", "monthly"] = "biweekly"
+
+
+class MentorProgramUpdate(BaseModel):
+    status: Literal["paused", "completed", "active"]
+
+
+class MentorDevelopmentGoalCreate(BaseModel):
+    program_id: int
+    title: str = Field(min_length=3, max_length=180)
+    category: Literal["Technical skills", "Career readiness", "Academic progress", "Communication", "Leadership", "Professionalism", "Teamwork", "Technology", "Personal growth"] = "Career readiness"
+    desired_outcome: str = Field(min_length=8, max_length=3000)
+    success_measure: str = Field(min_length=3, max_length=500)
+    baseline: str | None = Field(default=None, max_length=180)
+    target: str | None = Field(default=None, max_length=180)
+    priority: Literal["low", "medium", "high"] = "medium"
+    due_date: date | None = None
+
+
+class MentorDevelopmentGoalUpdate(BaseModel):
+    progress_percent: int = Field(ge=0, le=100)
+    status: Literal["not_started", "in_progress", "completed", "blocked"]
+
+
+class MentorActionItemCreate(BaseModel):
+    goal_id: int
+    title: str = Field(min_length=3, max_length=180)
+    description: str | None = Field(default=None, max_length=2000)
+    owner: Literal["student", "mentor"] = "student"
+    due_date: date | None = None
+    resource_url: str | None = Field(default=None, max_length=1000)
+
+
+class MentorActionItemUpdate(BaseModel):
+    status: Literal["not_started", "in_progress", "completed", "blocked"]
+
+
+class MentorCheckInCreate(BaseModel):
+    confidence_rating: int = Field(ge=1, le=5)
+    progress_status: Literal["on_track", "needs_support", "blocked"]
+    wins: str | None = Field(default=None, max_length=3000)
+    blockers: str | None = Field(default=None, max_length=3000)
+    support_needed: str | None = Field(default=None, max_length=3000)
+
+
+class MentorCheckInReply(BaseModel):
+    mentor_reply: str = Field(min_length=2, max_length=3000)
+
+
+class MentorSessionFeedbackCreate(BaseModel):
+    rating: int = Field(ge=1, le=5)
+    takeaways: str = Field(min_length=2, max_length=3000)
+    next_steps: str | None = Field(default=None, max_length=3000)
+
+
+class StudentProgramResponse(BaseModel):
+    accepted: bool
+
+
+class StudentActionItemUpdate(BaseModel):
+    status: Literal["not_started", "in_progress", "completed", "blocked"]
 
 
 class AssignmentCreate(BaseModel):
@@ -266,12 +341,14 @@ async def update_recruiter_job(job_id: int, req: JobStatusUpdate, user: User = D
 async def get_recruiter_shortlist(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     require_role(user, "recruiter")
     rows = (await db.execute(
-        select(RecruiterShortlist, User, UserProfile, StudentAcademicProfile, CodingProfile, RecruiterVisibility)
+        select(RecruiterShortlist, User, UserProfile, StudentAcademicProfile, CodingProfile,
+               RecruiterVisibility, RecruiterDisclosure)
         .join(User, User.id == RecruiterShortlist.student_id)
         .outerjoin(UserProfile, UserProfile.user_id == User.id)
         .outerjoin(StudentAcademicProfile, StudentAcademicProfile.student_id == User.id)
         .outerjoin(CodingProfile, CodingProfile.user_id == User.id)
         .outerjoin(RecruiterVisibility, RecruiterVisibility.user_id == User.id)
+        .outerjoin(RecruiterDisclosure, RecruiterDisclosure.user_id == User.id)
         .where(RecruiterShortlist.recruiter_id == user.id, RecruiterVisibility.profile_visible.is_(True))
         .order_by(RecruiterShortlist.created_at.desc())
     )).all()
@@ -285,11 +362,122 @@ async def get_recruiter_shortlist(user: User = Depends(get_current_user), db: As
         "github_url": profile.github_url if profile else None,
         "linkedin_url": profile.linkedin_url if profile else None,
         "portfolio_url": profile.portfolio_url if profile else None,
-        "resume_url": profile.resume_url if profile else None,
+        "resume_url": profile.resume_url if profile and disclosure and disclosure.resume_visible else None,
         "leetcode_username": coding.leetcode_username if coding else None,
         "total_problems_solved": coding.total_problems_solved if coding else 0,
         "note": saved.note,
-    } for saved, student, profile, academic, coding, visibility in rows]
+    } for saved, student, profile, academic, coding, visibility, disclosure in rows]
+
+
+@router.get("/recruiter/candidates/{student_id}")
+async def recruiter_candidate_detail(student_id: int, user: User = Depends(get_current_user),
+                                     db: AsyncSession = Depends(get_db)):
+    require_role(user, "recruiter")
+    pair = (await db.execute(
+        select(User, UserProfile, StudentAcademicProfile, CodingProfile, RecruiterVisibility, RecruiterDisclosure)
+        .join(RecruiterVisibility, RecruiterVisibility.user_id == User.id)
+        .outerjoin(UserProfile, UserProfile.user_id == User.id)
+        .outerjoin(StudentAcademicProfile, StudentAcademicProfile.student_id == User.id)
+        .outerjoin(CodingProfile, CodingProfile.user_id == User.id)
+        .outerjoin(RecruiterDisclosure, RecruiterDisclosure.user_id == User.id)
+        .where(User.id == student_id, User.role == "student", User.is_active.is_(True),
+               RecruiterVisibility.profile_visible.is_(True))
+    )).first()
+    if pair is None:
+        raise HTTPException(status_code=404, detail="This student has not shared their profile with recruiters.")
+    student, profile, academic, coding, visibility, disclosure = pair
+
+    documents = []
+    if disclosure and disclosure.resume_visible:
+        docs = (await db.execute(select(ResumeDocument).where(
+            ResumeDocument.student_id == student.id
+        ).order_by(ResumeDocument.created_at.desc()))).scalars().all()
+        documents = [{"id": doc.id, "filename": doc.filename, "file_size": doc.file_size,
+                      "created_at": doc.created_at.isoformat()} for doc in docs]
+
+    academic_detail = None
+    if disclosure and disclosure.academics_visible:
+        grades = (await db.execute(select(Grade).where(
+            Grade.user_id == student.id
+        ).order_by(Grade.semester, Grade.subject))).scalars().all()
+        assessments = (await db.execute(select(ClassMark, ClassSubject).join(
+            ClassSubject, ClassSubject.id == ClassMark.subject_id
+        ).where(ClassMark.student_id == student.id).order_by(
+            ClassMark.updated_at.desc()
+        ))).all()
+        academic_detail = {
+            "course": academic.course if academic else None,
+            "branch": academic.branch if academic else None,
+            "college": profile.college if profile else None,
+            "admission_year": academic.admission_year if academic else None,
+            "passing_out_year": academic.passing_out_year if academic else None,
+            "current_year": academic.current_year if academic else None,
+            "current_semester": academic.current_semester if academic else None,
+            "cgpa": academic.cgpa if academic else None,
+            "sgpa": academic.sgpa if academic else None,
+            "semester_results": [{
+                "semester": grade.semester, "subject": grade.subject,
+                "credits": grade.credits, "grade": grade.grade, "grade_point": grade.grade_point,
+            } for grade in grades],
+            "class_assessments": [{
+                "subject": subject.name, "assessment": mark.assessment,
+                "marks_obtained": mark.marks_obtained, "max_marks": mark.max_marks,
+                "remarks": mark.remarks,
+            } for mark, subject in assessments],
+        }
+
+    return {
+        "student_id": student.id,
+        "name": student.name,
+        "email": student.email if visibility.contact_visible else None,
+        "phone": profile.phone if profile and disclosure and disclosure.phone_visible else None,
+        "bio": profile.bio if profile else None,
+        "college": profile.college if profile else None,
+        "branch": academic.branch if academic else (profile.department if profile else None),
+        "passing_out_year": academic.passing_out_year if academic else None,
+        "skills": profile.skills or [] if profile else [],
+        "interests": profile.interests or [] if profile else [],
+        "achievements": profile.achievements or [] if profile else [],
+        "github_url": profile.github_url if profile else None,
+        "linkedin_url": profile.linkedin_url if profile else None,
+        "portfolio_url": profile.portfolio_url if profile else None,
+        "external_resume_url": profile.resume_url if profile and disclosure and disclosure.resume_visible else None,
+        "leetcode_username": coding.leetcode_username if coding else None,
+        "total_problems_solved": coding.total_problems_solved if coding else 0,
+        "easy_solved": coding.easy_solved if coding else 0,
+        "medium_solved": coding.medium_solved if coding else 0,
+        "hard_solved": coding.hard_solved if coding else 0,
+        "resume_visible": bool(disclosure and disclosure.resume_visible),
+        "resume_documents": documents,
+        "academic_records_visible": bool(disclosure and disclosure.academics_visible),
+        "academic": academic_detail,
+        "phone_visible": bool(disclosure and disclosure.phone_visible),
+        "contact_visible": visibility.contact_visible,
+    }
+
+
+@router.get("/recruiter/candidates/{student_id}/resume")
+async def download_shared_candidate_resume(student_id: int, user: User = Depends(get_current_user),
+                                            db: AsyncSession = Depends(get_db)):
+    require_role(user, "recruiter")
+    gate = (await db.execute(
+        select(RecruiterVisibility, RecruiterDisclosure)
+        .join(User, User.id == RecruiterVisibility.user_id)
+        .outerjoin(RecruiterDisclosure, RecruiterDisclosure.user_id == RecruiterVisibility.user_id)
+        .where(RecruiterVisibility.user_id == student_id, RecruiterVisibility.profile_visible.is_(True))
+    )).first()
+    if gate is None or gate[1] is None or not gate[1].resume_visible:
+        raise HTTPException(status_code=404, detail="This student has not shared a resume.")
+    document = (await db.execute(select(ResumeDocument).where(
+        ResumeDocument.student_id == student_id
+    ).order_by(ResumeDocument.created_at.desc()))).scalars().first()
+    if document is None:
+        raise HTTPException(status_code=404, detail="No resume document is available.")
+    return StreamingResponse(
+        io.BytesIO(document.file_data), media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{document.filename}"',
+                 "Content-Length": str(document.file_size)},
+    )
 
 
 @router.post("/recruiter/shortlist/{student_id}", status_code=201)
@@ -331,10 +519,11 @@ async def recruiter_applications(job_id: int | None = None, user: User = Depends
                                  db: AsyncSession = Depends(get_db)):
     require_role(user, "recruiter")
     statement = (
-        select(RecruiterApplication, RecruiterJob, User, RecruiterVisibility)
+        select(RecruiterApplication, RecruiterJob, User, RecruiterVisibility, ApplicationResumeSnapshot)
         .join(RecruiterJob, RecruiterJob.id == RecruiterApplication.job_id)
         .join(User, User.id == RecruiterApplication.student_id)
         .join(RecruiterVisibility, RecruiterVisibility.user_id == User.id)
+        .outerjoin(ApplicationResumeSnapshot, ApplicationResumeSnapshot.application_id == RecruiterApplication.id)
         .where(RecruiterJob.recruiter_id == user.id, RecruiterVisibility.profile_visible.is_(True))
     )
     if job_id:
@@ -347,7 +536,32 @@ async def recruiter_applications(job_id: int | None = None, user: User = Depends
         "status": application.status, "cover_note": application.cover_note,
         "recruiter_note": application.recruiter_note,
         "created_at": application.created_at.isoformat(),
-    } for application, job, student, visibility in rows]
+        "resume_available": snapshot is not None,
+        "resume_filename": snapshot.filename if snapshot else None,
+    } for application, job, student, visibility, snapshot in rows]
+
+
+@router.get("/recruiter/applications/{application_id}/resume")
+async def download_application_resume(application_id: int, user: User = Depends(get_current_user),
+                                      db: AsyncSession = Depends(get_db)):
+    require_role(user, "recruiter")
+    row = (await db.execute(
+        select(ApplicationResumeSnapshot, RecruiterVisibility)
+        .join(RecruiterApplication, RecruiterApplication.id == ApplicationResumeSnapshot.application_id)
+        .join(RecruiterJob, RecruiterJob.id == RecruiterApplication.job_id)
+        .join(RecruiterVisibility, RecruiterVisibility.user_id == RecruiterApplication.student_id)
+        .where(ApplicationResumeSnapshot.application_id == application_id,
+               RecruiterJob.recruiter_id == user.id,
+               RecruiterVisibility.profile_visible.is_(True))
+    )).first()
+    if row is None:
+        raise HTTPException(status_code=404, detail="No resume is available for this application.")
+    snapshot, _visibility = row
+    return StreamingResponse(
+        io.BytesIO(snapshot.file_data), media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{snapshot.filename}"',
+                 "Content-Length": str(snapshot.file_size)},
+    )
 
 
 @router.patch("/recruiter/applications/{application_id}")
@@ -410,9 +624,22 @@ async def apply_to_job(job_id: int, req: ApplicationCreate, user: User = Depends
     ))).scalar_one_or_none()
     if existing:
         raise HTTPException(status_code=409, detail="You have already applied to this job.")
-    db.add(RecruiterApplication(job_id=job.id, student_id=user.id, cover_note=req.cover_note))
+    document = (await db.execute(select(ResumeDocument).where(
+        ResumeDocument.id == req.resume_document_id, ResumeDocument.student_id == user.id
+    ))).scalar_one_or_none()
+    if document is None:
+        raise HTTPException(status_code=422, detail="Choose a resume from your library before applying.")
+
+    application = RecruiterApplication(job_id=job.id, student_id=user.id, cover_note=req.cover_note)
+    db.add(application)
+    await db.flush()
+    db.add(ApplicationResumeSnapshot(
+        application_id=application.id, resume_document_id=document.id,
+        filename=document.filename, content_type=document.content_type,
+        file_size=document.file_size, file_data=document.file_data,
+    ))
     await db.commit()
-    return {"message": "Application submitted."}
+    return {"message": "Application submitted with resume.", "resume_filename": document.filename}
 
 
 @router.get("/student/applications")
