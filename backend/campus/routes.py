@@ -750,11 +750,12 @@ async def get_recruiter_candidates(
 ):
     require_role(current_user, "recruiter")
     statement = (
-        select(User, UserProfile, StudentAcademicProfile, CodingProfile, RecruiterVisibility)
+        select(User, UserProfile, StudentAcademicProfile, CodingProfile, RecruiterVisibility, RecruiterDisclosure)
         .join(RecruiterVisibility, RecruiterVisibility.user_id == User.id)
         .outerjoin(UserProfile, UserProfile.user_id == User.id)
         .outerjoin(StudentAcademicProfile, StudentAcademicProfile.student_id == User.id)
         .outerjoin(CodingProfile, CodingProfile.user_id == User.id)
+        .outerjoin(RecruiterDisclosure, RecruiterDisclosure.user_id == User.id)
         .where(
             User.role == "student",
             User.is_active.is_(True),
@@ -785,10 +786,10 @@ async def get_recruiter_candidates(
         "github_url": profile.github_url if profile else None,
         "linkedin_url": profile.linkedin_url if profile else None,
         "portfolio_url": profile.portfolio_url if profile else None,
-        "resume_url": profile.resume_url if profile else None,
+        "resume_url": profile.resume_url if profile and disclosure and disclosure.resume_visible else None,
         "leetcode_username": coding.leetcode_username if coding else None,
         "total_problems_solved": coding.total_problems_solved if coding else 0,
         "easy_solved": coding.easy_solved if coding else 0,
         "medium_solved": coding.medium_solved if coding else 0,
         "hard_solved": coding.hard_solved if coding else 0,
-    } for student, profile, academic, coding, visibility in rows]
+    } for student, profile, academic, coding, visibility, disclosure in rows]
