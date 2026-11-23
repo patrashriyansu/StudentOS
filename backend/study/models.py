@@ -1,6 +1,6 @@
 from datetime import datetime, timezone
 
-from sqlalchemy import Column, DateTime, ForeignKey, Integer, LargeBinary, String, Text
+from sqlalchemy import Column, DateTime, ForeignKey, Integer, LargeBinary, String, Text, UniqueConstraint
 from backend.core.database import Base
 
 
@@ -17,3 +17,21 @@ class StudyDocument(Base):
     extracted_text = Column(Text, nullable=False, default="")
     index_status = Column(String(24), nullable=False, default="indexed")
     created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+
+
+
+class StudyChapterProgress(Base):
+    __tablename__ = "study_chapter_progress"
+    __table_args__ = (
+        UniqueConstraint("user_id", "subject", "chapter_title", name="uq_study_chapter_user_subject_title"),
+    )
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    subject = Column(String(160), nullable=False)
+    chapter_title = Column(String(200), nullable=False)
+    status = Column(String(24), nullable=False, default="not_started")
+    completion_percent = Column(Integer, nullable=False, default=0)
+    notes = Column(Text, nullable=False, default="")
+    created_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc))
+    updated_at = Column(DateTime(timezone=True), nullable=False, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))

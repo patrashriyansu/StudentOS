@@ -16,7 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from backend.core.database import get_db
 from backend.core.security import get_current_user
 from backend.users.models import User
-from backend.study.models import StudyDocument
+from backend.study.models import StudyDocument, StudyChapterProgress
 from backend.ai.gemini_service import ask_gemini_image
 
 router = APIRouter()
@@ -169,7 +169,7 @@ async def upload_document(
     if extension == ".pdf":
         content_type = "application/pdf"
         extracted_text = _extract_pdf(data)
-        index_status = "indexed" if extracted_text.strip() else "no_text_found"
+        index_status = "indexed" if extracted_text.strip() else "needs_ocr"
     elif extension == ".docx":
         if not zipfile.is_zipfile(io.BytesIO(data)):
             raise HTTPException(status_code=415, detail="The uploaded DOCX file is invalid.")
@@ -208,20 +208,50 @@ async def get_document_text(document_id: int, user: User = Depends(get_current_u
 
 
 @router.post("/documents/{document_id}/ocr")
-async def index_document_image(document_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+async def index_document_image_or_pdf(document_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     document = await _owned_document(document_id, user, db)
-    if document.content_type not in {"image/png", "image/jpeg", "image/webp"}:
-        raise HTTPException(status_code=422, detail="OCR can currently be run on uploaded PNG, JPG and WEBP images.")
-    extracted = await ask_gemini_image(
-        "Transcribe all readable text in this study image. Preserve headings, equations, lists and line breaks. "
-        "Return only the extracted text. Do not guess text that is not legible.",
-        document.file_data,
-        document.content_type,
+    if document.content_type not in {"image/png", "image/jpeg", "image/webp", "application/pdf"}:
+        raise HTTPException(status_code=422, detail="OCR is supported for uploaded PDFs and PNG/JPG/WEBP images.")
+
+    ocr_data = document.file_data
+    mime_type = document.content_type
+    prompt = (
+        "Transcribe all readable text from this study material. Preserve page order, headings, "
+        "equations, tables, lists and line breaks. Include page headings for PDF pages. "
+        "Return only extracted text. Never guess content that is not legible."
     )
+    partial = False
+    if mime_type == "application/pdf":
+        try:
+            reader = PdfReader(io.BytesIO(document.file_data), strict=False)
+            page_count = len(reader.pages)
+            if page_count > MAX_PDF_PAGES:
+                raise HTTPException(status_code=413, detail=f"PDFs are limited to {MAX_PDF_PAGES} pages.")
+            if page_count > 20:
+                from pypdf import PdfWriter
+                writer = PdfWriter()
+                for page in reader.pages[:20]:
+                    writer.add_page(page)
+                buffer = io.BytesIO()
+                writer.write(buffer)
+                ocr_data = buffer.getvalue()
+                partial = True
+                prompt += f" Process pages 1 to 20 only (of {page_count} total pages)."
+        except HTTPException:
+            raise
+        except Exception as exc:
+            raise HTTPException(status_code=422, detail="The PDF could not be prepared for OCR.") from exc
+
+    extracted = await ask_gemini_image(prompt, ocr_data, mime_type)
     document.extracted_text = extracted[:MAX_EXTRACTED_CHARS]
-    document.index_status = "indexed" if document.extracted_text.strip() else "no_text_found"
+    document.index_status = "partial_indexed" if partial and document.extracted_text.strip() else (
+        "indexed" if document.extracted_text.strip() else "no_text_found"
+    )
     await db.commit()
-    return _document_metadata(document)
+    result = _document_metadata(document)
+    if partial:
+        result["index_message"] = "Only the first 20 pages were OCR-indexed. Split any remaining pages into another PDF to search them."
+    return result
 
 
 @router.get("/documents/{document_id}/download")
@@ -240,3 +270,112 @@ async def delete_document(document_id: int, user: User = Depends(get_current_use
     await db.delete(document)
     await db.commit()
     return {"message": "Study document deleted."}
+
+
+
+from pydantic import BaseModel, Field
+from datetime import datetime, timezone
+
+
+class ChapterProgressCreate(BaseModel):
+    subject: str = Field(min_length=1, max_length=160)
+    chapter_title: str = Field(min_length=1, max_length=200)
+    status: str = Field(default="not_started", pattern="^(not_started|in_progress|completed|needs_revision)$")
+    completion_percent: int = Field(default=0, ge=0, le=100)
+    notes: str = Field(default="", max_length=3000)
+
+
+class ChapterProgressUpdate(BaseModel):
+    status: str | None = Field(default=None, pattern="^(not_started|in_progress|completed|needs_revision)$")
+    completion_percent: int | None = Field(default=None, ge=0, le=100)
+    notes: str | None = Field(default=None, max_length=3000)
+
+
+def _chapter_dict(item: StudyChapterProgress) -> dict:
+    return {
+        "id": item.id,
+        "subject": item.subject,
+        "chapter_title": item.chapter_title,
+        "status": item.status,
+        "completion_percent": item.completion_percent,
+        "notes": item.notes,
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+    }
+
+
+@router.get("/chapters")
+async def list_chapter_progress(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    rows = (await db.execute(
+        select(StudyChapterProgress).where(StudyChapterProgress.user_id == user.id)
+        .order_by(StudyChapterProgress.subject.asc(), StudyChapterProgress.chapter_title.asc())
+    )).scalars().all()
+    return [_chapter_dict(item) for item in rows]
+
+
+@router.post("/chapters", status_code=201)
+async def upsert_chapter_progress(
+    req: ChapterProgressCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    subject = req.subject.strip()
+    title = req.chapter_title.strip()
+    item = (await db.execute(select(StudyChapterProgress).where(
+        StudyChapterProgress.user_id == user.id,
+        StudyChapterProgress.subject == subject,
+        StudyChapterProgress.chapter_title == title,
+    ))).scalar_one_or_none()
+    if item is None:
+        item = StudyChapterProgress(user_id=user.id, subject=subject, chapter_title=title)
+        db.add(item)
+    item.status = req.status
+    item.completion_percent = 100 if req.status == "completed" else req.completion_percent
+    item.notes = req.notes.strip()
+    item.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(item)
+    return _chapter_dict(item)
+
+
+@router.patch("/chapters/{progress_id}")
+async def update_chapter_progress(
+    progress_id: int,
+    req: ChapterProgressUpdate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    item = (await db.execute(select(StudyChapterProgress).where(
+        StudyChapterProgress.id == progress_id,
+        StudyChapterProgress.user_id == user.id,
+    ))).scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Chapter progress not found.")
+    for field, value in req.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(item, field, value)
+    if item.status == "completed":
+        item.completion_percent = 100
+    elif item.completion_percent == 100 and item.status != "completed":
+        item.status = "in_progress"
+    item.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(item)
+    return _chapter_dict(item)
+
+
+@router.delete("/chapters/{progress_id}")
+async def delete_chapter_progress(
+    progress_id: int,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    item = (await db.execute(select(StudyChapterProgress).where(
+        StudyChapterProgress.id == progress_id,
+        StudyChapterProgress.user_id == user.id,
+    ))).scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Chapter progress not found.")
+    await db.delete(item)
+    await db.commit()
+    return {"message": "Chapter progress deleted."}
