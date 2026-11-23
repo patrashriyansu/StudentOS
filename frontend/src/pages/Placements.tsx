@@ -11,7 +11,7 @@ const statusColors: Record<string, string> = {
 }
 
 export default function Placements() {
-  const [tab, setTab] = useState<'applications' | 'resume' | 'interviews' | 'offers'>('applications')
+  const [tab, setTab] = useState<'opportunities' | 'applications' | 'resume' | 'interviews' | 'offers'>('applications')
   const [applications, setApplications] = useState<any[]>([])
   const [interviews, setInterviews] = useState<any[]>([])
   const [offers, setOffers] = useState<any[]>([])
@@ -25,6 +25,12 @@ export default function Placements() {
   const [resumeAnalyzing, setResumeAnalyzing] = useState(false)
   const [resumeResult, setResumeResult] = useState<any>(null)
   const [resumeDocuments, setResumeDocuments] = useState<any[]>([])
+  const [jobs, setJobs] = useState<any[]>([])
+  const [studentJobApplications, setStudentJobApplications] = useState<any[]>([])
+  const [selectedResumeId, setSelectedResumeId] = useState('')
+  const [coverNote, setCoverNote] = useState('')
+  const [applyingJobId, setApplyingJobId] = useState<number | null>(null)
+  const [jobBoardMessage, setJobBoardMessage] = useState('')
 
   const loadData = async () => {
     try {
@@ -38,6 +44,12 @@ export default function Placements() {
       setInterviews(intRes.data || [])
       setOffers(offRes.data || [])
       setResumeDocuments(resumeRes.data || [])
+      const [jobResponse, studentApplicationResponse] = await Promise.allSettled([
+        api.get('/workspaces/student/jobs'),
+        api.get('/workspaces/student/applications'),
+      ])
+      setJobs(jobResponse.status === 'fulfilled' && Array.isArray(jobResponse.value.data) ? jobResponse.value.data : [])
+      setStudentJobApplications(studentApplicationResponse.status === 'fulfilled' && Array.isArray(studentApplicationResponse.value.data) ? studentApplicationResponse.value.data : [])
     } catch (err) {
       console.error(err)
     }
@@ -132,6 +144,30 @@ export default function Placements() {
     }
   }
 
+  const applyToRecruiterJob = async (job: any) => {
+    if (!selectedResumeId) {
+      setActionError('Upload a PDF resume in the Resume tab, then select it here before applying.')
+      setTab('resume')
+      return
+    }
+    setApplyingJobId(job.id)
+    setActionError('')
+    setJobBoardMessage('')
+    try {
+      await api.post('/workspaces/student/jobs/' + job.id + '/apply', {
+        resume_document_id: Number(selectedResumeId),
+        cover_note: coverNote.trim() || null,
+      })
+      setJobBoardMessage('Application submitted to ' + job.company + '. Your selected resume is attached to this application.')
+      setCoverNote('')
+      await loadData()
+    } catch (err: any) {
+      setActionError(err?.response?.data?.detail || 'Could not submit this application.')
+    } finally {
+      setApplyingJobId(null)
+    }
+  }
+
   const downloadResumeDocument = async (id: number, filename: string) => {
     try {
       const response = await api.get(`/placements/resume/documents/${id}/download`, { responseType: 'blob' })
@@ -165,7 +201,7 @@ export default function Placements() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex gap-1 glass rounded-xl p-1">
-            {(['applications', 'resume', 'interviews', 'offers'] as const).map((t) => (
+            {(['opportunities', 'applications', 'resume', 'interviews', 'offers'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -385,6 +421,34 @@ export default function Placements() {
               </div>
             </div>
           ))}
+        </div>
+      )}
+
+      {/* Tab: Recruiter-published opportunities */}
+      {tab === 'opportunities' && (
+        <div className="space-y-5">
+          {jobBoardMessage && <div role="status" className="rounded-xl border border-emerald-500/30 bg-emerald-500/10 p-3 text-sm text-emerald-200">{jobBoardMessage}</div>}
+          <section className="glass space-y-4 rounded-2xl border border-dark-border p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-semibold text-lg">Open opportunities</h3><p className="mt-1 text-xs text-dark-muted">Recruiter-published jobs and internships, with eligibility checks and your PDF resume attached at submission.</p></div><button onClick={() => void loadData()} className="rounded-lg border border-dark-border px-3 py-2 text-xs">Refresh jobs</button></div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              {jobs.map((job) => (
+                <article key={job.id} className="rounded-xl border border-dark-border p-4">
+                  <div className="flex items-start justify-between gap-2"><div><h4 className="font-semibold">{job.title}</h4><p className="text-sm text-primary">{job.company}</p></div><span className="rounded-full bg-primary/10 px-2.5 py-1 text-xs text-primary">{job.employment_type}</span></div>
+                  <p className="mt-3 line-clamp-3 text-sm text-dark-muted">{job.description}</p>
+                  <div className="mt-3 flex flex-wrap gap-2 text-xs text-dark-muted">{job.location && <span>{job.location}</span>}{job.deadline && <span>Apply by {new Date(job.deadline).toLocaleDateString()}</span>}{job.graduation_year_min && <span>Batch {job.graduation_year_min}{job.graduation_year_max ? '–' + job.graduation_year_max : '+'}</span>}</div>
+                  {job.skills?.length > 0 && <div className="mt-3 flex flex-wrap gap-1.5">{job.skills.map((skill: string) => <span key={skill} className="rounded-md bg-dark-lighter px-2 py-1 text-xs text-dark-muted">{skill}</span>)}</div>}
+                  {job.applied ? <p className="mt-4 rounded-lg bg-emerald-500/10 px-3 py-2 text-xs text-emerald-300">Application already submitted</p> : <div className="mt-4 space-y-2">
+                    <select value={selectedResumeId} onChange={(event) => setSelectedResumeId(event.target.value)} className="w-full rounded-lg border border-dark-border bg-dark-lighter px-3 py-2 text-xs text-white"><option value="">Choose a PDF resume</option>{resumeDocuments.map((resume: any) => <option key={resume.id} value={resume.id}>{resume.filename}</option>)}</select>
+                    <textarea value={coverNote} onChange={(event) => setCoverNote(event.target.value)} rows={2} placeholder="Optional cover note to the recruiter" className="w-full rounded-lg border border-dark-border bg-dark-lighter px-3 py-2 text-xs text-white"/>
+                    <button onClick={() => void applyToRecruiterJob(job)} disabled={applyingJobId === job.id} className="w-full rounded-lg bg-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-50">{applyingJobId === job.id ? 'Submitting…' : 'Apply with selected resume'}</button>
+                  </div>}
+                </article>
+              ))}
+            </div>
+            {jobs.length === 0 && <div className="rounded-xl border border-dashed border-dark-border p-7 text-center"><Briefcase size={30} className="mx-auto text-dark-muted"/><p className="mt-2 font-semibold">No published openings right now</p><p className="mt-1 text-xs text-dark-muted">Recruiter-created jobs will appear here when they are open and accepting applications.</p></div>}
+            {resumeDocuments.length === 0 && <p className="rounded-lg bg-amber-500/10 p-3 text-xs text-amber-200">You need a saved PDF resume to apply. Upload one from the Resume tab first.</p>}
+          </section>
+          <section className="glass space-y-3 rounded-2xl border border-dark-border p-5"><h3 className="font-semibold">Your StudentOS job applications</h3>{studentJobApplications.length === 0 ? <p className="text-sm text-dark-muted">Applications submitted to recruiters will appear here with their latest status and the exact resume filename attached.</p> : studentJobApplications.map((application: any) => <div key={application.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dark-border p-3"><div><p className="font-medium">{application.job_title} · {application.company}</p><p className="mt-1 text-xs text-dark-muted">Resume: {application.resume_filename || 'Not recorded'} · {application.created_at?.slice(0,10)}</p></div><span className={'rounded-full px-3 py-1 text-xs capitalize ' + (statusColors[application.status] || 'bg-dark-lighter text-dark-muted')}>{application.status}</span></div>)}</section>
         </div>
       )}
 

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BarChart3, BookOpen, Code, Briefcase, Heart, Wallet, Timer } from 'lucide-react'
+import { BarChart3, BookOpen, Code, Briefcase, Heart, Wallet, Timer, Printer } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Area, AreaChart, PieChart, Pie, Cell,
@@ -74,9 +74,12 @@ export default function Analytics() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold">Analytics Dashboard</h1>
-        <p className="text-dark-muted">Comprehensive view of your performance</p>
+      <div className="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold">Analytics Dashboard</h1>
+          <p className="text-dark-muted">Comprehensive view of your performance</p>
+        </div>
+        <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl border border-dark-border px-3 py-2 text-sm"><Printer size={15}/>Print / Save PDF</button>
       </div>
 
       {/* Summary Cards */}

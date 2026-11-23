@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import {
   TrendingDown, Wallet, PiggyBank, Plus, Trash2, X, CalendarDays,
-  Target, IndianRupee, AlertCircle, Check,
+  Target, IndianRupee, AlertCircle, Check, Download, Printer,
 } from 'lucide-react'
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from 'recharts'
 import { api } from '../services/api'
@@ -101,6 +101,24 @@ export default function Expenses() {
   })
   const [savingAmounts, setSavingAmounts] = useState<Record<number, string>>({})
 
+  const exportExpensesCsv = () => {
+    if (expenses.length === 0) {
+      setError('There are no saved expense records to export yet.')
+      return
+    }
+    const fields = ['Date', 'Amount INR', 'Category', 'Description', 'Payment Method']
+    const escapeCsv = (value: unknown) => '"' + String(value ?? '').replace(/"/g, '""') + '"'
+    const rows = expenses.map((item) => [
+      item.date, item.amount, item.category, item.description || '', item.payment_method || '',
+    ].map(escapeCsv).join(','))
+    const csv = [fields.map(escapeCsv).join(','), ...rows].join('\r\n')
+    const url = URL.createObjectURL(new Blob([csv], { type: 'text/csv;charset=utf-8;' }))
+    const anchor = document.createElement('a')
+    anchor.href = url
+    anchor.download = 'studentos-expenses-' + localDateValue().slice(0, 7) + '.csv'
+    anchor.click()
+    URL.revokeObjectURL(url)
+  }
   const loadData = async () => {
     setError('')
     try {
@@ -316,6 +334,8 @@ export default function Expenses() {
           </p>
         </div>
         <div className="flex flex-wrap items-center gap-3">
+          <button type="button" onClick={exportExpensesCsv} className="inline-flex items-center gap-2 rounded-xl border border-dark-border px-3 py-2 text-sm"><Download size={15}/>Export CSV</button>
+          <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl border border-dark-border px-3 py-2 text-sm"><Printer size={15}/>Print / Save PDF</button>
           <div className="flex gap-1 glass rounded-xl p-1">
             {(['overview', 'budget', 'savings'] as const).map((item) => (
               <button

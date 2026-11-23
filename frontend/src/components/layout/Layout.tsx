@@ -24,7 +24,8 @@ const S = {
 
 const mainNav = [
   { to: '/',              icon: LayoutDashboard, label: 'Dashboard', exact: true },
-  { to: '/productivity',  icon: BookOpen,         label: 'Study Hub' },
+  { to: '/study',         icon: BookOpen,         label: 'Study Hub' },
+  { to: '/productivity',  icon: CheckSquare,      label: 'Productivity' },
   { to: '/classroom',     icon: GraduationCap,    label: 'Classroom' },
   { to: '/mentoring',     icon: Target,            label: 'My Mentoring' },
   { to: '/academics',     icon: GraduationCap,    label: 'Academic Hub' },

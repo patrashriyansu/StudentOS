@@ -113,6 +113,7 @@ export default function Dashboard() {
   const [taskStats, setTaskStats] = useState<any>({ completed: 0, total: 0 })
   const [tasks, setTasks] = useState<any[]>([])
   const [exams, setExams] = useState<any[]>([])
+  const [todaysClasses, setTodaysClasses] = useState<any[]>([])
   const [streak, setStreak] = useState<number>(0)
   const [streakPingedToday, setStreakPingedToday] = useState<boolean>(false)
   const [adminActivity, setAdminActivity] = useState<any>(null)
@@ -152,6 +153,13 @@ export default function Dashboard() {
         .sort((a: any, b: any) => new Date(a.date).getTime() - new Date(b.date).getTime())
         .slice(0, 4))
     })
+
+    // Today's timetable (API uses 0=Monday; JavaScript uses 0=Sunday).
+    api.get('/academics/timetable').then((response) => {
+      const today = (new Date().getDay() + 6) % 7
+      const classes = Array.isArray(response.data) ? response.data : []
+      setTodaysClasses(classes.filter((item: any) => item.day_of_week === today).sort((a: any, b: any) => String(a.start_time).localeCompare(String(b.start_time))))
+    }).catch(() => setTodaysClasses([]))
 
     // Coding
     api.get('/coding/profile').catch(() => ({ data: null })).then(r => setCodingProfile(r.data))
@@ -374,6 +382,22 @@ export default function Dashboard() {
         />
       </div>
 
+      {/* ── Today's timetable ─────────────────────────────── */}
+      <div className="dashboard-panel" style={panel}>
+        <div style={{ display:'flex', alignItems:'center', justifyContent:'space-between', marginBottom:12 }}>
+          <div style={{ display:'flex', alignItems:'center', gap:8 }}><Calendar size={16} style={{ color:'#6C63FF' }}/><h3 style={h3}>Today's Classes</h3></div>
+          <button onClick={() => navigate('/academics')} style={{ color:'#6C63FF', background:'none', border:'none', cursor:'pointer', fontSize:12 }}>Manage timetable →</button>
+        </div>
+        {todaysClasses.length === 0 ? <p style={{ color:'var(--app-muted)', fontSize:13 }}>No classes have been entered for today. Add your real timetable in Academic Hub.</p> : (
+          <div style={{ display:'grid', gridTemplateColumns:'repeat(auto-fit,minmax(220px,1fr))', gap:9 }}>
+            {todaysClasses.map((item, index) => <div key={item.id ?? index} style={{ display:'flex', alignItems:'center', gap:12, padding:12, borderRadius:12, background:'var(--app-subtle)', border:'1px solid var(--app-border)' }}>
+              <div style={{ minWidth:72, fontSize:12, fontWeight:700, color:'#A78BFA' }}>{item.start_time}–{item.end_time}</div>
+              <div style={{ minWidth:0 }}><div style={{ fontSize:13, fontWeight:600, color:'var(--app-text)' }}>{item.subject_name}</div><div style={{ marginTop:2, fontSize:11, color:'var(--app-muted)' }}>{[item.room, item.faculty].filter(Boolean).join(' · ') || 'Class details not provided'}</div></div>
+            </div>)}
+          </div>
+        )}
+      </div>
+
       {/* ── Middle: Hubs | Tasks | Exams ─────────────────── */}
       <div className="dashboard-overview-grid" style={{ display:'grid', gridTemplateColumns:'minmax(0,5fr) minmax(0,4fr) minmax(0,3fr)', gap:14 }}>
 
@@ -384,7 +408,7 @@ export default function Dashboard() {
             <button onClick={() => navigate('/')} style={{ fontSize:12, color:'#6C63FF', background:'none', border:'none', cursor:'pointer' }}>View All →</button>
           </div>
           <div className="dashboard-hub-grid" style={{ display:'grid', gridTemplateColumns:'repeat(2,minmax(0,1fr))', gap:10, marginBottom:10 }}>
-            <HubTile icon={BookOpen}   label="Study Hub"    sub="Notes, PDFs, Summaries, Quiz"       color="#6C63FF" to="/ai" />
+            <HubTile icon={BookOpen}   label="Study Hub"    sub="Notes, PDFs, Summaries, Quiz"       color="#6C63FF" to="/study" />
             <HubTile icon={GraduationCap} label="Academic Hub" sub="Attendance, SGPA, Timetable"     color="#06B6D4" to="/academics" />
             <HubTile icon={Code}       label="Coding Hub"   sub="DSA, LeetCode, Contests"            color="#10B981" to="/coding" />
             <HubTile icon={Briefcase}  label="Placement Hub" sub="Resume, Mock Interview, Internships" color="#F59E0B" to="/placements" />
