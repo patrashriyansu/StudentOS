@@ -246,7 +246,7 @@ async def download_student_report(current_user: User = Depends(get_current_user)
     story.append(Spacer(1, 10))
     story.append(Paragraph(
         "This report reflects records currently saved in your StudentOS account. Missing values mean no corresponding records have been entered; they are not estimated.",
-        styles["Small"],
+        styles["BodyText"],
     ))
     doc.build(story)
     buffer.seek(0)
