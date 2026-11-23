@@ -101,3 +101,15 @@ class RecruiterVisibility(Base):
     contact_visible = Column(Boolean, nullable=False, default=False)
     updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
                         onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+
+class RecruiterDisclosure(Base):
+    """Student-controlled field-level disclosures for employer profile views."""
+    __tablename__ = "recruiter_disclosures"
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    academics_visible = Column(Boolean, nullable=False, default=False)
+    phone_visible = Column(Boolean, nullable=False, default=False)
+    resume_visible = Column(Boolean, nullable=False, default=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)

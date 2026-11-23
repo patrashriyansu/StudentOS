@@ -24,17 +24,20 @@ export default function Placements() {
   const [actionError, setActionError] = useState('')
   const [resumeAnalyzing, setResumeAnalyzing] = useState(false)
   const [resumeResult, setResumeResult] = useState<any>(null)
+  const [resumeDocuments, setResumeDocuments] = useState<any[]>([])
 
   const loadData = async () => {
     try {
-      const [appRes, intRes, offRes] = await Promise.all([
+      const [appRes, intRes, offRes, resumeRes] = await Promise.all([
         api.get('/placements/applications'),
         api.get('/placements/interviews'),
         api.get('/placements/offers'),
+        api.get('/placements/resume/documents'),
       ])
       setApplications(appRes.data || [])
       setInterviews(intRes.data || [])
       setOffers(offRes.data || [])
+      setResumeDocuments(resumeRes.data || [])
     } catch (err) {
       console.error(err)
     }
@@ -102,18 +105,51 @@ export default function Placements() {
   const handleResumeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0]
     if (!file) return
+    if (!file.name.toLowerCase().endsWith('.pdf') || file.size > 5 * 1024 * 1024) {
+      setActionError('Upload a PDF resume up to 5 MB so it can be attached to job applications.')
+      e.target.value = ''
+      return
+    }
     setResumeAnalyzing(true)
+    setActionError('')
     const formData = new FormData()
     formData.append('file', file)
     try {
-      const res = await api.post('/ai/analyze-resume', formData, {
+      await api.post('/placements/resume/upload', formData, {
         headers: { 'Content-Type': 'multipart/form-data' },
       })
-      setResumeResult(res.data)
-    } catch (err) {
-      console.error(err)
+      const [resumes, analysis] = await Promise.all([
+        api.get('/placements/resume/documents'),
+        api.post('/ai/analyze-resume', formData, { headers: { 'Content-Type': 'multipart/form-data' } }),
+      ])
+      setResumeDocuments(resumes.data || [])
+      setResumeResult(analysis.data)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.detail || 'Resume upload or analysis failed.')
     } finally {
       setResumeAnalyzing(false)
+      e.target.value = ''
+    }
+  }
+
+  const downloadResumeDocument = async (id: number, filename: string) => {
+    try {
+      const response = await api.get(`/placements/resume/documents/${id}/download`, { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+      const anchor = document.createElement('a')
+      anchor.href = url; anchor.download = filename; anchor.click()
+      window.URL.revokeObjectURL(url)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.detail || 'Could not download this resume.')
+    }
+  }
+
+  const deleteResumeDocument = async (id: number) => {
+    try {
+      await api.delete(`/placements/resume/documents/${id}`)
+      setResumeDocuments((current) => current.filter((doc) => doc.id !== id))
+    } catch (err: any) {
+      setActionError(err?.response?.data?.detail || 'Could not remove this resume.')
     }
   }
 
@@ -359,14 +395,24 @@ export default function Placements() {
             <FileText size={32} className="text-primary" />
           </div>
           <h3 className="text-xl font-bold mb-1">AI ATS Resume Optimizer</h3>
-          <p className="text-xs text-dark-muted mb-6">Upload your PDF or text resume for instant ATS scoring & missing keywords analysis</p>
+          <p className="text-xs text-dark-muted mb-6">Upload a PDF for ATS analysis and save it to your private resume library. You can attach it to job applications later.</p>
 
           <label className="cursor-pointer bg-primary hover:bg-primary/90 text-white font-medium px-6 py-3 rounded-xl text-sm inline-flex items-center gap-2 transition-all">
             {resumeAnalyzing ? <Loader2 size={16} className="animate-spin" /> : <Upload size={16} />}
-            {resumeAnalyzing ? 'Analyzing Resume...' : 'Choose Resume (PDF / TXT)'}
-            <input type="file" onChange={handleResumeUpload} accept=".pdf,.txt,.docx" className="hidden" />
+            {resumeAnalyzing ? 'Analyzing Resume...' : 'Choose Resume (PDF)'}
+            <input type="file" onChange={handleResumeUpload} accept=".pdf" className="hidden" />
           </label>
 
+          {actionError && <div role="alert" className="mt-4 rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-left text-sm text-rose-200">{actionError}</div>}
+          <div className="mt-8 text-left space-y-3 border-t border-dark-border pt-6">
+            <div><h4 className="font-semibold">Saved resume library</h4><p className="text-xs text-dark-muted">Private files you can select when applying to a recruiter job. Removing a library copy does not remove a resume already attached to an application.</p></div>
+            {resumeDocuments.length === 0 ? <p className="text-xs text-dark-muted rounded-xl border border-dashed border-dark-border p-4">No PDF resumes saved yet.</p> : resumeDocuments.map((doc:any) => (
+              <div key={doc.id} className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-dark-border p-3">
+                <div><p className="text-sm font-medium">{doc.filename}</p><p className="text-xs text-dark-muted">{Math.ceil(doc.file_size/1024)} KB · {new Date(doc.created_at).toLocaleDateString()}</p></div>
+                <div className="flex gap-2"><button type="button" onClick={()=>void downloadResumeDocument(doc.id,doc.filename)} className="rounded-lg border border-dark-border px-3 py-2 text-xs">Download</button><button type="button" onClick={()=>void deleteResumeDocument(doc.id)} className="rounded-lg border border-dark-border px-3 py-2 text-xs text-dark-muted">Remove</button></div>
+              </div>
+            ))}
+          </div>
           {resumeResult && (
             <div className="mt-8 text-left space-y-4 pt-6 border-t border-dark-border">
               <div className="flex items-center justify-between p-4 rounded-xl bg-dark-lighter border border-dark-border">

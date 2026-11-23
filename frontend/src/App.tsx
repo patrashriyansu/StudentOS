@@ -26,7 +26,7 @@ import Notifications from './pages/Notifications'
 import Projects from './pages/Projects'
 import Campus from './pages/Campus'
 import Settings from './pages/Settings'
-import { AdminWorkspace, FacultyWorkspace, RecruiterWorkspace, StudentClassroom, MentorWorkspace } from './pages/RoleWorkspaces'
+import { AdminWorkspace, FacultyWorkspace, RecruiterWorkspace, StudentClassroom, StudentMentoring, MentorWorkspace } from './pages/RoleWorkspaces'
 
 function RootRoute() {
   const { isAuthenticated, initialized } = useAuth()
@@ -121,10 +121,14 @@ export default function App() {
         <Route path="projects" element={<RoleRoute allowedRoles={studentOnly}><Projects /></RoleRoute>} />
         <Route path="campus" element={<RoleRoute allowedRoles={studentOnly}><Campus /></RoleRoute>} />
         <Route path="classroom" element={<RoleRoute allowedRoles={studentOnly}><StudentClassroom /></RoleRoute>} />
+        <Route path="mentoring" element={<RoleRoute allowedRoles={studentOnly}><StudentMentoring /></RoleRoute>} />
         <Route path="settings" element={<Settings />} />
         <Route path="mentor/students" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
+        <Route path="mentor/programmes" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
         <Route path="mentor/sessions" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
         <Route path="mentor/goals" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
+        <Route path="mentor/actions" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
+        <Route path="mentor/check-ins" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
         <Route path="mentor/notes" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
         <Route path="recruiter/candidates" element={<RoleRoute allowedRoles={recruiterOnly}><RecruiterWorkspace /></RoleRoute>} />
         <Route path="recruiter/shortlisted" element={<RoleRoute allowedRoles={recruiterOnly}><RecruiterWorkspace /></RoleRoute>} />
