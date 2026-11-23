@@ -233,77 +233,178 @@ export function RecruiterWorkspace() {
 
 export function MentorWorkspace() {
   const path = usePathSection()
-  const [summary, setSummary] = useState<Row>({})
-  const [students, setStudents] = useState<Row[]>([])
-  const [sessions, setSessions] = useState<Row[]>([])
-  const [goals, setGoals] = useState<Row[]>([])
-  const [notes, setNotes] = useState<Row[]>([])
-  const [error, setError] = useState('')
-  const [saving, setSaving] = useState(false)
-  const [sessionForm, setSessionForm] = useState({ student_id: '', scheduled_at: '', duration_minutes: '30', meeting_link: '', agenda: '' })
-  const [goalForm, setGoalForm] = useState({ student_id: '', title: '', description: '', due_date: '' })
-  const [noteForm, setNoteForm] = useState({ student_id: '', body: '' })
-  const load = async () => {
+  const [summary,setSummary]=useState<Row>({})
+  const [students,setStudents]=useState<Row[]>([])
+  const [programmes,setProgrammes]=useState<Row[]>([])
+  const [sessions,setSessions]=useState<Row[]>([])
+  const [goals,setGoals]=useState<Row[]>([])
+  const [actions,setActions]=useState<Row[]>([])
+  const [checkins,setCheckins]=useState<Row[]>([])
+  const [notes,setNotes]=useState<Row[]>([])
+  const [sessionFeedback,setSessionFeedback]=useState<Row[]>([])
+  const [error,setError]=useState('')
+  const [saving,setSaving]=useState(false)
+  const [programmeForm,setProgrammeForm]=useState({student_id:'',title:'',focus_area:'Career readiness',description:'',start_date:new Date().toISOString().slice(0,10),target_end_date:'',meeting_cadence:'biweekly'})
+  const [sessionForm,setSessionForm]=useState({student_id:'',scheduled_at:'',duration_minutes:'30',meeting_link:'',agenda:''})
+  const [goalForm,setGoalForm]=useState({program_id:'',title:'',category:'Career readiness',desired_outcome:'',success_measure:'',baseline:'',target:'',priority:'medium',due_date:''})
+  const [actionForm,setActionForm]=useState({goal_id:'',title:'',description:'',owner:'student',due_date:'',resource_url:''})
+  const [noteForm,setNoteForm]=useState({student_id:'',body:''})
+  const [replies,setReplies]=useState<Record<number,string>>({})
+
+  const load=async()=>{
     setError('')
-    try {
-      const [s, st, se, g, n] = await Promise.all([
-        api.get('/workspaces/mentor/summary'), api.get('/campus/mentor/students'),
-        api.get('/workspaces/mentor/sessions'), api.get('/workspaces/mentor/goals'),
+    try{
+      const [s,st,p,se,g,ac,ci,n,fb]=await Promise.all([
+        api.get('/workspaces/mentor/program-dashboard'),
+        api.get('/campus/mentor/students'),
+        api.get('/workspaces/mentor/programmes'),
+        api.get('/workspaces/mentor/sessions'),
+        api.get('/workspaces/mentor/development-goals'),
+        api.get('/workspaces/mentor/action-items'),
+        api.get('/workspaces/mentor/check-ins'),
         api.get('/workspaces/mentor/notes'),
+        api.get('/workspaces/mentor/session-feedback'),
       ])
-      setSummary(s.data || {}); setStudents(st.data || []); setSessions(se.data || []); setGoals(g.data || []); setNotes(n.data || [])
-    } catch (e: any) { setError(e?.response?.data?.detail || 'Could not load mentor workspace.') }
+      setSummary(s.data||{});setStudents(st.data||[]);setProgrammes(p.data||[])
+      setSessions(se.data||[]);setGoals(g.data||[]);setActions(ac.data||[])
+      setCheckins(ci.data||[]);setNotes(n.data||[]);setSessionFeedback(fb.data||[])
+    }catch(e:any){setError(e?.response?.data?.detail||'Could not load the mentoring workspace.')}
   }
-  useEffect(() => { void load() }, [])
-  const submit = async (event: FormEvent, endpoint: string, payload: Row, reset: () => void) => {
-    event.preventDefault(); setSaving(true); setError('')
-    try {
-      const body = endpoint === '/workspaces/mentor/sessions' && typeof payload.scheduled_at === 'string'
-        ? { ...payload, scheduled_at: new Date(payload.scheduled_at).toISOString() }
-        : payload
-      await api.post(endpoint, body); reset(); await load()
-    }
-    catch (e: any) { setError(e?.response?.data?.detail || 'Could not save this item.') }
-    finally { setSaving(false) }
+  useEffect(()=>{void load()},[])
+  const submit=async(event:FormEvent,endpoint:string,payload:Row,reset:()=>void)=>{
+    event.preventDefault();setSaving(true);setError('')
+    try{
+      const body=endpoint==='/workspaces/mentor/sessions'&&payload.scheduled_at
+        ?{...payload,scheduled_at:new Date(payload.scheduled_at).toISOString()}
+        :payload
+      await api.post(endpoint,body);reset();await load()
+    }catch(e:any){setError(e?.response?.data?.detail||'Could not save this mentoring record.')}
+    finally{setSaving(false)}
   }
-  const updateSession = async (id: number, status: string) => { await api.patch(`/workspaces/mentor/sessions/${id}`, { status }); await load() }
-  const updateGoal = async (id: number, status: string) => { await api.patch(`/workspaces/mentor/goals/${id}`, { status }); await load() }
-  const title = path === 'overview' ? 'Mentoring overview' : path === 'students' ? 'My assigned students' : path === 'sessions' ? 'Mentoring sessions' : path === 'goals' ? 'Goals and action plans' : 'Private mentor notes'
+  const updateProgramme=async(id:number,status:string)=>{
+    setSaving(true);setError('')
+    try{await api.patch(`/workspaces/mentor/programmes/${id}`,{status});await load()}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not update the programme.')}
+    finally{setSaving(false)}
+  }
+  const updateGoal=async(goal:Row)=>{
+    const value=window.prompt('Progress percentage (0–100)',String(goal.progress_percent??0))
+    if(value===null)return
+    const progress=Number(value)
+    if(!Number.isInteger(progress)||progress<0||progress>100){setError('Progress must be a whole number from 0 to 100.');return}
+    const status=progress===100?'completed':progress===0?'not_started':'in_progress'
+    setSaving(true);setError('')
+    try{await api.patch(`/workspaces/mentor/development-goals/${goal.id}`,{progress_percent:progress,status});await load()}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not update goal progress.')}
+    finally{setSaving(false)}
+  }
+  const updateAction=async(id:number,status:string)=>{
+    setSaving(true);setError('')
+    try{await api.patch(`/workspaces/mentor/action-items/${id}`,{status});await load()}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not update action item.')}
+    finally{setSaving(false)}
+  }
+  const reply=async(id:number)=>{
+    const body=replies[id]?.trim()
+    if(!body){setError('Write a response before sending it.');return}
+    setSaving(true);setError('')
+    try{await api.post(`/workspaces/mentor/check-ins/${id}/reply`,{mentor_reply:body});setReplies({...replies,[id]:''});await load()}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not send the check-in response.')}
+    finally{setSaving(false)}
+  }
+  const updateSession=async(id:number,status:string)=>{
+    setSaving(true);setError('')
+    try{await api.patch(`/workspaces/mentor/sessions/${id}`,{status});await load()}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not update this session.')}
+    finally{setSaving(false)}
+  }
+  const titleMap:Record<string,string>={
+    overview:'Mentoring portfolio',students:'Mentee directory',programmes:'Development programmes',
+    sessions:'Mentoring sessions',goals:'Growth goals',actions:'Action items',
+    'check-ins':'Progress check-ins',notes:'Private notes',
+  }
+  const pendingCheckins=checkins.filter(c=>!c.mentor_reply)
+  const openActions=actions.filter(a=>a.status!=='completed')
+  const activePrograms=programmes.filter(p=>p.status==='active')
   return <div className="max-w-7xl mx-auto space-y-6">
-    <Header eyebrow="Mentor workspace" title={title} description="Guide only the students assigned to your mentor account. Record sessions, goals and private follow-up notes." onRefresh={() => void load()}/>
+    <Header eyebrow="Mentor workspace" title={titleMap[path]||'Mentoring portfolio'} description="A structured mentoring programme with shared goals, clear ownership, regular check-ins and measurable outcomes." onRefresh={()=>void load()}/>
     <ErrorLine message={error}/>
-    {path === 'overview' && <>
-      <div className="grid sm:grid-cols-3 gap-3"><Stat label="Assigned students" value={summary.assigned_students ?? 0} icon={Users}/><Stat label="Scheduled sessions" value={summary.upcoming_sessions ?? 0} icon={CalendarDays}/><Stat label="Open goals" value={summary.open_goals ?? 0} icon={Target}/></div>
-      <Panel><h2 className="font-semibold">Students assigned to you</h2>{students.length === 0 ? <Empty title="No students assigned yet" detail="An administrator must assign student accounts to your mentor account."/> : <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">{students.slice(0,6).map(s => <article key={s.student_id} className="rounded-xl border border-dark-border p-4"><p className="font-semibold">{s.name}</p><p className="text-xs text-dark-muted">{[s.course, s.branch, s.section].filter(Boolean).join(' · ')}</p><p className="text-xs text-dark-muted mt-1">Semester {s.current_semester ?? '—'} · Batch {s.passing_out_year ?? '—'}</p></article>)}</div>}</Panel>
+    {path==='overview'&&<>
+      <div className="grid grid-cols-2 md:grid-cols-4 xl:grid-cols-7 gap-3">
+        <Stat label="Assigned mentees" value={summary.assigned_students??0} icon={Users}/>
+        <Stat label="Programmes" value={summary.programmes??0} icon={ClipboardCheck}/>
+        <Stat label="Active plans" value={summary.active_programmes??0} icon={Target}/>
+        <Stat label="Awaiting acceptance" value={summary.awaiting_acceptance??0} icon={Clock3}/>
+        <Stat label="Open goals" value={summary.open_goals??0} icon={GraduationCap}/>
+        <Stat label="Open actions" value={summary.pending_actions??0} icon={CheckCircle2}/>
+        <Stat label="Check-ins to review" value={summary.checkins_to_review??0} icon={FileText}/>
+      </div>
+      <div className="grid lg:grid-cols-3 gap-4">
+        <Panel className="lg:col-span-2"><div className="flex justify-between items-center gap-2"><h2 className="font-semibold">Programme activity</h2><span className="text-xs text-dark-muted">{programmes.length} plans</span></div>
+          {programmes.length===0?<Empty title="No programmes created" detail="Start by choosing an assigned mentee and sending them a development programme to accept."/>:<div className="space-y-2">{programmes.slice(0,5).map(p=><div key={p.id} className="rounded-xl border border-dark-border p-3 flex flex-wrap items-center justify-between gap-2"><div><b>{p.title}</b><p className="text-xs text-dark-muted">{p.student_name} · {p.focus_area}</p></div><span className="text-xs rounded-full bg-dark-lighter px-3 py-1 capitalize">{p.status.replace('_',' ')}</span></div>)}</div>}
+        </Panel>
+        <Panel><h2 className="font-semibold">Needs your attention</h2><div className="space-y-3 text-sm"><div className="flex items-center justify-between"><span className="text-dark-muted">Check-ins awaiting reply</span><b>{pendingCheckins.length}</b></div><div className="flex items-center justify-between"><span className="text-dark-muted">Actions still open</span><b>{openActions.length}</b></div><div className="flex items-center justify-between"><span className="text-dark-muted">Upcoming sessions</span><b>{summary.upcoming_sessions??0}</b></div><p className="text-xs text-dark-muted border-t border-dark-border pt-3">Review the student’s updates before each meeting and close the loop with specific feedback and next steps.</p></div></Panel>
+      </div>
+      <Panel><h2 className="font-semibold">Your mentees</h2>{students.length===0?<Empty title="No mentees assigned yet" detail="Ask the administrator to assign students to your mentor account."/>:<div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-3">{students.slice(0,6).map(s=><article key={s.student_id} className="rounded-xl border border-dark-border p-3"><p className="font-semibold">{s.name}</p><p className="text-xs text-dark-muted">{[s.course,s.branch,s.section].filter(Boolean).join(' · ')}</p><p className="text-xs text-dark-muted mt-1">Semester {s.current_semester??'—'} · Batch {s.passing_out_year??'—'}</p></article>)}</div>}</Panel>
     </>}
-    {path === 'students' && <Panel><h2 className="font-semibold">Your assigned students</h2>{students.length === 0 ? <Empty title="No students assigned" detail="Ask an administrator to create an assignment in the Admin workspace."/> : <div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">{students.map(s => <article key={s.student_id} className="rounded-xl border border-dark-border p-4 space-y-2"><div className="w-10 h-10 rounded-xl bg-primary/15 grid place-items-center text-primary font-bold">{s.name?.slice(0,1)}</div><h3 className="font-semibold">{s.name}</h3><p className="text-xs text-dark-muted">{[s.course,s.branch,s.college].filter(Boolean).join(' · ')}</p><div className="flex flex-wrap gap-2 text-xs"><span className="rounded-lg bg-dark-lighter px-2 py-1">{s.section || 'No section'}</span><span className="rounded-lg bg-dark-lighter px-2 py-1">Semester {s.current_semester ?? '—'}</span><span className="rounded-lg bg-dark-lighter px-2 py-1">Batch {s.passing_out_year ?? '—'}</span></div><p className="text-[11px] text-dark-muted">Academic scores and private placement information are not included.</p></article>)}</div>}</Panel>}
-    {path === 'sessions' && <>
-      <Panel><h2 className="font-semibold">Schedule mentoring session</h2><form onSubmit={e => void submit(e,'/workspaces/mentor/sessions',{...sessionForm,student_id:Number(sessionForm.student_id),duration_minutes:Number(sessionForm.duration_minutes)},()=>setSessionForm({student_id:'',scheduled_at:'',duration_minutes:'30',meeting_link:'',agenda:''}))} className="grid md:grid-cols-2 gap-3">
-        <SelectField label="Student" value={sessionForm.student_id} onChange={v => setSessionForm({...sessionForm,student_id:v})} options={[{value:'',label:'Select assigned student'},...students.map(s=>({value:String(s.student_id),label:s.name}))]}/>
-        <Field label="Date and time" type="datetime-local" required value={sessionForm.scheduled_at} onChange={v => setSessionForm({...sessionForm,scheduled_at:v})}/>
+    {path==='students'&&<Panel><div className="flex flex-wrap justify-between gap-2"><h2 className="font-semibold">Assigned mentees</h2><span className="text-xs text-dark-muted">{students.length} assigned</span></div>{students.length===0?<Empty title="No mentees assigned" detail="Administrator-approved assignments will appear here."/>:<div className="grid md:grid-cols-2 xl:grid-cols-3 gap-3">{students.map(s=>{const plan=programmes.find(p=>p.student_id===s.student_id);return <article key={s.student_id} className="rounded-xl border border-dark-border p-4 space-y-2"><div className="flex items-center justify-between gap-2"><div className="w-10 h-10 rounded-xl bg-primary/15 text-primary grid place-items-center font-bold">{s.name?.slice(0,1)}</div><span className="text-xs bg-dark-lighter rounded-full px-2.5 py-1">{plan?.status?.replace('_',' ')||'No plan yet'}</span></div><h3 className="font-semibold">{s.name}</h3><p className="text-xs text-dark-muted">{[s.course,s.branch,s.college].filter(Boolean).join(' · ')}</p><p className="text-xs text-dark-muted">Section {s.section||'—'} · Year {s.current_year??'—'} · Semester {s.current_semester??'—'}</p><p className="text-xs text-dark-muted border-t border-dark-border pt-2">Academic scores and private placement information are not part of the mentor profile.</p></article>})}</div>}</Panel>}
+    {path==='programmes'&&<>
+      <Panel><div><h2 className="font-semibold">Create a development programme</h2><p className="text-xs text-dark-muted mt-1">Set an initial focus and meeting cadence. The student must review and accept before goals and actions become active.</p></div>
+        <form onSubmit={e=>void submit(e,'/workspaces/mentor/programmes',{...programmeForm,student_id:Number(programmeForm.student_id),target_end_date:programmeForm.target_end_date||null},()=>setProgrammeForm({student_id:'',title:'',focus_area:'Career readiness',description:'',start_date:new Date().toISOString().slice(0,10),target_end_date:'',meeting_cadence:'biweekly'}))} className="grid md:grid-cols-2 gap-3">
+          <SelectField label="Assigned mentee" value={programmeForm.student_id} onChange={v=>setProgrammeForm({...programmeForm,student_id:v})} options={[{value:'',label:'Select mentee'},...students.filter(s=>!programmes.some(p=>p.student_id===s.student_id)).map(s=>({value:String(s.student_id),label:s.name}))]}/>
+          <Field label="Programme title" required value={programmeForm.title} onChange={v=>setProgrammeForm({...programmeForm,title:v})}/>
+          <SelectField label="Focus area" value={programmeForm.focus_area} onChange={v=>setProgrammeForm({...programmeForm,focus_area:v})} options={['Career readiness','Technical skills','Academic progress','Communication','Leadership','Professional growth'].map(v=>({value:v,label:v}))}/>
+          <SelectField label="Meeting cadence" value={programmeForm.meeting_cadence} onChange={v=>setProgrammeForm({...programmeForm,meeting_cadence:v})} options={[{value:'weekly',label:'Weekly'},{value:'biweekly',label:'Every two weeks'},{value:'monthly',label:'Monthly'}]}/>
+          <Field label="Start date" type="date" required value={programmeForm.start_date} onChange={v=>setProgrammeForm({...programmeForm,start_date:v})}/>
+          <Field label="Target review date" type="date" value={programmeForm.target_end_date} onChange={v=>setProgrammeForm({...programmeForm,target_end_date:v})}/>
+          <div className="md:col-span-2"><TextArea label="Programme purpose and expectations" value={programmeForm.description} onChange={v=>setProgrammeForm({...programmeForm,description:v})} rows={3}/></div>
+          <div className="md:col-span-2"><Action disabled={saving||!programmeForm.student_id}><Plus size={14}/>Send programme for acceptance</Action></div>
+        </form>
+      </Panel>
+      <Panel><h2 className="font-semibold">Programme portfolio</h2>{programmes.length===0?<Empty title="No programmes yet" detail="Create a programme for one of your assigned mentees."/>:<div className="space-y-3">{programmes.map(p=><article key={p.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap items-start justify-between gap-2"><div><h3 className="font-semibold">{p.title}</h3><p className="text-xs text-dark-muted">{p.student_name} · {p.focus_area}</p><p className="text-xs text-dark-muted">{p.start_date}{p.target_end_date?' → '+p.target_end_date:''} · {p.meeting_cadence}</p></div><span className="text-xs rounded-full bg-dark-lighter px-3 py-1 capitalize">{p.status.replace('_',' ')}</span></div><p className="text-sm text-dark-muted mt-2">{p.description}</p>{p.status==='awaiting_student'&&<p className="text-xs text-amber-300 mt-2">Waiting for the mentee to review and accept the plan.</p>}{(p.status==='active'||p.status==='paused')&&<div className="flex gap-2 mt-3">{p.status==='active'?<Action secondary onClick={()=>void updateProgramme(p.id,'paused')} disabled={saving}>Pause</Action>:<Action onClick={()=>void updateProgramme(p.id,'active')} disabled={saving}>Resume</Action>}<Action secondary onClick={()=>void updateProgramme(p.id,'completed')} disabled={saving}>Close programme</Action></div>}</article>)}</div>}</Panel>
+    </>}
+    {path==='sessions'&&<>
+      <Panel><h2 className="font-semibold">Schedule a mentoring session</h2><form onSubmit={e=>void submit(e,'/workspaces/mentor/sessions',{...sessionForm,student_id:Number(sessionForm.student_id),duration_minutes:Number(sessionForm.duration_minutes)},()=>setSessionForm({student_id:'',scheduled_at:'',duration_minutes:'30',meeting_link:'',agenda:''}))} className="grid md:grid-cols-2 gap-3">
+        <SelectField label="Mentee" value={sessionForm.student_id} onChange={v=>setSessionForm({...sessionForm,student_id:v})} options={[{value:'',label:'Select mentee'},...students.map(s=>({value:String(s.student_id),label:s.name}))]}/>
+        <Field label="Date and time" type="datetime-local" required value={sessionForm.scheduled_at} onChange={v=>setSessionForm({...sessionForm,scheduled_at:v})}/>
         <Field label="Duration (minutes)" type="number" value={sessionForm.duration_minutes} onChange={v=>setSessionForm({...sessionForm,duration_minutes:v})}/>
         <Field label="Meeting link" value={sessionForm.meeting_link} onChange={v=>setSessionForm({...sessionForm,meeting_link:v})}/>
-        <div className="md:col-span-2"><TextArea label="Agenda" value={sessionForm.agenda} onChange={v=>setSessionForm({...sessionForm,agenda:v})}/></div><Action disabled={saving || !sessionForm.student_id}><Plus size={14}/>Schedule session</Action>
+        <div className="md:col-span-2"><TextArea label="Agenda and preparation" value={sessionForm.agenda} onChange={v=>setSessionForm({...sessionForm,agenda:v})} rows={3}/></div>
+        <Action disabled={saving||!sessionForm.student_id}><Plus size={14}/>Schedule session</Action>
       </form></Panel>
-      <Panel><h2 className="font-semibold">Session history</h2>{sessions.length===0?<Empty title="No sessions yet" detail="Schedule your first mentoring session above."/>:<div className="space-y-2">{sessions.map(s=><div key={s.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dark-border p-3"><div><p className="font-semibold">{s.student_name}</p><p className="text-xs text-dark-muted">{new Date(s.scheduled_at).toLocaleString()} · {s.duration_minutes} min</p>{s.agenda&&<p className="text-xs mt-1">{s.agenda}</p>}{s.meeting_link&&<a className="text-xs text-primary" href={s.meeting_link} target="_blank" rel="noreferrer">Open meeting link ↗</a>}</div><SelectField label="Status" value={s.status} onChange={v=>void updateSession(s.id,v)} options={['scheduled','completed','cancelled'].map(v=>({value:v,label:v}))}/></div>)}</div>}</Panel>
+      <Panel><h2 className="font-semibold">Sessions and outcomes</h2>{sessions.length===0?<Empty title="No sessions scheduled" detail="Schedule the first structured mentoring conversation above."/>:<div className="space-y-2">{sessions.map(s=><article key={s.id} className="rounded-xl border border-dark-border p-3 flex flex-wrap items-center justify-between gap-3"><div><b>{s.student_name}</b><p className="text-xs text-dark-muted">{new Date(s.scheduled_at).toLocaleString()} · {s.duration_minutes} min</p>{s.agenda&&<p className="text-sm mt-1">{s.agenda}</p>}{s.meeting_link&&<a className="text-xs text-primary" href={s.meeting_link} target="_blank" rel="noreferrer">Open meeting link ↗</a>}{sessionFeedback.filter(f=>f.session_id===s.id).map(f=><p key={f.id} className="text-xs text-dark-muted mt-2">Mentee feedback: {f.rating}/5 · {f.takeaways}</p>)}</div><SelectField label="Status" value={s.status} onChange={v=>void updateSession(s.id,v)} options={['scheduled','completed','cancelled'].map(v=>({value:v,label:v}))}/></article>)}</div>}</Panel>
     </>}
-    {path === 'goals' && <>
-      <Panel><h2 className="font-semibold">Create student action plan</h2><form onSubmit={e=>void submit(e,'/workspaces/mentor/goals',{...goalForm,student_id:Number(goalForm.student_id),due_date:goalForm.due_date||null},()=>setGoalForm({student_id:'',title:'',description:'',due_date:''}))} className="grid md:grid-cols-2 gap-3">
-        <SelectField label="Student" value={goalForm.student_id} onChange={v=>setGoalForm({...goalForm,student_id:v})} options={[{value:'',label:'Select assigned student'},...students.map(s=>({value:String(s.student_id),label:s.name}))]}/>
+    {path==='goals'&&<>
+      <Panel><h2 className="font-semibold">Create a measurable development goal</h2><form onSubmit={e=>void submit(e,'/workspaces/mentor/development-goals',{...goalForm,program_id:Number(goalForm.program_id),due_date:goalForm.due_date||null},()=>setGoalForm({program_id:'',title:'',category:'Career readiness',desired_outcome:'',success_measure:'',baseline:'',target:'',priority:'medium',due_date:''}))} className="grid md:grid-cols-2 gap-3">
+        <SelectField label="Active programme" value={goalForm.program_id} onChange={v=>setGoalForm({...goalForm,program_id:v})} options={[{value:'',label:'Select active programme'},...activePrograms.map(p=>({value:String(p.id),label:`${p.student_name} · ${p.title}`}))]}/>
         <Field label="Goal title" required value={goalForm.title} onChange={v=>setGoalForm({...goalForm,title:v})}/>
+        <SelectField label="Competency area" value={goalForm.category} onChange={v=>setGoalForm({...goalForm,category:v})} options={['Technical skills','Career readiness','Academic progress','Communication','Leadership','Professionalism','Teamwork','Technology','Personal growth'].map(v=>({value:v,label:v}))}/>
+        <SelectField label="Priority" value={goalForm.priority} onChange={v=>setGoalForm({...goalForm,priority:v})} options={['low','medium','high'].map(v=>({value:v,label:v}))}/>
+        <Field label="Baseline" value={goalForm.baseline} onChange={v=>setGoalForm({...goalForm,baseline:v})} placeholder="Current state"/>
+        <Field label="Target" value={goalForm.target} onChange={v=>setGoalForm({...goalForm,target:v})} placeholder="Desired state"/>
         <Field label="Due date" type="date" value={goalForm.due_date} onChange={v=>setGoalForm({...goalForm,due_date:v})}/>
-        <TextArea label="Description / next steps" value={goalForm.description} onChange={v=>setGoalForm({...goalForm,description:v})}/>
-        <Action disabled={saving||!goalForm.student_id}><Plus size={14}/>Create goal</Action>
+        <TextArea label="Desired outcome" value={goalForm.desired_outcome} onChange={v=>setGoalForm({...goalForm,desired_outcome:v})}/>
+        <div className="md:col-span-2"><TextArea label="How will success be measured?" value={goalForm.success_measure} onChange={v=>setGoalForm({...goalForm,success_measure:v})}/></div>
+        <div className="md:col-span-2"><Action disabled={saving||!goalForm.program_id}><Plus size={14}/>Create goal</Action></div>
       </form></Panel>
-      <Panel><h2 className="font-semibold">Action plans</h2>{goals.length===0?<Empty title="No goals created" detail="Create measurable goals and follow-up dates for your assigned students."/>:<div className="space-y-2">{goals.map(g=><div key={g.id} className="rounded-xl border border-dark-border p-3 flex flex-wrap items-center justify-between gap-3"><div><p className="font-semibold">{g.title}</p><p className="text-xs text-dark-muted">{g.student_name} · {g.due_date||'No due date'}</p>{g.description&&<p className="text-sm mt-1">{g.description}</p>}</div><SelectField label="Progress" value={g.status} onChange={v=>void updateGoal(g.id,v)} options={['not_started','in_progress','completed','blocked'].map(v=>({value:v,label:v.replace('_',' ')}))}/></div>)}</div>}</Panel>
+      <Panel><h2 className="font-semibold">Development goal tracker</h2>{goals.length===0?<Empty title="No goals recorded" detail="Goals can be created after a mentee accepts a programme."/>:<div className="space-y-3">{goals.map(g=><article key={g.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap justify-between gap-2"><div><b>{g.title}</b><p className="text-xs text-dark-muted">{g.student_name} · {g.category} · {g.priority} priority</p></div><Action secondary onClick={()=>void updateGoal(g)} disabled={saving}>Update progress</Action></div><p className="text-sm mt-2">{g.desired_outcome}</p><p className="text-xs text-dark-muted mt-1">Measure: {g.success_measure} · {g.baseline||'—'} → {g.target||'—'}</p><div className="flex justify-between text-xs mt-3"><span className="capitalize text-dark-muted">{g.status.replace('_',' ')}</span><b>{g.progress_percent}%</b></div><div className="h-2 bg-dark-lighter rounded-full overflow-hidden mt-1"><div className="h-full bg-primary rounded-full" style={{width:`${g.progress_percent}%`}}/></div><p className="text-xs text-dark-muted mt-2">Due {g.due_date||'not set'}</p></article>)}</div>}</Panel>
     </>}
-    {path === 'notes' && <>
-      <Panel><h2 className="font-semibold">Private mentoring note</h2><p className="text-xs text-dark-muted">Notes are visible only to the mentor who created them. They are not shared with recruiters or students.</p><form onSubmit={e=>void submit(e,'/workspaces/mentor/notes',{...noteForm,student_id:Number(noteForm.student_id)},()=>setNoteForm({student_id:'',body:''}))} className="space-y-3">
-        <SelectField label="Student" value={noteForm.student_id} onChange={v=>setNoteForm({...noteForm,student_id:v})} options={[{value:'',label:'Select assigned student'},...students.map(s=>({value:String(s.student_id),label:s.name}))]}/>
-        <TextArea label="Mentor note" value={noteForm.body} onChange={v=>setNoteForm({...noteForm,body:v})} placeholder="Private follow-up notes…" rows={5}/>
-        <Action disabled={saving||!noteForm.student_id}><Plus size={14}/>Save private note</Action>
+    {path==='actions'&&<>
+      <Panel><h2 className="font-semibold">Assign a next action</h2><form onSubmit={e=>void submit(e,'/workspaces/mentor/action-items',{...actionForm,goal_id:Number(actionForm.goal_id),due_date:actionForm.due_date||null,resource_url:actionForm.resource_url||null},()=>setActionForm({goal_id:'',title:'',description:'',owner:'student',due_date:'',resource_url:''}))} className="grid md:grid-cols-2 gap-3">
+        <SelectField label="Related growth goal" value={actionForm.goal_id} onChange={v=>setActionForm({...actionForm,goal_id:v})} options={[{value:'',label:'Select a growth goal'},...goals.map(g=>({value:String(g.id),label:`${g.student_name} · ${g.title}`}))]}/>
+        <Field label="Action item" required value={actionForm.title} onChange={v=>setActionForm({...actionForm,title:v})}/>
+        <SelectField label="Owner" value={actionForm.owner} onChange={v=>setActionForm({...actionForm,owner:v})} options={[{value:'student',label:'Mentee / Student'},{value:'mentor',label:'Mentor'}]}/>
+        <Field label="Due date" type="date" value={actionForm.due_date} onChange={v=>setActionForm({...actionForm,due_date:v})}/>
+        <Field label="Reference link (optional)" value={actionForm.resource_url} onChange={v=>setActionForm({...actionForm,resource_url:v})}/>
+        <TextArea label="Instructions" value={actionForm.description} onChange={v=>setActionForm({...actionForm,description:v})}/>
+        <Action disabled={saving||!actionForm.goal_id}><Plus size={14}/>Add action item</Action>
       </form></Panel>
-      <Panel><h2 className="font-semibold">Saved notes</h2>{notes.length===0?<Empty title="No private notes" detail="Your notes for assigned students will appear here."/>:<div className="space-y-2">{notes.map(n=><article key={n.id} className="rounded-xl border border-dark-border p-3"><p className="font-semibold">{n.student_name}</p><p className="text-sm whitespace-pre-wrap mt-2">{n.body}</p><p className="text-[11px] text-dark-muted mt-2">Updated {new Date(n.updated_at).toLocaleString()}</p></article>)}</div>}</Panel>
+      <Panel><h2 className="font-semibold">Shared action board</h2>{actions.length===0?<Empty title="No action items yet" detail="Add concrete tasks, assign an owner and add a due date."/>:<div className="space-y-2">{actions.map(item=><div key={item.id} className="rounded-xl border border-dark-border p-3 flex flex-wrap items-center justify-between gap-3"><div><b>{item.title}</b><p className="text-xs text-dark-muted">{item.student_name} · {item.goal_title} · {item.owner==='student'?'Mentee':'Mentor'} · {item.due_date||'No due date'}</p>{item.description&&<p className="text-sm mt-1">{item.description}</p>}{item.resource_url&&<a href={item.resource_url} target="_blank" rel="noreferrer" className="text-xs text-primary">Open resource ↗</a>}</div><SelectField label="Status" value={item.status} onChange={v=>void updateAction(item.id,v)} options={['not_started','in_progress','completed','blocked'].map(v=>({value:v,label:v.replace('_',' ')}))}/></div>)}</div>}</Panel>
+    </>}
+    {path==='check-ins'&&<Panel><div className="flex flex-wrap justify-between gap-2"><h2 className="font-semibold">Mentee progress check-ins</h2><span className="text-xs text-dark-muted">{pendingCheckins.length} awaiting your reply</span></div>{checkins.length===0?<Empty title="No check-ins yet" detail="Student weekly updates will be delivered here."/>:<div className="space-y-3">{checkins.map(item=><article key={item.id} className="rounded-xl border border-dark-border p-4 space-y-2"><div className="flex flex-wrap justify-between gap-2"><div><b>{item.student_name}</b><p className="text-xs text-dark-muted">{item.program_title} · {new Date(item.submitted_at).toLocaleString()}</p></div><span className="text-xs rounded-full bg-dark-lighter px-3 py-1">{item.progress_status.replace('_',' ')} · confidence {item.confidence_rating}/5</span></div><div className="grid sm:grid-cols-3 gap-2 text-sm"><div><p className="text-xs text-dark-muted">Wins</p><p>{item.wins||'—'}</p></div><div><p className="text-xs text-dark-muted">Blockers</p><p>{item.blockers||'—'}</p></div><div><p className="text-xs text-dark-muted">Support needed</p><p>{item.support_needed||'—'}</p></div></div>{item.mentor_reply?<p className="text-sm text-emerald-300 border-t border-dark-border pt-2">Your reply: {item.mentor_reply}</p>:<div className="border-t border-dark-border pt-3 space-y-2"><TextArea label="Your coaching response" value={replies[item.id]||''} onChange={v=>setReplies({...replies,[item.id]:v})} placeholder="Acknowledge progress and give one or two concrete next steps."/><div className="flex justify-end"><Action disabled={saving} onClick={()=>void reply(item.id)}>Send reply</Action></div></div>}</article>)}</div>}</Panel>}
+    {path==='notes'&&<>
+      <Panel><h2 className="font-semibold">Private mentor note</h2><p className="text-xs text-dark-muted">Private to you as the note author. Do not store sensitive personal or medical information here.</p><form onSubmit={e=>void submit(e,'/workspaces/mentor/notes',{...noteForm,student_id:Number(noteForm.student_id)},()=>setNoteForm({student_id:'',body:''}))} className="space-y-3"><SelectField label="Mentee" value={noteForm.student_id} onChange={v=>setNoteForm({...noteForm,student_id:v})} options={[{value:'',label:'Select mentee'},...students.map(s=>({value:String(s.student_id),label:s.name}))]}/><TextArea label="Private meeting notes" value={noteForm.body} onChange={v=>setNoteForm({...noteForm,body:v})} rows={5}/><Action disabled={saving||!noteForm.student_id}><Plus size={14}/>Save note</Action></form></Panel>
+      <Panel><h2 className="font-semibold">My notes</h2>{notes.length===0?<Empty title="No private notes" detail="Your one-to-one notes will appear here."/>:<div className="space-y-2">{notes.map(n=><article key={n.id} className="rounded-xl border border-dark-border p-3"><b>{n.student_name}</b><p className="text-sm whitespace-pre-wrap mt-2">{n.body}</p><p className="text-[11px] text-dark-muted mt-2">{new Date(n.updated_at).toLocaleString()}</p></article>)}</div>}</Panel>
     </>}
   </div>
 }
