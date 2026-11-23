@@ -518,36 +518,158 @@ export function StudentClassroom() {
   const [data,setData]=useState<Row>({assignments:[],marks:[],resources:[],timetable:[]})
   const [jobs,setJobs]=useState<Job[]>([])
   const [applications,setApplications]=useState<Row[]>([])
+  const [resumeDocuments,setResumeDocuments]=useState<Row[]>([])
   const [error,setError]=useState('')
-  const [busy,setBusy]=useState(0)
+  const [busy,setBusy]=useState(false)
   const [submission,setSubmission]=useState<Record<number,string>>({})
-  const [coverNotes,setCoverNotes]=useState<Record<number,string>>({})
+  const [coverNote,setCoverNote]=useState('')
+  const [applyingJob,setApplyingJob]=useState<Job|null>(null)
+  const [selectedResumeId,setSelectedResumeId]=useState('')
+  const [resumeFile,setResumeFile]=useState<File|null>(null)
+
   const load=async()=>{
     setError('')
-    try{const [c,j,a]=await Promise.all([api.get('/workspaces/student/classroom'),api.get('/workspaces/student/jobs'),api.get('/workspaces/student/applications')]);setData(c.data||{});setJobs(j.data||[]);setApplications(a.data||[])}
-    catch(e:any){setError(e?.response?.data?.detail||'Could not load your classroom.')}
+    try{
+      const [classroom,openJobs,myApplications,resumes]=await Promise.all([
+        api.get('/workspaces/student/classroom'),api.get('/workspaces/student/jobs'),
+        api.get('/workspaces/student/applications'),api.get('/placements/resume/documents'),
+      ])
+      setData(classroom.data||{})
+      setJobs(Array.isArray(openJobs.data)?openJobs.data:[])
+      setApplications(Array.isArray(myApplications.data)?myApplications.data:[])
+      setResumeDocuments(Array.isArray(resumes.data)?resumes.data:[])
+      if(!selectedResumeId && resumes.data?.length) setSelectedResumeId(String(resumes.data[0].id))
+    }catch(e:any){setError(e?.response?.data?.detail||'Could not load your student workspace.')}
   }
   useEffect(()=>{void load()},[])
+
   const submitAssignment=async(id:number)=>{
-    setBusy(id);setError('')
+    setBusy(true);setError('')
     try{await api.post(`/workspaces/student/classroom/assignments/${id}/submit`,{submission_text:submission[id]||null});await load()}
     catch(e:any){setError(e?.response?.data?.detail||'Could not submit assignment.')}
-    finally{setBusy(0)}
+    finally{setBusy(false)}
   }
-  const apply=async(job:Job)=>{
-    setBusy(job.id);setError('')
-    try{await api.post(`/workspaces/student/jobs/${job.id}/apply`,{cover_note:coverNotes[job.id]||null});await load()}
-    catch(e:any){setError(e?.response?.data?.detail||'Could not apply. Enable recruiter profile sharing in Profile first.')}
-    finally{setBusy(0)}
+  const startApplication=(job:Job)=>{
+    setApplyingJob(job);setCoverNote('');setResumeFile(null)
+    setSelectedResumeId(resumeDocuments[0]?.id ? String(resumeDocuments[0].id) : '')
   }
+  const downloadResume=async(id:number,filename:string)=>{
+    try{
+      const response=await api.get(`/placements/resume/documents/${id}/download`,{responseType:'blob'})
+      const url=window.URL.createObjectURL(new Blob([response.data],{type:'application/pdf'}))
+      const anchor=document.createElement('a');anchor.href=url;anchor.download=filename;anchor.click()
+      window.URL.revokeObjectURL(url)
+    }catch(e:any){setError(e?.response?.data?.detail||'Could not download the resume.')}
+  }
+  const removeResume=async(id:number)=>{
+    try{await api.delete(`/placements/resume/documents/${id}`);setSelectedResumeId('');await load()}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not remove this resume.')}
+  }
+  const submitJobApplication=async(event:FormEvent)=>{
+    event.preventDefault()
+    if(!applyingJob)return
+    if(!resumeFile&&!selectedResumeId){setError('Choose an existing PDF resume or upload one before applying.');return}
+    if(resumeFile && (!resumeFile.name.toLowerCase().endsWith('.pdf')||resumeFile.size>5*1024*1024)){
+      setError('Choose a PDF resume up to 5 MB.');return
+    }
+    setBusy(true);setError('')
+    try{
+      let resumeId=Number(selectedResumeId)
+      if(resumeFile){
+        const form=new FormData();form.append('file',resumeFile)
+        const upload=await api.post('/placements/resume/upload',form,{headers:{'Content-Type':'multipart/form-data'}})
+        resumeId=Number(upload.data?.resume_document_id||upload.data?.id)
+      }
+      await api.post(`/workspaces/student/jobs/${applyingJob.id}/apply`,{
+        resume_document_id:resumeId,cover_note:coverNote||null,
+      })
+      setApplyingJob(null);setResumeFile(null);setCoverNote('')
+      await load()
+    }catch(e:any){setError(e?.response?.data?.detail||'Application could not be submitted.')}
+    finally{setBusy(false)}
+  }
+
   return <div className="max-w-7xl mx-auto space-y-6">
-    <Header eyebrow="Student workspace" title="Classroom & opportunities" description="Your faculty-published assignments, marks, learning materials, timetable and student job applications." onRefresh={()=>void load()}/>
+    <Header eyebrow="Student workspace" title="Classroom & opportunities" description="Manage assignments and results, keep your resume library ready, and apply to opportunities with the right document." onRefresh={()=>void load()}/>
     <ErrorLine message={error}/>
-    {data.registration_required&&<Panel><p className="font-semibold">Complete your student registration details</p><p className="text-sm text-dark-muted">Add your registration number and section in Campus Portal to see classroom materials for your class.</p></Panel>}
-    <Panel><h2 className="font-semibold">Assignments</h2>{(data.assignments||[]).length===0?<Empty title="No assignments published" detail="Assignments shared by your faculty will appear here."/>:<div className="space-y-3">{data.assignments.map((a:Row)=><article key={a.id} className="rounded-xl border border-dark-border p-4 space-y-2"><div className="flex flex-wrap justify-between gap-2"><div><h3 className="font-semibold">{a.title}</h3><p className="text-xs text-dark-muted">{a.subject} · {a.points} points · {a.due_at?new Date(a.due_at).toLocaleString():'No deadline'}</p></div>{a.submission&&<span className="text-xs text-emerald-300">Submitted · {a.submission.marks_awarded==null?'Awaiting review':`${a.submission.marks_awarded} points`}</span>}</div><p className="text-sm whitespace-pre-wrap">{a.instructions}</p>{a.attachment_url&&<a href={a.attachment_url} target="_blank" rel="noreferrer" className="text-xs text-primary">Open assignment attachment ↗</a>}<TextArea label="Your submission / link" value={submission[a.id]||''} onChange={v=>setSubmission({...submission,[a.id]:v})} placeholder="Enter your answer or a shared document link"/>{a.submission?.feedback&&<p className="text-xs text-dark-muted">Faculty feedback: {a.submission.feedback}</p>}<Action onClick={()=>void submitAssignment(a.id)} disabled={busy===a.id}>{a.submission?'Update submission':'Submit assignment'}</Action></article>)}</div>}</Panel>
+    {data.registration_required&&<Panel><p className="font-semibold">Complete your student registration details</p><p className="text-sm text-dark-muted">Add your registration number and section in Profile to see classroom materials for your class.</p></Panel>}
+    <Panel>
+      <div className="flex flex-wrap justify-between gap-2"><div><h2 className="font-semibold">My resume library</h2><p className="text-xs text-dark-muted mt-1">Upload and maintain your latest PDF resume. You choose which version to attach to each application.</p></div><badge color="success">Private by default</badge></div>
+      <div className="space-y-2">
+        {resumeDocuments.length===0?<Empty title="No resume uploaded yet" detail="Upload a PDF resume when applying, or add one from Placement Hub first."/>:resumeDocuments.map(doc=><div key={doc.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dark-border p-3"><div><p className="font-medium text-sm">{doc.filename}</p><p className="text-xs text-dark-muted">{Math.ceil(doc.file_size/1024)} KB · Added {new Date(doc.created_at).toLocaleDateString()}</p></div><div className="flex gap-2"><Action secondary onClick={()=>void downloadResume(doc.id,doc.filename)}>Download</Action><button type="button" onClick={()=>void removeResume(doc.id)} className="rounded-xl border border-dark-border px-3 py-2 text-xs text-dark-muted">Remove</button></div></div>)}
+      </div>
+    </Panel>
+    <Panel><h2 className="font-semibold">Assignments</h2>{(data.assignments||[]).length===0?<Empty title="No assignments published" detail="Assignments shared by your faculty will appear here."/>:<div className="space-y-3">{data.assignments.map((a:Row)=><article key={a.id} className="rounded-xl border border-dark-border p-4 space-y-2"><div className="flex flex-wrap justify-between gap-2"><div><h3 className="font-semibold">{a.title}</h3><p className="text-xs text-dark-muted">{a.subject} · {a.points} points · {a.due_at?new Date(a.due_at).toLocaleString():'No deadline'}</p></div>{a.submission&&<span className="text-xs text-emerald-300">Submitted · {a.submission.marks_awarded==null?'Awaiting review':`${a.submission.marks_awarded} points`}</span>}</div><p className="text-sm whitespace-pre-wrap">{a.instructions}</p>{a.attachment_url&&<a href={a.attachment_url} target="_blank" rel="noreferrer" className="text-xs text-primary">Open assignment attachment ↗</a>}<TextArea label="Your submission / link" value={submission[a.id]||''} onChange={v=>setSubmission({...submission,[a.id]:v})} placeholder="Enter your answer or a shared document link"/>{a.submission?.feedback&&<p className="text-xs text-dark-muted">Faculty feedback: {a.submission.feedback}</p>}<Action onClick={()=>void submitAssignment(a.id)} disabled={busy}>{a.submission?'Update submission':'Submit assignment'}</Action></article>)}</div>}</Panel>
     <div className="grid lg:grid-cols-2 gap-4"><Panel><h2 className="font-semibold">Marks & results</h2>{(data.marks||[]).length===0?<Empty title="No marks published" detail="Your assessment marks will appear after faculty enters them."/>:(data.marks||[]).map((m:Row,i:number)=><div key={i} className="flex justify-between gap-3 border-b border-dark-border py-2 text-sm"><div><b>{m.subject}</b><p className="text-xs text-dark-muted">{m.assessment}</p></div><b>{m.marks_obtained} / {m.max_marks}</b></div>)}</Panel><Panel><h2 className="font-semibold">Learning materials</h2>{(data.resources||[]).length===0?<Empty title="No materials published" detail="Your teacher's PDF and study links will appear here."/>:(data.resources||[]).map((r:Row,i:number)=><div key={i} className="border-b border-dark-border py-2"><b className="text-sm">{r.title}</b><p className="text-xs text-dark-muted">{r.subject} · {r.description}</p><a href={r.resource_url} target="_blank" rel="noreferrer" className="text-xs text-primary">Open material ↗</a></div>)}</Panel></div>
     <Panel><h2 className="font-semibold">Weekly timetable</h2>{(data.timetable||[]).length===0?<Empty title="No class timetable yet" detail="Your teacher or administrator has not published any class timings."/>:<div className="grid sm:grid-cols-2 xl:grid-cols-3 gap-2">{data.timetable.map((t:Row,i:number)=><div key={i} className="rounded-xl border border-dark-border p-3"><b>{['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','Sunday'][t.weekday]}</b><p className="text-sm">{t.subject}</p><p className="text-xs text-dark-muted">{t.starts_at}–{t.ends_at} · {t.room||'Room not set'}</p></div>)}</div>}</Panel>
-    <Panel><h2 className="font-semibold">Internships & job openings</h2>{jobs.length===0?<Empty title="No active job openings" detail="New openings from recruiters will appear here."/>:<div className="space-y-3">{jobs.map(job=><article key={job.id} className="rounded-xl border border-dark-border p-4 space-y-2"><div className="flex flex-wrap justify-between gap-2"><div><b>{job.title}</b><p className="text-xs text-dark-muted">{job.company} · {job.employment_type} · {job.location||'Location not specified'}</p></div>{job.applied?<span className="text-xs text-emerald-300">Applied</span>:<Action onClick={()=>void apply(job)} disabled={busy===job.id}>Apply</Action>}</div><p className="text-sm">{job.description}</p><p className="text-xs text-dark-muted">{job.skills.join(' · ')}{job.deadline?' · Deadline '+job.deadline:''}</p>{!job.applied&&<TextArea label="Optional cover note" value={coverNotes[job.id]||''} onChange={v=>setCoverNotes({...coverNotes,[job.id]:v})}/>}</article>)}</div>}</Panel>
-    <Panel><h2 className="font-semibold">My applications</h2>{applications.length===0?<Empty title="No applications submitted" detail="Your job applications and hiring stage will appear here."/>:applications.map(a=><div key={a.id} className="flex justify-between gap-3 border-b border-dark-border py-2"><div><b>{a.job_title}</b><p className="text-xs text-dark-muted">{a.company}</p></div><span className="text-xs capitalize text-primary">{a.status}</span></div>)}</Panel>
+    <Panel><h2 className="font-semibold">Internships & job openings</h2>{jobs.length===0?<Empty title="No active job openings" detail="New openings from recruiters will appear here."/>:<div className="space-y-3">{jobs.map(job=><article key={job.id} className="rounded-xl border border-dark-border p-4 space-y-2"><div className="flex flex-wrap justify-between gap-2"><div><b>{job.title}</b><p className="text-xs text-dark-muted">{job.company} · {job.employment_type} · {job.location||'Location not specified'}</p></div>{job.applied?<span className="text-xs text-emerald-300">Applied</span>:<Action onClick={()=>startApplication(job)}>Apply with resume</Action>}</div><p className="text-sm">{job.description}</p><p className="text-xs text-dark-muted">{job.skills.join(' · ')}{job.deadline?' · Deadline '+job.deadline:''}</p></article>)}</div>}</Panel>
+    <Panel><h2 className="font-semibold">My applications</h2>{applications.length===0?<Empty title="No applications submitted" detail="Your job applications and hiring stage will appear here."/>:applications.map(a=><div key={a.id} className="flex flex-wrap justify-between items-center gap-3 border-b border-dark-border py-3"><div><b>{a.job_title}</b><p className="text-xs text-dark-muted">{a.company} · {a.status}</p><p className="text-xs text-dark-muted">{a.resume_filename ? `Resume attached: ${a.resume_filename}` : 'Resume attached'}</p></div><span className="text-xs capitalize text-primary">{a.status}</span></div>)}</Panel>
+    {applyingJob&&<div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4"><section role="dialog" aria-modal="true" aria-label="Apply with resume" className="w-full max-w-xl rounded-2xl bg-dark-card border border-dark-border p-5 space-y-4"><div className="flex items-start justify-between gap-3"><div><p className="text-xs uppercase tracking-widest text-primary font-semibold">Application</p><h2 className="text-xl font-bold mt-1">{applyingJob.title}</h2><p className="text-sm text-dark-muted">{applyingJob.company}</p></div><button type="button" onClick={()=>setApplyingJob(null)} className="border border-dark-border rounded-lg px-3 py-2 text-sm">Close</button></div>
+      <form onSubmit={submitJobApplication} className="space-y-4">
+        <div><p className="text-sm font-semibold mb-2">Choose a resume <span className="text-rose-400">*</span></p><p className="text-xs text-dark-muted mb-2">The exact PDF selected here is copied to this application and shown only to this job's recruiter.</p>
+          {resumeDocuments.length>0&&<div className="space-y-2">{resumeDocuments.map(doc=><label key={doc.id} className="flex items-center gap-3 rounded-xl border border-dark-border p-3 cursor-pointer"><input type="radio" name="applicationResume" checked={!resumeFile&&selectedResumeId===String(doc.id)} onChange={()=>{setSelectedResumeId(String(doc.id));setResumeFile(null)}}/><span className="flex-1"><span className="block text-sm font-medium">{doc.filename}</span><span className="block text-xs text-dark-muted">{Math.ceil(doc.file_size/1024)} KB · {new Date(doc.created_at).toLocaleDateString()}</span></span></label>)}</div>}
+          <label className="block mt-3 rounded-xl border border-dashed border-dark-border p-4 cursor-pointer"><span className="block text-sm font-semibold">Upload a different PDF resume</span><span className="block text-xs text-dark-muted mt-1">{resumeFile?resumeFile.name:'PDF only · maximum 5 MB'}</span><input type="file" accept="application/pdf,.pdf" className="mt-2 block w-full text-xs" onChange={e=>{setResumeFile(e.target.files?.[0]||null);setSelectedResumeId('')}}/></label>
+        </div>
+        <TextArea label="Cover note (optional)" value={coverNote} onChange={setCoverNote} placeholder="Introduce yourself and explain why this role interests you."/>
+        <div className="flex justify-end gap-2"><button type="button" onClick={()=>setApplyingJob(null)} className="rounded-xl border border-dark-border px-4 py-2 text-sm">Cancel</button><Action disabled={busy}>Submit application</Action></div>
+      </form>
+    </section></div>}
+  </div>
+}
+
+
+export function StudentMentoring() {
+  const [data,setData]=useState<Row>({programmes:[],goals:[],action_items:[],sessions:[],check_ins:[]})
+  const [error,setError]=useState('')
+  const [busy,setBusy]=useState(false)
+  const [selectedProgram,setSelectedProgram]=useState('')
+  const [checkIn,setCheckIn]=useState({confidence_rating:'3',progress_status:'on_track',wins:'',blockers:'',support_needed:''})
+  const [feedback,setFeedback]=useState<Record<number,{rating:string;takeaways:string;next_steps:string}>>({})
+  const load=async()=>{
+    setError('')
+    try{const r=await api.get('/workspaces/student/mentoring');setData(r.data||{programmes:[],goals:[],action_items:[],sessions:[],check_ins:[]})}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not load your mentoring plan.')}
+  }
+  useEffect(()=>{void load()},[])
+  const respond=async(id:number,accepted:boolean)=>{
+    setBusy(true);setError('')
+    try{await api.post(`/workspaces/student/mentoring/programmes/${id}/respond`,{accepted});await load()}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not respond to this mentoring plan.')}
+    finally{setBusy(false)}
+  }
+  const updateAction=async(id:number,status:string)=>{
+    setBusy(true);setError('')
+    try{await api.patch(`/workspaces/student/mentoring/action-items/${id}`,{status});await load()}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not update the action item.')}
+    finally{setBusy(false)}
+  }
+  const submitCheckIn=async(event:FormEvent)=>{
+    event.preventDefault()
+    if(!selectedProgram){setError('Select an active mentoring programme first.');return}
+    setBusy(true);setError('')
+    try{await api.post(`/workspaces/student/mentoring/programmes/${selectedProgram}/check-ins`,{...checkIn,confidence_rating:Number(checkIn.confidence_rating)});setCheckIn({confidence_rating:'3',progress_status:'on_track',wins:'',blockers:'',support_needed:''});await load()}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not submit your weekly check-in.')}
+    finally{setBusy(false)}
+  }
+  const sendFeedback=async(sessionId:number)=>{
+    const values=feedback[sessionId]
+    if(!values?.takeaways?.trim()){setError('Add at least one takeaway before submitting session feedback.');return}
+    setBusy(true);setError('')
+    try{await api.post(`/workspaces/student/mentoring/sessions/${sessionId}/feedback`,{rating:Number(values.rating||5),takeaways:values.takeaways,next_steps:values.next_steps||null});await load()}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not submit session feedback.')}
+    finally{setBusy(false)}
+  }
+  const activePrograms=(data.programmes||[]).filter((p:Row)=>p.status==='active')
+  useEffect(()=>{if(!selectedProgram&&activePrograms.length)setSelectedProgram(String(activePrograms[0].id))},[activePrograms.length,selectedProgram])
+  return <div className="max-w-6xl mx-auto space-y-6">
+    <Header eyebrow="Mentee workspace" title="My mentoring & growth plan" description="Review your mentor's plan, work through agreed actions, check in on progress and reflect after meetings." onRefresh={()=>void load()}/>
+    <ErrorLine message={error}/>
+    {(data.programmes||[]).length===0?<Panel><Empty title="No mentoring programme yet" detail="When a mentor creates a development plan for you, it will appear here for your review and acceptance."/></Panel>:
+      <Panel><h2 className="font-semibold">Mentoring programmes</h2><div className="space-y-3">{data.programmes.map((p:Row)=><article key={p.id} className="rounded-xl border border-dark-border p-4 space-y-2"><div className="flex flex-wrap justify-between gap-2"><div><h3 className="font-semibold">{p.title}</h3><p className="text-xs text-dark-muted">{p.mentor_name} · {p.focus_area} · {p.meeting_cadence} meetings</p></div><span className="text-xs rounded-full bg-dark-lighter px-3 py-1 capitalize">{p.status.replace('_',' ')}</span></div><p className="text-sm text-dark-muted">{p.description}</p><p className="text-xs text-dark-muted">{p.start_date}{p.target_end_date?' → '+p.target_end_date:''}</p>{p.status==='awaiting_student'&&<div className="flex gap-2 pt-2"><Action onClick={()=>void respond(p.id,true)} disabled={busy}>Accept plan</Action><Action secondary onClick={()=>void respond(p.id,false)} disabled={busy}>Decline</Action></div>}</article>)}</div></Panel>}
+    <Panel><h2 className="font-semibold">Growth goals</h2>{(data.goals||[]).length===0?<Empty title="No growth goals yet" detail="Goals agreed with your mentor will appear here after you accept a programme."/>:<div className="space-y-3">{data.goals.map((g:Row)=><div key={g.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap justify-between gap-2"><div><b>{g.title}</b><p className="text-xs text-dark-muted">{g.category} · due {g.due_date||'not set'} · {g.priority} priority</p></div><b className="text-sm">{g.progress_percent}%</b></div><p className="text-sm mt-2">{g.desired_outcome}</p><p className="text-xs text-dark-muted mt-1">Success measure: {g.success_measure}</p><div className="h-2 rounded-full bg-dark-lighter overflow-hidden mt-3"><div className="h-full bg-primary rounded-full" style={{width:`${g.progress_percent}%`}}/></div></div>)}</div>}</Panel>
+    <Panel><h2 className="font-semibold">My action items</h2>{(data.action_items||[]).length===0?<Empty title="No actions assigned" detail="Your agreed next steps will appear here."/>:<div className="space-y-2">{data.action_items.map((item:Row)=><div key={item.id} className="rounded-xl border border-dark-border p-3 flex flex-wrap items-center justify-between gap-3"><div><b>{item.title}</b><p className="text-xs text-dark-muted">{item.owner==='student'?'Your task':'Mentor task'} · due {item.due_date||'not set'}</p>{item.description&&<p className="text-sm mt-1">{item.description}</p>}{item.resource_url&&<a href={item.resource_url} target="_blank" rel="noreferrer" className="text-xs text-primary">Open resource ↗</a>}</div>{item.owner==='student'?<SelectField label="Status" value={item.status} onChange={v=>void updateAction(item.id,v)} options={['not_started','in_progress','completed','blocked'].map(v=>({value:v,label:v.replace('_',' ')}))}/>:<span className="text-xs text-dark-muted capitalize">{item.status.replace('_',' ')}</span>}</div>)}</div>}</Panel>
+    <Panel><h2 className="font-semibold">Weekly progress check-in</h2>{activePrograms.length===0?<Empty title="Accept a mentoring plan first" detail="Weekly check-ins are available once an agreed programme is active."/>:<form onSubmit={submitCheckIn} className="space-y-3"><SelectField label="Programme" value={selectedProgram} onChange={setSelectedProgram} options={activePrograms.map((p:Row)=>({value:String(p.id),label:p.title}))}/><div className="grid sm:grid-cols-2 gap-3"><SelectField label="How is your progress?" value={checkIn.progress_status} onChange={v=>setCheckIn({...checkIn,progress_status:v})} options={[{value:'on_track',label:'On track'},{value:'needs_support',label:'Need support'},{value:'blocked',label:'Blocked'}]}/><SelectField label="Confidence this week (1–5)" value={checkIn.confidence_rating} onChange={v=>setCheckIn({...checkIn,confidence_rating:v})} options={[1,2,3,4,5].map(n=>({value:String(n),label:String(n)}))}/></div><TextArea label="What went well?" value={checkIn.wins} onChange={v=>setCheckIn({...checkIn,wins:v})}/><TextArea label="What blocked your progress?" value={checkIn.blockers} onChange={v=>setCheckIn({...checkIn,blockers:v})}/><TextArea label="What support do you need?" value={checkIn.support_needed} onChange={v=>setCheckIn({...checkIn,support_needed:v})}/><Action disabled={busy}>Submit weekly check-in</Action></form>}</Panel>
+    <Panel><h2 className="font-semibold">Mentoring sessions & reflection</h2>{(data.sessions||[]).length===0?<Empty title="No sessions scheduled" detail="Your mentor will schedule meetings and add the agenda here."/>:<div className="space-y-3">{data.sessions.map((s:Row)=><article key={s.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap justify-between gap-2"><div><b>{new Date(s.scheduled_at).toLocaleString()}</b><p className="text-xs text-dark-muted">{s.duration_minutes} min · {s.status}</p>{s.agenda&&<p className="text-sm mt-2">{s.agenda}</p>}</div>{s.meeting_link&&<a href={s.meeting_link} target="_blank" rel="noreferrer" className="text-xs text-primary">Join meeting ↗</a>}</div>{s.status==='completed'&&!s.feedback&&<div className="mt-3 space-y-2 border-t border-dark-border pt-3"><p className="text-sm font-semibold">Share session feedback</p><SelectField label="Rating" value={feedback[s.id]?.rating||'5'} onChange={v=>setFeedback({...feedback,[s.id]:{rating:v,takeaways:feedback[s.id]?.takeaways||'',next_steps:feedback[s.id]?.next_steps||''}})} options={[1,2,3,4,5].map(n=>({value:String(n),label:`${n} / 5`}))}/><TextArea label="Key takeaways" value={feedback[s.id]?.takeaways||''} onChange={v=>setFeedback({...feedback,[s.id]:{rating:feedback[s.id]?.rating||'5',takeaways:v,next_steps:feedback[s.id]?.next_steps||''}})}/><TextArea label="Next steps" value={feedback[s.id]?.next_steps||''} onChange={v=>setFeedback({...feedback,[s.id]:{rating:feedback[s.id]?.rating||'5',takeaways:feedback[s.id]?.takeaways||'',next_steps:v}})}/><Action disabled={busy} onClick={()=>void sendFeedback(s.id)}>Submit reflection</Action></div>}{s.feedback&&<p className="text-xs text-dark-muted mt-3">Your rating: {s.feedback.rating}/5 · {s.feedback.takeaways}</p>}</article>)}</div>}</Panel>
+    <Panel><h2 className="font-semibold">Mentor replies</h2>{(data.check_ins||[]).length===0?<Empty title="No check-ins yet" detail="After you submit a weekly update, your mentor's response appears here."/>:(data.check_ins||[]).map((c:Row)=><div key={c.id} className="border-b border-dark-border py-3"><p className="text-sm">{c.progress_status.replace('_',' ')} · confidence {c.confidence_rating}/5</p><p className="text-xs text-dark-muted">{c.mentor_reply||'Waiting for mentor response'}</p></div>)}</Panel>
   </div>
 }
