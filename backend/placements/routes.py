@@ -1,28 +1,126 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
+from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func
 from datetime import datetime, timezone, timedelta
 from backend.core.database import get_db
 from backend.core.security import get_current_user
 from backend.users.models import User
-from backend.placements.models import Resume, Application, Interview, Offer
+from backend.placements.models import Resume, ResumeDocument, Application, Interview, Offer
 from backend.notifications.service import INDIA_TZ, schedule_email_reminder, to_utc_datetime
 from pydantic import BaseModel
 from typing import Optional
 import json
+import hashlib
+import io
+import os
+import re
 
 router = APIRouter()
 
 # --- Resume ---
-@router.post("/resume/upload")
-async def upload_resume(file: UploadFile = File(...), current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
-    content = await file.read()
-    import base64
-    b64 = base64.b64encode(content).decode()
-    file_url = f"data:{file.content_type};base64,{b64[-100:]}"
-    resume = Resume(user_id=current_user.id, file_url=file_url, version=1)
-    db.add(resume); await db.commit(); await db.refresh(resume)
-    return {"id": resume.id, "message": "Resume uploaded", "file_url": file_url}
+MAX_RESUME_SIZE = 5 * 1024 * 1024
+
+
+def safe_resume_filename(filename: str | None) -> str:
+    raw = os.path.basename((filename or "resume.pdf").replace("\\\\", "/"))
+    cleaned = re.sub(r"[^A-Za-z0-9._ -]", "", raw).strip(" .")
+    if not cleaned:
+        cleaned = "resume.pdf"
+    if not cleaned.lower().endswith(".pdf"):
+        cleaned += ".pdf"
+    return cleaned[:255]
+
+
+async def store_resume_document(file: UploadFile, student_id: int, db: AsyncSession) -> ResumeDocument:
+    content = await file.read(MAX_RESUME_SIZE + 1)
+    if not content:
+        raise HTTPException(status_code=400, detail="The uploaded resume is empty.")
+    if len(content) > MAX_RESUME_SIZE:
+        raise HTTPException(status_code=413, detail="Resume files must be 5 MB or smaller.")
+    if not content.startswith(b"%PDF-"):
+        raise HTTPException(status_code=415, detail="Upload a valid PDF resume.")
+    if file.filename and not file.filename.lower().endswith(".pdf"):
+        raise HTTPException(status_code=415, detail="Resume files must use the .pdf extension.")
+    if file.content_type not in {"application/pdf", "application/octet-stream"}:
+        raise HTTPException(status_code=415, detail="Upload a PDF resume.")
+    document = ResumeDocument(
+        student_id=student_id,
+        filename=safe_resume_filename(file.filename),
+        content_type="application/pdf",
+        file_size=len(content),
+        sha256=hashlib.sha256(content).hexdigest(),
+        file_data=content,
+    )
+    db.add(document)
+    await db.flush()
+    return document
+
+
+def resume_document_dict(document: ResumeDocument) -> dict:
+    return {
+        "id": document.id,
+        "filename": document.filename,
+        "content_type": document.content_type,
+        "file_size": document.file_size,
+        "created_at": document.created_at.isoformat(),
+    }
+
+
+@router.post("/resume/upload", status_code=201)
+async def upload_resume(file: UploadFile = File(...), current_user: User = Depends(get_current_user),
+                        db: AsyncSession = Depends(get_db)):
+    if current_user.role != "student":
+        raise HTTPException(status_code=403, detail="Only students can upload their own resumes.")
+    document = await store_resume_document(file, current_user.id, db)
+    await db.commit()
+    await db.refresh(document)
+    return {"id": document.id, "resume_document_id": document.id, "message": "Resume uploaded securely.",
+            "filename": document.filename, "file_size": document.file_size}
+
+
+@router.get("/resume/documents")
+async def list_resume_documents(current_user: User = Depends(get_current_user),
+                                db: AsyncSession = Depends(get_db)):
+    if current_user.role != "student":
+        raise HTTPException(status_code=403, detail="Student access required.")
+    result = await db.execute(select(ResumeDocument).where(
+        ResumeDocument.student_id == current_user.id
+    ).order_by(ResumeDocument.created_at.desc()))
+    return [resume_document_dict(document) for document in result.scalars().all()]
+
+
+@router.get("/resume/documents/{document_id}/download")
+async def download_resume_document(document_id: int, current_user: User = Depends(get_current_user),
+                                   db: AsyncSession = Depends(get_db)):
+    if current_user.role != "student":
+        raise HTTPException(status_code=403, detail="Student access required.")
+    document = (await db.execute(select(ResumeDocument).where(
+        ResumeDocument.id == document_id, ResumeDocument.student_id == current_user.id
+    ))).scalar_one_or_none()
+    if document is None:
+        raise HTTPException(status_code=404, detail="Resume document not found.")
+    return StreamingResponse(
+        io.BytesIO(document.file_data),
+        media_type="application/pdf",
+        headers={"Content-Disposition": f'attachment; filename="{document.filename}"',
+                 "Content-Length": str(document.file_size)},
+    )
+
+
+@router.delete("/resume/documents/{document_id}")
+async def delete_resume_document(document_id: int, current_user: User = Depends(get_current_user),
+                                 db: AsyncSession = Depends(get_db)):
+    if current_user.role != "student":
+        raise HTTPException(status_code=403, detail="Student access required.")
+    document = (await db.execute(select(ResumeDocument).where(
+        ResumeDocument.id == document_id, ResumeDocument.student_id == current_user.id
+    ))).scalar_one_or_none()
+    if document is None:
+        raise HTTPException(status_code=404, detail="Resume document not found.")
+    await db.delete(document)
+    await db.commit()
+    return {"message": "Resume removed from your library. Submitted application copies remain available to their recruiter."}
 
 @router.get("/resumes")
 async def get_resumes(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
