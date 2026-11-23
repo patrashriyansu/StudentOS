@@ -254,7 +254,8 @@ export default function Placements() {
       setActionError(err?.response?.data?.detail || 'Could not save interview feedback.')
     }
   }
-\n  const applyToRecruiterJob = async (job: any) => {
+
+  const applyToRecruiterJob = async (job: any) => {
     if (!selectedResumeId) {
       setActionError('Upload a PDF resume in the Resume tab, then select it here before applying.')
       setTab('resume')
