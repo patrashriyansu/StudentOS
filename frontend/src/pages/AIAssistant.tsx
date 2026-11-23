@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bot, Send, FileText, Sparkles, Lightbulb, Loader2, CheckCircle2, XCircle, RotateCcw } from 'lucide-react'
+import { Bot, Send, FileText, Sparkles, Lightbulb, Loader2, CheckCircle2, XCircle, RotateCcw, MessageSquare, Plus, Trash2 } from 'lucide-react'
 import { api } from '../services/api'
 import { getFriendlyApiError } from '../services/errors'
 
@@ -33,8 +33,82 @@ export default function AIAssistant() {
     },
   ])
   const [chatLoading, setChatLoading] = useState(false)
+  const [conversationId, setConversationId] = useState<number | null>(null)
+  const [conversations, setConversations] = useState<any[]>([])
+  const [historyLoading, setHistoryLoading] = useState(false)
   const [aiConfigured, setAiConfigured] = useState<boolean | null>(null)
   const [aiStatusError, setAiStatusError] = useState('')
+
+
+  const loadConversations = async () => {
+    setHistoryLoading(true)
+    try {
+      const response = await api.get('/ai/conversations')
+      setConversations(Array.isArray(response.data) ? response.data : [])
+    } catch (err) {
+      console.error('Could not load saved chatbot conversations', err)
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const startNewConversation = async () => {
+    try {
+      const response = await api.post('/ai/conversations', { title: 'New conversation' })
+      setConversationId(response.data.id)
+      setMode(response.data.mode || 'default')
+      setChat([{
+        role: 'ai',
+        content: "Hello! I'm your StudentOS Chatbot. Ask a question, get a concept explained, or create quizzes and flashcards for your studies.",
+      }])
+      setMessage('')
+      await loadConversations()
+    } catch (err) {
+      setAiStatusError(getFriendlyApiError(err, 'Could not start a new conversation.'))
+    }
+  }
+
+  const openConversation = async (id: number) => {
+    setHistoryLoading(true)
+    try {
+      const response = await api.get('/ai/conversations/' + id)
+      const saved = response.data
+      setConversationId(saved.id)
+      setMode(saved.mode || 'default')
+      setChat((saved.messages || []).map((item: any) => ({
+        role: item.role === 'assistant' ? 'ai' as const : 'user' as const,
+        content: item.content,
+      })))
+      if (!saved.messages?.length) {
+        setChat([{ role: 'ai', content: 'This is a new conversation. Ask a question to get started.' }])
+      }
+      setMessage('')
+    } catch (err) {
+      setAiStatusError(getFriendlyApiError(err, 'Could not reopen this conversation.'))
+    } finally {
+      setHistoryLoading(false)
+    }
+  }
+
+  const deleteConversation = async (id: number) => {
+    try {
+      await api.delete('/ai/conversations/' + id)
+      if (conversationId === id) {
+        setConversationId(null)
+        setChat([{
+          role: 'ai',
+          content: "Hello! I'm your StudentOS Chatbot. Ask a question, get a concept explained, or create quizzes and flashcards for your studies.",
+        }])
+      }
+      await loadConversations()
+    } catch (err) {
+      setAiStatusError(getFriendlyApiError(err, 'Could not delete this conversation.'))
+    }
+  }
+
+  useEffect(() => {
+    void loadConversations()
+  }, [])
 
   useEffect(() => {
     let active = true
@@ -89,13 +163,15 @@ export default function AIAssistant() {
     try {
       const res = await api.post(
         '/ai/chat',
-        { message: textToSend, mode, history },
+        { message: textToSend, mode, history, conversation_id: conversationId },
         { timeout: 60000 },
       )
       if (typeof res.data.response !== 'string' || !res.data.response.trim()) {
         throw new Error('The AI returned an empty response.')
       }
       setChat((previous) => [...previous, { role: 'ai', content: res.data.response }])
+      if (res.data.conversation_id) setConversationId(res.data.conversation_id)
+      void loadConversations()
     } catch (err) {
       setChat((previous) => [
         ...previous,
@@ -202,6 +278,17 @@ export default function AIAssistant() {
       {tab === 'chat' && (
         <div className="ai-chat-layout grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="ai-chat-panel lg:col-span-2 glass rounded-2xl flex flex-col h-[650px] border border-dark-border">
+            {/* Conversation controls */}
+            <div className="flex items-center justify-between gap-3 border-b border-dark-border px-5 py-2.5">
+              <div className="flex min-w-0 items-center gap-2 text-xs text-dark-muted">
+                <MessageSquare size={14} className="shrink-0 text-primary"/>
+                <span className="truncate">{conversations.find((item) => item.id === conversationId)?.title || 'New conversation'}</span>
+              </div>
+              <button type="button" onClick={() => void startNewConversation()} className="inline-flex shrink-0 items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white">
+                <Plus size={13}/>New chat
+              </button>
+            </div>
+
             {/* Mode Selector */}
             <div className="ai-chat-mode px-6 py-3 border-b border-dark-border flex items-center justify-between text-xs">
               <span className="text-dark-muted">Tutoring Mode:</span>
@@ -281,6 +368,28 @@ export default function AIAssistant() {
 
           {/* Right Sidebar: Suggestions & Actions */}
           <div className="space-y-6 ai-chat-aside ai-tool-panel">
+            <div className="glass rounded-2xl p-5 border border-dark-border">
+              <div className="mb-3 flex items-center justify-between gap-2">
+                <h3 className="font-semibold text-sm">Conversation history</h3>
+                <span className="text-[10px] text-dark-muted">{conversations.length} saved</span>
+              </div>
+              {historyLoading ? <p className="text-xs text-dark-muted">Loading saved chats…</p> : conversations.length === 0 ? (
+                <p className="text-xs text-dark-muted">Your conversations will be saved here automatically.</p>
+              ) : (
+                <div className="max-h-64 space-y-1.5 overflow-y-auto">
+                  {conversations.map((item) => (
+                    <div key={item.id} className={"flex items-center gap-1 rounded-lg border px-2 py-1.5 " + (conversationId === item.id ? "border-primary/40 bg-primary/10" : "border-dark-border")}>
+                      <button type="button" onClick={() => void openConversation(item.id)} className="min-w-0 flex-1 text-left">
+                        <span className="block truncate text-xs font-medium">{item.title}</span>
+                        <span className="mt-0.5 block text-[10px] text-dark-muted">{item.message_count} messages · {new Date(item.updated_at).toLocaleDateString()}</span>
+                      </button>
+                      <button type="button" aria-label="Delete conversation" title="Delete conversation" onClick={() => void deleteConversation(item.id)} className="rounded-md p-1.5 text-dark-muted hover:bg-rose-500/10 hover:text-rose-300"><Trash2 size={13}/></button>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
             <div className="glass rounded-2xl p-6 border border-dark-border">
               <h3 className="font-semibold text-sm mb-3">Popular Doubt Prompts</h3>
               <div className="space-y-2">
