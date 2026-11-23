@@ -238,7 +238,7 @@ test('all account roles receive distinct workspaces and the student classroom is
   }
   assert.match(app, /path="classroom".*studentOnly/)
   assert.match(pages, /Create job opening/)
-  assert.match(pages, /Private note/)
+  assert.match(pages, /Private mentor note/)
   assert.match(layout, /Programmes/)
   assert.match(layout, /Growth Goals/)
   assert.match(layout, /Check-ins/)
