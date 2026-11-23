@@ -136,14 +136,14 @@ async def ask_gemini_json(prompt: str, system_hint: str = "") -> dict | list:
 
 
 async def ask_gemini_image(prompt: str, data: bytes, mime_type: str) -> str:
-    """Extract text from a user-owned image using Gemini's multimodal input."""
+    """Extract text from a user-owned image or PDF using Gemini multimodal input."""
     if not gemini_is_configured():
         raise HTTPException(
             status_code=503,
             detail="Image OCR needs Gemini. Add GEMINI_API_KEY to the backend environment and redeploy.",
         )
-    if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
-        raise HTTPException(status_code=415, detail="Unsupported image type for OCR.")
+    if mime_type not in {"image/png", "image/jpeg", "image/webp", "application/pdf"}:
+        raise HTTPException(status_code=415, detail="Unsupported file type for OCR.")
 
     try:
         from google import genai

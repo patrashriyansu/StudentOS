@@ -100,7 +100,7 @@ def test_pdf_upload_and_image_upload_validation() -> None:
         )
         assert pdf.status_code == 201, pdf.text
         assert pdf.json()["content_type"] == "application/pdf"
-        assert pdf.json()["index_status"] == "no_text_found"
+        assert pdf.json()["index_status"] == "needs_ocr"
 
         png = client.post(
             "/api/v1/study/documents",
@@ -116,3 +116,66 @@ def test_pdf_upload_and_image_upload_validation() -> None:
             files={"file": ("payload.exe", b"MZ-not-a-study-file", "application/octet-stream")},
         )
         assert unsupported.status_code == 415
+
+
+
+def test_scanned_pdf_ocr_is_supported_and_stays_private(monkeypatch) -> None:
+    async def fake_ocr(prompt: str, data: bytes, mime_type: str) -> str:
+        assert data.startswith(b"%PDF-")
+        assert mime_type == "application/pdf"
+        return "Chapter 1: Data Structures. A stack follows LIFO order."
+
+    monkeypatch.setattr("backend.study.routes.ask_gemini_image", fake_ocr)
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        first = register_student(client)
+        second = register_student(client)
+        pdf_buffer = io.BytesIO()
+        writer = PdfWriter()
+        writer.add_blank_page(width=72, height=72)
+        writer.write(pdf_buffer)
+        uploaded = client.post(
+            "/api/v1/study/documents",
+            headers=first,
+            files={"file": ("scanned-notes.pdf", pdf_buffer.getvalue(), "application/pdf")},
+        )
+        assert uploaded.status_code == 201, uploaded.text
+        document_id = uploaded.json()["id"]
+        assert uploaded.json()["index_status"] == "needs_ocr"
+
+        indexed = client.post(f"/api/v1/study/documents/{document_id}/ocr", headers=first)
+        assert indexed.status_code == 200, indexed.text
+        assert indexed.json()["index_status"] == "indexed"
+        text_response = client.get(f"/api/v1/study/documents/{document_id}/text", headers=first)
+        assert "LIFO order" in text_response.json()["text"]
+        denied = client.post(f"/api/v1/study/documents/{document_id}/ocr", headers=second)
+        assert denied.status_code == 404
+
+
+def test_chapter_progress_is_user_scoped_and_upserted() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        first = register_student(client)
+        second = register_student(client)
+        payload = {
+            "subject": "Data Structures",
+            "chapter_title": "Stacks",
+            "status": "in_progress",
+            "completion_percent": 35,
+            "notes": "Revise infix to postfix.",
+        }
+        created = client.post("/api/v1/study/chapters", headers=first, json=payload)
+        assert created.status_code == 201, created.text
+        assert created.json()["completion_percent"] == 35
+        updated = client.post("/api/v1/study/chapters", headers=first, json={**payload, "completion_percent": 60})
+        assert updated.status_code == 201
+        assert updated.json()["id"] == created.json()["id"]
+        assert updated.json()["completion_percent"] == 60
+        assert client.get("/api/v1/study/chapters", headers=second).json() == []
+        complete = client.patch(
+            f"/api/v1/study/chapters/{created.json()['id']}",
+            headers=first,
+            json={"status": "completed"},
+        )
+        assert complete.json()["completion_percent"] == 100
+        assert client.delete(f"/api/v1/study/chapters/{created.json()['id']}", headers=second).status_code == 404
