@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState, type FormEvent } from 'react'
 import { useLocation } from 'react-router-dom'
 import {
   AlertCircle, ArrowRight, BookOpen, Briefcase, CalendarDays, CheckCircle2,
-  FileText, GraduationCap, Plus, RefreshCw, Search, ShieldCheck, Target, Users,
+  ClipboardCheck, Clock3, FileText, GraduationCap, Plus, RefreshCw, Search, ShieldCheck, Target, Users,
 } from 'lucide-react'
 import { api } from '../services/api'
 
