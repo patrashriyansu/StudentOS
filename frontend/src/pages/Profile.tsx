@@ -46,6 +46,7 @@ export default function Profile() {
   })
   const [academicData, setAcademicData] = useState<AcademicProfile>(emptyAcademicProfile)
   const [visibility, setVisibility] = useState({ profile_visible: false, contact_visible: false })
+  const [disclosures, setDisclosures] = useState({ academics_visible: false, phone_visible: false, resume_visible: false })
   const [badges, setBadges] = useState<any[]>([])
   const [academicBusy, setAcademicBusy] = useState(false)
   const [visibilityBusy, setVisibilityBusy] = useState(false)
@@ -87,6 +88,13 @@ export default function Profile() {
         .then((res) => setVisibility({
           profile_visible: Boolean(res.data?.profile_visible),
           contact_visible: Boolean(res.data?.contact_visible),
+        }))
+        .catch(() => {})
+      api.get('/campus/recruiter/disclosures')
+        .then((res) => setDisclosures({
+          academics_visible: Boolean(res.data?.academics_visible),
+          phone_visible: Boolean(res.data?.phone_visible),
+          resume_visible: Boolean(res.data?.resume_visible),
         }))
         .catch(() => {})
     }
@@ -151,6 +159,29 @@ export default function Profile() {
       setFeedback('Recruiter visibility preferences saved.')
     } catch (err: any) {
       setPageError(err?.response?.data?.detail || 'Could not save recruiter visibility preferences.')
+    } finally {
+      setVisibilityBusy(false)
+    }
+  }
+
+  const handleDisclosureSave = async (event: FormEvent) => {
+    event.preventDefault()
+    setVisibilityBusy(true)
+    setPageError('')
+    setFeedback('')
+    try {
+      const payload = visibility.profile_visible ? disclosures : {
+        academics_visible: false, phone_visible: false, resume_visible: false,
+      }
+      const response = await api.put('/campus/recruiter/disclosures', payload)
+      setDisclosures({
+        academics_visible: Boolean(response.data?.academics_visible),
+        phone_visible: Boolean(response.data?.phone_visible),
+        resume_visible: Boolean(response.data?.resume_visible),
+      })
+      setFeedback('Detailed recruiter sharing preferences saved.')
+    } catch (err: any) {
+      setPageError(err?.response?.data?.detail || 'Could not save detailed sharing preferences.')
     } finally {
       setVisibilityBusy(false)
     }
@@ -301,7 +332,7 @@ export default function Profile() {
               <div className="w-10 h-10 rounded-xl bg-emerald-500/15 text-emerald-400 flex items-center justify-center"><ShieldCheck size={20} /></div>
               <div>
                 <h2 className="font-semibold text-lg">Recruiter Profile Sharing</h2>
-                <p className="text-xs text-dark-muted">Your career profile is private until you opt in. CGPA, SGPA, exams, attendance and personal finance are never sent to recruiters by this feature.</p>
+                <p className="text-xs text-dark-muted">Your career profile is private until you opt in. Academic results, phone number and your resume each have a separate sharing control below.</p>
               </div>
             </div>
             <form onSubmit={handleVisibilitySave} className="space-y-3">
@@ -309,10 +340,12 @@ export default function Profile() {
                 <input type="checkbox" checked={visibility.profile_visible} onChange={(e) => setVisibility({
                   profile_visible: e.target.checked,
                   contact_visible: e.target.checked ? visibility.contact_visible : false,
-                })} className="mt-0.5 accent-primary" />
+                })
+                  if (!e.target.checked) setDisclosures({ academics_visible: false, phone_visible: false, resume_visible: false })
+                } className="mt-0.5 accent-primary" />
                 <span>
                   <span className="block text-sm font-medium text-white">Show my career profile to recruiters</span>
-                  <span className="block text-xs text-dark-muted mt-1">Share my name, course/branch, passing-out year, skills, public links, resume link and coding statistics.</span>
+                  <span className="block text-xs text-dark-muted mt-1">Share your career identity, course/branch, passing-out year, skills, public links and coding statistics. Detailed fields below remain separately controlled.</span>
                 </span>
               </label>
               <label className={'flex items-start gap-3 p-3 rounded-xl bg-dark-lighter border border-dark-border ' + (!visibility.profile_visible ? 'opacity-50' : '')}>
@@ -325,6 +358,23 @@ export default function Profile() {
               <div className="flex justify-end">
                 <button type="submit" disabled={visibilityBusy} className="bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
                   {visibilityBusy ? 'Saving…' : 'Save Sharing Preferences'}
+                </button>
+              </div>
+              <div className="grid sm:grid-cols-2 gap-2">
+                {([
+                  ['academics_visible', 'Share academic results', 'Allow recruiters to see CGPA, SGPA, semester grades and assessment marks.'],
+                  ['phone_visible', 'Share phone number', 'Allow recruiters to see the phone number saved in your profile.'],
+                  ['resume_visible', 'Share my resume library', 'Allow recruiters to view and download the latest PDF in your resume library.'],
+                ] as const).map(([key, title, description]) => (
+                  <label key={key} className={'flex items-start gap-3 p-3 rounded-xl bg-dark-lighter border border-dark-border ' + (!visibility.profile_visible ? 'opacity-50' : '')}>
+                    <input type="checkbox" disabled={!visibility.profile_visible} checked={disclosures[key]} onChange={(e) => setDisclosures({ ...disclosures, [key]: e.target.checked })} className="mt-0.5 accent-primary" />
+                    <span><span className="block text-sm font-medium text-white">{title}</span><span className="block text-xs text-dark-muted mt-1">{description}</span></span>
+                  </label>
+                ))}
+              </div>
+              <div className="flex justify-end">
+                <button type="button" onClick={() => void handleDisclosureSave({ preventDefault: () => {} } as FormEvent)} disabled={visibilityBusy || !visibility.profile_visible} className="bg-primary hover:bg-primary/90 text-white rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
+                  {visibilityBusy ? 'Saving…' : 'Save Detail Sharing'}
                 </button>
               </div>
             </form>
