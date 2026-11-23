@@ -164,8 +164,7 @@ export default function Profile() {
     }
   }
 
-  const handleDisclosureSave = async (event: FormEvent) => {
-    event.preventDefault()
+  const handleDisclosureSave = async () => {
     setVisibilityBusy(true)
     setPageError('')
     setFeedback('')
@@ -337,12 +336,13 @@ export default function Profile() {
             </div>
             <form onSubmit={handleVisibilitySave} className="space-y-3">
               <label className="flex items-start gap-3 p-3 rounded-xl bg-dark-lighter border border-dark-border">
-                <input type="checkbox" checked={visibility.profile_visible} onChange={(e) => setVisibility({
-                  profile_visible: e.target.checked,
-                  contact_visible: e.target.checked ? visibility.contact_visible : false,
-                })
+                <input type="checkbox" checked={visibility.profile_visible} onChange={(e) => {
+                  setVisibility({
+                    profile_visible: e.target.checked,
+                    contact_visible: e.target.checked ? visibility.contact_visible : false,
+                  })
                   if (!e.target.checked) setDisclosures({ academics_visible: false, phone_visible: false, resume_visible: false })
-                } className="mt-0.5 accent-primary" />
+                }} className="mt-0.5 accent-primary" />
                 <span>
                   <span className="block text-sm font-medium text-white">Show my career profile to recruiters</span>
                   <span className="block text-xs text-dark-muted mt-1">Share your career identity, course/branch, passing-out year, skills, public links and coding statistics. Detailed fields below remain separately controlled.</span>
@@ -373,7 +373,7 @@ export default function Profile() {
                 ))}
               </div>
               <div className="flex justify-end">
-                <button type="button" onClick={() => void handleDisclosureSave({ preventDefault: () => {} } as FormEvent)} disabled={visibilityBusy || !visibility.profile_visible} className="bg-primary hover:bg-primary/90 text-white rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
+                <button type="button" onClick={() => void handleDisclosureSave()} disabled={visibilityBusy || !visibility.profile_visible} className="bg-primary hover:bg-primary/90 text-white rounded-xl px-5 py-2.5 text-sm font-semibold disabled:opacity-50">
                   {visibilityBusy ? 'Saving…' : 'Save Detail Sharing'}
                 </button>
               </div>
