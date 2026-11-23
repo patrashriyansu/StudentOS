@@ -133,3 +133,57 @@ async def ask_gemini_json(prompt: str, system_hint: str = "") -> dict | list:
         status_code=502,
         detail="Gemini returned an invalid structured response. Please try generating it again.",
     )
+
+
+async def ask_gemini_image(prompt: str, data: bytes, mime_type: str) -> str:
+    """Extract text from a user-owned image using Gemini's multimodal input."""
+    if not gemini_is_configured():
+        raise HTTPException(
+            status_code=503,
+            detail="Image OCR needs Gemini. Add GEMINI_API_KEY to the backend environment and redeploy.",
+        )
+    if mime_type not in {"image/png", "image/jpeg", "image/webp"}:
+        raise HTTPException(status_code=415, detail="Unsupported image type for OCR.")
+
+    try:
+        from google import genai
+        from google.genai import types
+
+        config: dict[str, Any] = {"max_output_tokens": 8192}
+        if settings.GEMINI_MODEL.startswith("gemini-3"):
+            config["thinking_config"] = types.ThinkingConfig(thinking_level="low")
+        else:
+            config["temperature"] = 0.1
+
+        try:
+            await asyncio.wait_for(_gemini_semaphore.acquire(), timeout=GEMINI_QUEUE_TIMEOUT_SECONDS)
+        except asyncio.TimeoutError as exc:
+            raise HTTPException(
+                status_code=503,
+                detail="StudentOS AI is busy. Please retry OCR in a few seconds.",
+                headers={"Retry-After": "10"},
+            ) from exc
+        try:
+            image_part = types.Part.from_bytes(data=data, mime_type=mime_type)
+            async with genai.Client(api_key=settings.GEMINI_API_KEY).aio as client:
+                response = await asyncio.wait_for(
+                    client.models.generate_content(
+                        model=settings.GEMINI_MODEL,
+                        contents=[image_part, prompt],
+                        config=config,
+                    ),
+                    timeout=GEMINI_REQUEST_TIMEOUT_SECONDS,
+                )
+        finally:
+            _gemini_semaphore.release()
+        output = (response.text or "").strip()
+        if not output:
+            raise ValueError("The model returned no OCR text.")
+        return output
+    except HTTPException:
+        raise
+    except asyncio.TimeoutError as exc:
+        raise HTTPException(status_code=504, detail="Image OCR timed out. Please retry.") from exc
+    except Exception as exc:
+        logger.exception("Gemini image OCR failed")
+        raise HTTPException(status_code=502, detail="Gemini could not read this image. Please retry.") from exc

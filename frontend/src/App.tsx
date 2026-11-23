@@ -21,6 +21,7 @@ import Profile from './pages/Profile'
 import Analytics from './pages/Analytics'
 import Community from './pages/Community'
 import Productivity from './pages/Productivity'
+import StudyHub from './pages/StudyHub'
 import Expenses from './pages/Expenses'
 import Notifications from './pages/Notifications'
 import Projects from './pages/Projects'
@@ -108,6 +109,7 @@ export default function App() {
         <Route index element={<RoleDashboard />} />
         <Route path="dashboard" element={<RoleDashboard />} />
         <Route path="academics" element={<RoleRoute allowedRoles={studentOnly}><Academics /></RoleRoute>} />
+        <Route path="study" element={<RoleRoute allowedRoles={studentOnly}><StudyHub /></RoleRoute>} />
         <Route path="coding" element={<RoleRoute allowedRoles={studentOnly}><Coding /></RoleRoute>} />
         <Route path="placements" element={<RoleRoute allowedRoles={studentOnly}><Placements /></RoleRoute>} />
         <Route path="ai" element={<AIAssistant />} />

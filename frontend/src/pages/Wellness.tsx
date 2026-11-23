@@ -12,7 +12,7 @@ const moodOptions = [
 ]
 
 export default function Wellness() {
-  const [tab, setTab] = useState<'overview' | 'mood' | 'water' | 'sleep'>('overview')
+  const [tab, setTab] = useState<'overview' | 'mood' | 'water' | 'sleep' | 'activity'>('overview')
   const [water, setWater] = useState(0)
   const [sleep, setSleep] = useState(7.5)
   const [mood, setMood] = useState(3)
@@ -23,6 +23,10 @@ export default function Wellness() {
   const [savedMessage, setSavedMessage] = useState<string | null>(null)
   const [wellnessScore, setWellnessScore] = useState<any>(null)
   const [trendData, setTrendData] = useState<{ day: string; score: number }[]>([])
+  const [exerciseDuration, setExerciseDuration] = useState(30)
+  const [exerciseType, setExerciseType] = useState('walking')
+  const [meditationDuration, setMeditationDuration] = useState(10)
+  const [activityHistory, setActivityHistory] = useState<any[]>([])
 
   // Load wellness summary
   useEffect(() => {
@@ -50,6 +54,10 @@ export default function Wellness() {
         if (res.data) setWellnessScore(res.data)
       })
       .catch(() => {})
+
+    api.get('/wellness/exercise/history', { params: { days: 30 } })
+      .then((res) => setActivityHistory(Array.isArray(res.data?.history) ? res.data.history : []))
+      .catch(() => setActivityHistory([]))
 
     api.get('/wellness/history', { params: { days: 7 } })
       .then((res) => {
@@ -121,6 +129,28 @@ export default function Wellness() {
     }
   }
 
+  const handleLogExercise = async () => {
+    try {
+      await api.post('/wellness/exercise', { duration_minutes: exerciseDuration, exercise_type: exerciseType })
+      notify('Exercise activity saved.')
+      const history = await api.get('/wellness/exercise/history', { params: { days: 30 } })
+      setActivityHistory(Array.isArray(history.data?.history) ? history.data.history : [])
+    } catch (err) {
+      notify('Could not save exercise activity. Please try again.')
+      console.error(err)
+    }
+  }
+
+  const handleLogMeditation = async () => {
+    try {
+      await api.post('/wellness/meditation', { duration_minutes: meditationDuration, session_type: 'mindfulness' })
+      notify('Meditation session saved.')
+    } catch (err) {
+      notify('Could not save meditation session. Please try again.')
+      console.error(err)
+    }
+  }
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       {/* Header */}
@@ -130,7 +160,7 @@ export default function Wellness() {
           <p className="text-dark-muted">Balance sleep, hydration, mood and mental well-being for peak academic focus</p>
         </div>
         <div className="flex gap-1 glass rounded-xl p-1">
-          {(['overview', 'mood', 'water', 'sleep'] as const).map((t) => (
+          {(['overview', 'mood', 'water', 'sleep', 'activity'] as const).map((t) => (
             <button
               key={t}
               onClick={() => setTab(t)}
@@ -303,6 +333,32 @@ export default function Wellness() {
               style={{ width: `${Math.min(100, (water / 8) * 100)}%` }}
             />
           </div>
+        </div>
+      )}
+
+      {/* Tab: Activity and mindfulness */}
+      {tab === 'activity' && (
+        <div className="grid gap-5 lg:grid-cols-2">
+          <section className="glass rounded-2xl border border-dark-border p-6 space-y-4">
+            <div className="flex items-center gap-2"><Activity size={20} className="text-emerald-400"/><h3 className="font-semibold text-lg">Exercise log</h3></div>
+            <p className="text-sm text-dark-muted">Record your actual movement and exercise sessions.</p>
+            <label className="block text-xs text-dark-muted">Activity type</label>
+            <select value={exerciseType} onChange={(event) => setExerciseType(event.target.value)} className="w-full rounded-xl border border-dark-border bg-dark-lighter px-3 py-2.5 text-sm text-white">
+              {['walking', 'running', 'cycling', 'strength training', 'yoga', 'sports', 'other'].map((item) => <option key={item} value={item}>{item}</option>)}
+            </select>
+            <label className="block text-xs text-dark-muted">Duration · {exerciseDuration} minutes</label>
+            <input type="range" min={5} max={180} step={5} value={exerciseDuration} onChange={(event) => setExerciseDuration(Number(event.target.value))} className="w-full accent-primary"/>
+            <button onClick={() => void handleLogExercise()} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white">Save exercise</button>
+            <div className="border-t border-dark-border pt-4"><h4 className="mb-2 text-sm font-semibold">Recent activity</h4>{activityHistory.length === 0 ? <p className="text-xs text-dark-muted">No exercise records yet.</p> : <div className="space-y-2">{activityHistory.slice(-7).reverse().map((item, index) => <div key={index} className="flex justify-between rounded-lg bg-dark-lighter p-3 text-xs"><span className="capitalize">{item.exercise_type} · {item.duration_minutes} min</span><span className="text-dark-muted">{new Date(item.date).toLocaleDateString()}</span></div>)}</div>}</div>
+          </section>
+          <section className="glass rounded-2xl border border-dark-border p-6 space-y-4">
+            <div className="flex items-center gap-2"><Sparkles size={20} className="text-primary"/><h3 className="font-semibold text-lg">Mindfulness session</h3></div>
+            <p className="text-sm text-dark-muted">Track a meditation session you completed. StudentOS records the duration; it does not assume a session took place.</p>
+            <label className="block text-xs text-dark-muted">Meditation duration · {meditationDuration} minutes</label>
+            <input type="range" min={1} max={60} step={1} value={meditationDuration} onChange={(event) => setMeditationDuration(Number(event.target.value))} className="w-full accent-primary"/>
+            <div className="text-4xl font-bold">{meditationDuration}<span className="ml-2 text-base font-normal text-dark-muted">minutes</span></div>
+            <button onClick={() => void handleLogMeditation()} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white">Record completed session</button>
+          </section>
         </div>
       )}
 
