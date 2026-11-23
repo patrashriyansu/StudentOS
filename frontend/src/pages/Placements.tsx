@@ -11,7 +11,7 @@ const statusColors: Record<string, string> = {
 }
 
 export default function Placements() {
-  const [tab, setTab] = useState<'opportunities' | 'applications' | 'resume' | 'interviews' | 'offers'>('applications')
+  const [tab, setTab] = useState<'opportunities' | 'applications' | 'resume' | 'builder' | 'interviews' | 'offers'>('applications')
   const [applications, setApplications] = useState<any[]>([])
   const [interviews, setInterviews] = useState<any[]>([])
   const [offers, setOffers] = useState<any[]>([])
@@ -27,6 +27,12 @@ export default function Placements() {
   const [resumeDocuments, setResumeDocuments] = useState<any[]>([])
   const [jobs, setJobs] = useState<any[]>([])
   const [studentJobApplications, setStudentJobApplications] = useState<any[]>([])
+  const [resumeVersions, setResumeVersions] = useState<any[]>([])
+  const [builderVersionId, setBuilderVersionId] = useState<number | null>(null)
+  const [builderTitle, setBuilderTitle] = useState('General software engineering resume')
+  const [builderForm, setBuilderForm] = useState({ full_name: '', headline: '', email: '', phone: '', location: '', summary: '', educationText: '', experienceText: '', projectsText: '', skillsText: '', certificationsText: '', achievementsText: '' })
+  const [builderSaving, setBuilderSaving] = useState(false)
+  const [interviewDrafts, setInterviewDrafts] = useState<Record<number, { feedback: string; rating: string; confidence_score: string; completed: boolean }>>({})
   const [selectedResumeId, setSelectedResumeId] = useState('')
   const [coverNote, setCoverNote] = useState('')
   const [applyingJobId, setApplyingJobId] = useState<number | null>(null)
@@ -34,16 +40,18 @@ export default function Placements() {
 
   const loadData = async () => {
     try {
-      const [appRes, intRes, offRes, resumeRes] = await Promise.all([
+      const [appRes, intRes, offRes, resumeRes, versionRes] = await Promise.all([
         api.get('/placements/applications'),
         api.get('/placements/interviews'),
         api.get('/placements/offers'),
         api.get('/placements/resume/documents'),
+        api.get('/placements/resume-versions'),
       ])
       setApplications(appRes.data || [])
       setInterviews(intRes.data || [])
       setOffers(offRes.data || [])
       setResumeDocuments(resumeRes.data || [])
+      setResumeVersions(versionRes.data || [])
       const [jobResponse, studentApplicationResponse] = await Promise.allSettled([
         api.get('/workspaces/student/jobs'),
         api.get('/workspaces/student/applications'),
@@ -144,7 +152,109 @@ export default function Placements() {
     }
   }
 
-  const applyToRecruiterJob = async (job: any) => {
+
+  const parseResumeLines = (value: string, delimiter = '|') => value.split('\n').map(line => line.trim()).filter(Boolean).map(line => line.split(delimiter).map(part => part.trim()))
+  const contentFromBuilder = () => ({
+    full_name: builderForm.full_name.trim(),
+    headline: builderForm.headline.trim(),
+    email: builderForm.email.trim(),
+    phone: builderForm.phone.trim(),
+    location: builderForm.location.trim(),
+    summary: builderForm.summary.trim(),
+    education: parseResumeLines(builderForm.educationText).map(parts => ({
+      degree: parts[0] || '', institution: parts[1] || '', start_year: parts[2] || '',
+      end_year: parts[3] || '', location: parts[4] || '', details: parts.slice(5).join(' | '),
+    })),
+    experience: parseResumeLines(builderForm.experienceText).map(parts => ({
+      role: parts[0] || '', company: parts[1] || '', start_date: parts[2] || '',
+      end_date: parts[3] || '', location: parts[4] || '', details: parts.slice(5).join(' | '),
+    })),
+    projects: parseResumeLines(builderForm.projectsText).map(parts => ({
+      name: parts[0] || '', technologies: (parts[1] || '').split(',').map(x => x.trim()).filter(Boolean),
+      link: parts[2] || '', description: parts.slice(3).join(' | '),
+    })),
+    skills: builderForm.skillsText.split(',').map(x => x.trim()).filter(Boolean),
+    certifications: builderForm.certificationsText.split('\n').map(x => x.trim()).filter(Boolean),
+    achievements: builderForm.achievementsText.split('\n').map(x => x.trim()).filter(Boolean),
+  })
+
+  const loadBuilderVersion = (version: any) => {
+    const c = version.content || {}
+    setBuilderVersionId(version.id)
+    setBuilderTitle(version.title)
+    setBuilderForm({
+      full_name: c.full_name || '', headline: c.headline || '', email: c.email || '',
+      phone: c.phone || '', location: c.location || '', summary: c.summary || '',
+      educationText: (c.education || []).map((e: any) => [e.degree,e.institution,e.start_year,e.end_year,e.location,e.details].join(' | ')).join('\n'),
+      experienceText: (c.experience || []).map((e: any) => [e.role,e.company,e.start_date,e.end_date,e.location,e.details].join(' | ')).join('\n'),
+      projectsText: (c.projects || []).map((p: any) => [p.name,(p.technologies || []).join(', '),p.link,p.description].join(' | ')).join('\n'),
+      skillsText: (c.skills || []).join(', '),
+      certificationsText: (c.certifications || []).join('\n'),
+      achievementsText: (c.achievements || []).join('\n'),
+    })
+  }
+
+  const saveBuilderVersion = async (saveAsNew = false) => {
+    if (!builderForm.full_name.trim()) {
+      setActionError('Add your full name before saving a resume.')
+      return
+    }
+    const content = contentFromBuilder()
+    if (content.education.some((e: any) => !e.degree || !e.institution) ||
+        content.experience.some((e: any) => !e.role || !e.company) ||
+        content.projects.some((p: any) => !p.name)) {
+      setActionError('Each education, experience and project line needs its required name fields.')
+      return
+    }
+    setBuilderSaving(true)
+    setActionError('')
+    try {
+      const payload = { title: builderTitle.trim() || 'My resume', content }
+      const response = builderVersionId && !saveAsNew
+        ? await api.put('/placements/resume-versions/' + builderVersionId, payload)
+        : await api.post('/placements/resume-versions', payload)
+      setBuilderVersionId(response.data.id)
+      const versions = await api.get('/placements/resume-versions')
+      setResumeVersions(versions.data || [])
+      setActionError('')
+    } catch (err: any) {
+      setActionError(err?.response?.data?.detail || 'Could not save your resume version.')
+    } finally {
+      setBuilderSaving(false)
+    }
+  }
+
+  const deleteBuilderVersion = async (id: number) => {
+    try {
+      await api.delete('/placements/resume-versions/' + id)
+      setResumeVersions((current) => current.filter(item => item.id !== id))
+      if (builderVersionId === id) setBuilderVersionId(null)
+    } catch (err: any) {
+      setActionError(err?.response?.data?.detail || 'Could not delete this resume version.')
+    }
+  }
+
+  const updateInterviewFeedback = async (interview: any) => {
+    const draft = interviewDrafts[interview.id] || {
+      feedback: interview.feedback || '',
+      rating: String(interview.rating || 5),
+      confidence_score: String(interview.confidence_score || 3),
+      completed: Boolean(interview.completed),
+    }
+    try {
+      await api.patch('/placements/interviews/' + interview.id, {
+        feedback: draft.feedback,
+        rating: Number(draft.rating),
+        confidence_score: Number(draft.confidence_score),
+        completed: draft.completed,
+      })
+      await loadData()
+      setActionError('')
+    } catch (err: any) {
+      setActionError(err?.response?.data?.detail || 'Could not save interview feedback.')
+    }
+  }
+\n  const applyToRecruiterJob = async (job: any) => {
     if (!selectedResumeId) {
       setActionError('Upload a PDF resume in the Resume tab, then select it here before applying.')
       setTab('resume')
@@ -201,7 +311,7 @@ export default function Placements() {
         </div>
         <div className="flex items-center gap-3">
           <div className="flex gap-1 glass rounded-xl p-1">
-            {(['opportunities', 'applications', 'resume', 'interviews', 'offers'] as const).map((t) => (
+            {(['opportunities', 'applications', 'resume', 'builder', 'interviews', 'offers'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTab(t)}
@@ -521,6 +631,43 @@ export default function Placements() {
         </div>
       )}
 
+
+      {tab === 'builder' && (
+        <div className="grid gap-4 xl:grid-cols-[minmax(0,1.15fr)_minmax(320px,.85fr)]">
+          <section className="glass space-y-4 rounded-2xl border border-dark-border p-5">
+            <div className="flex flex-wrap items-center justify-between gap-2"><div><h2 className="text-lg font-semibold">Resume builder & versions</h2><p className="text-xs text-dark-muted">Create tailored versions for different roles. Your drafts are private to your account.</p></div><button type="button" onClick={()=>{setBuilderVersionId(null);setBuilderTitle('New role-specific resume');setBuilderForm({full_name:'',headline:'',email:'',phone:'',location:'',summary:'',educationText:'',experienceText:'',projectsText:'',skillsText:'',certificationsText:'',achievementsText:''})}} className="rounded-lg border border-dark-border px-3 py-2 text-xs"><Plus size={13} className="mr-1 inline"/>New draft</button></div>
+            <div className="flex flex-wrap items-center gap-2"><input value={builderTitle} onChange={e=>setBuilderTitle(e.target.value)} placeholder="Version name, e.g. Backend Intern" className="min-w-0 flex-1 rounded-xl border border-dark-border bg-dark-lighter px-3 py-2.5 text-sm text-white"/><span className="text-xs text-dark-muted">{builderVersionId ? 'Editing saved version' : 'Unsaved draft'}</span></div>
+            <div className="grid gap-3 sm:grid-cols-2">
+              <label className="text-xs text-dark-muted">Full name<input value={builderForm.full_name} onChange={e=>setBuilderForm({...builderForm,full_name:e.target.value})} className="mt-1 w-full rounded-lg border border-dark-border bg-dark-lighter p-2.5 text-sm text-white"/></label>
+              <label className="text-xs text-dark-muted">Professional headline<input value={builderForm.headline} onChange={e=>setBuilderForm({...builderForm,headline:e.target.value})} placeholder="e.g. Full-Stack Developer" className="mt-1 w-full rounded-lg border border-dark-border bg-dark-lighter p-2.5 text-sm text-white"/></label>
+              <label className="text-xs text-dark-muted">Email<input type="email" value={builderForm.email} onChange={e=>setBuilderForm({...builderForm,email:e.target.value})} className="mt-1 w-full rounded-lg border border-dark-border bg-dark-lighter p-2.5 text-sm text-white"/></label>
+              <label className="text-xs text-dark-muted">Phone<input value={builderForm.phone} onChange={e=>setBuilderForm({...builderForm,phone:e.target.value})} className="mt-1 w-full rounded-lg border border-dark-border bg-dark-lighter p-2.5 text-sm text-white"/></label>
+              <label className="text-xs text-dark-muted sm:col-span-2">Location<input value={builderForm.location} onChange={e=>setBuilderForm({...builderForm,location:e.target.value})} placeholder="City, Country" className="mt-1 w-full rounded-lg border border-dark-border bg-dark-lighter p-2.5 text-sm text-white"/></label>
+            </div>
+            <label className="block text-xs text-dark-muted">Professional summary<textarea rows={4} value={builderForm.summary} onChange={e=>setBuilderForm({...builderForm,summary:e.target.value})} className="mt-1 w-full rounded-lg border border-dark-border bg-dark-lighter p-3 text-sm text-white"/></label>
+            <label className="block text-xs text-dark-muted">Education · one entry per line: Degree | Institution | Start year | End year | Location | Details<textarea rows={4} value={builderForm.educationText} onChange={e=>setBuilderForm({...builderForm,educationText:e.target.value})} placeholder="B.Tech CSE | University | 2024 | 2028 | Bhubaneswar | CGPA: 8.4" className="mt-1 w-full rounded-lg border border-dark-border bg-dark-lighter p-3 text-xs text-white"/></label>
+            <label className="block text-xs text-dark-muted">Experience · one entry per line: Role | Company | Start | End | Location | Details<textarea rows={4} value={builderForm.experienceText} onChange={e=>setBuilderForm({...builderForm,experienceText:e.target.value})} placeholder="Software Intern | Company | Jun 2026 | Aug 2026 | India | Built a full-stack app…" className="mt-1 w-full rounded-lg border border-dark-border bg-dark-lighter p-3 text-xs text-white"/></label>
+            <label className="block text-xs text-dark-muted">Projects · one entry per line: Name | Technologies (comma separated) | Link | Description<textarea rows={4} value={builderForm.projectsText} onChange={e=>setBuilderForm({...builderForm,projectsText:e.target.value})} placeholder="StudentOS | React, FastAPI | https://github.com/... | Student productivity workspace" className="mt-1 w-full rounded-lg border border-dark-border bg-dark-lighter p-3 text-xs text-white"/></label>
+            <label className="block text-xs text-dark-muted">Skills · comma separated<input value={builderForm.skillsText} onChange={e=>setBuilderForm({...builderForm,skillsText:e.target.value})} className="mt-1 w-full rounded-lg border border-dark-border bg-dark-lighter p-2.5 text-sm text-white"/></label>
+            <div className="grid gap-3 sm:grid-cols-2"><label className="text-xs text-dark-muted">Certifications · one per line<textarea rows={3} value={builderForm.certificationsText} onChange={e=>setBuilderForm({...builderForm,certificationsText:e.target.value})} className="mt-1 w-full rounded-lg border border-dark-border bg-dark-lighter p-3 text-sm text-white"/></label><label className="text-xs text-dark-muted">Achievements · one per line<textarea rows={3} value={builderForm.achievementsText} onChange={e=>setBuilderForm({...builderForm,achievementsText:e.target.value})} className="mt-1 w-full rounded-lg border border-dark-border bg-dark-lighter p-3 text-sm text-white"/></label></div>
+            <div className="flex flex-wrap gap-2"><button type="button" onClick={()=>void saveBuilderVersion(false)} disabled={builderSaving} className="rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-white">{builderSaving?'Saving…':builderVersionId?'Save changes':'Save version'}</button><button type="button" onClick={()=>void saveBuilderVersion(true)} disabled={builderSaving} className="rounded-xl border border-dark-border px-4 py-2.5 text-sm">Save as new version</button><button type="button" onClick={()=>window.print()} className="rounded-xl border border-dark-border px-4 py-2.5 text-sm">Print / Save PDF</button></div>
+          </section>
+          <div className="space-y-4">
+            <section className="glass space-y-3 rounded-2xl border border-dark-border p-4"><h3 className="font-semibold">Saved resume versions ({resumeVersions.length}/20)</h3>{resumeVersions.length===0?<p className="text-xs text-dark-muted">Save your first role-specific version to keep it here.</p>:resumeVersions.map(version=><div key={version.id} className={'flex items-center gap-2 rounded-xl border p-3 '+(builderVersionId===version.id?'border-primary bg-primary/10':'border-dark-border')}><button type="button" onClick={()=>loadBuilderVersion(version)} className="min-w-0 flex-1 text-left"><b className="block truncate text-sm">{version.title}</b><span className="text-xs text-dark-muted">Version {version.version_number} · {new Date(version.updated_at).toLocaleDateString()}</span></button><button type="button" onClick={()=>void deleteBuilderVersion(version.id)} className="rounded-lg border border-dark-border px-2 py-1.5 text-xs text-rose-300">Delete</button></div>)}</section>
+            <section id="resume-preview" className="resume-paper rounded-2xl bg-white p-6 text-slate-900 shadow-xl print:shadow-none">
+              <h2 className="text-2xl font-bold">{builderForm.full_name || 'Your Name'}</h2><p className="mt-1 text-sm font-semibold text-slate-700">{builderForm.headline}</p><p className="mt-2 text-xs text-slate-600">{[builderForm.email,builderForm.phone,builderForm.location].filter(Boolean).join(' · ')}</p>
+              {builderForm.summary&&<><h3 className="mt-5 border-b border-slate-300 pb-1 text-sm font-bold uppercase">Summary</h3><p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed">{builderForm.summary}</p></>}
+              {builderForm.educationText&&<><h3 className="mt-5 border-b border-slate-300 pb-1 text-sm font-bold uppercase">Education</h3><p className="mt-2 whitespace-pre-wrap text-xs">{builderForm.educationText}</p></>}
+              {builderForm.experienceText&&<><h3 className="mt-5 border-b border-slate-300 pb-1 text-sm font-bold uppercase">Experience</h3><p className="mt-2 whitespace-pre-wrap text-xs">{builderForm.experienceText}</p></>}
+              {builderForm.projectsText&&<><h3 className="mt-5 border-b border-slate-300 pb-1 text-sm font-bold uppercase">Projects</h3><p className="mt-2 whitespace-pre-wrap text-xs">{builderForm.projectsText}</p></>}
+              {builderForm.skillsText&&<><h3 className="mt-5 border-b border-slate-300 pb-1 text-sm font-bold uppercase">Skills</h3><p className="mt-2 text-xs">{builderForm.skillsText}</p></>}
+              {builderForm.certificationsText&&<><h3 className="mt-5 border-b border-slate-300 pb-1 text-sm font-bold uppercase">Certifications</h3><p className="mt-2 whitespace-pre-wrap text-xs">{builderForm.certificationsText}</p></>}
+              {builderForm.achievementsText&&<><h3 className="mt-5 border-b border-slate-300 pb-1 text-sm font-bold uppercase">Achievements</h3><p className="mt-2 whitespace-pre-wrap text-xs">{builderForm.achievementsText}</p></>}
+            </section>
+          </div>
+        </div>
+      )}
+
       {/* Tab: Interviews */}
       {tab === 'interviews' && (
         <div className="space-y-4">
@@ -529,21 +676,20 @@ export default function Placements() {
               <Star size={36} className="text-dark-muted mx-auto mb-3" />
               <h3 className="font-semibold">No interviews scheduled</h3>
               <p className="text-xs text-dark-muted mt-1">Add an upcoming interview or mock interview to track the date and round.</p>
-              <button onClick={() => setShowInterviewModal(true)} className="mt-4 bg-primary text-white px-4 py-2 rounded-xl text-sm font-medium">
-                <Plus size={15} className="inline mr-1" /> Schedule interview
-              </button>
+              <button onClick={() => setShowInterviewModal(true)} className="mt-4 bg-primary text-white px-4 py-2 rounded-xl text-sm font-medium"><Plus size={15} className="inline mr-1" /> Schedule interview</button>
             </div>
-          ) : interviews.map((inv) => (
-            <div key={inv.id} className="glass rounded-xl p-5 flex items-center justify-between border border-dark-border">
-              <div>
-                <h4 className="font-semibold text-base">{inv.company} · {inv.role}</h4>
-                <p className="text-xs text-dark-muted mt-0.5">Scheduled: {new Date(inv.scheduled_at).toLocaleString()}</p>
+          ) : interviews.map((inv) => {
+            const draft = interviewDrafts[inv.id] || { feedback: inv.feedback || '', rating: String(inv.rating || 5), confidence_score: String(inv.confidence_score || 3), completed: Boolean(inv.completed) }
+            return <article key={inv.id} className="glass space-y-3 rounded-xl border border-dark-border p-5">
+              <div className="flex flex-wrap items-center justify-between gap-2"><div><h4 className="font-semibold text-base">{inv.company} · {inv.role}</h4><p className="text-xs text-dark-muted mt-0.5">Scheduled: {new Date(inv.scheduled_at).toLocaleString()}</p></div><span className="rounded-full bg-purple-500/20 px-3 py-1 text-xs text-purple-300">{inv.interview_type || 'Technical'}</span></div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <label className="text-xs text-dark-muted">Your rating<select value={draft.rating} onChange={e=>setInterviewDrafts({...interviewDrafts,[inv.id]:{...draft,rating:e.target.value}})} className="mt-1 w-full rounded-lg border border-dark-border bg-dark-lighter p-2.5 text-sm text-white">{[1,2,3,4,5].map(n=><option key={n} value={n}>{n} / 5</option>)}</select></label>
+                <label className="text-xs text-dark-muted">Confidence level<select value={draft.confidence_score} onChange={e=>setInterviewDrafts({...interviewDrafts,[inv.id]:{...draft,confidence_score:e.target.value}})} className="mt-1 w-full rounded-lg border border-dark-border bg-dark-lighter p-2.5 text-sm text-white">{[1,2,3,4,5].map(n=><option key={n} value={n}>{n} / 5</option>)}</select></label>
               </div>
-              <span className="text-xs bg-purple-500/20 text-purple-400 px-3 py-1 rounded-full font-medium">
-                {inv.interview_type || 'Technical'}
-              </span>
-            </div>
-          ))}
+              <label className="block text-xs text-dark-muted">Interview feedback and lessons<textarea rows={3} value={draft.feedback} onChange={e=>setInterviewDrafts({...interviewDrafts,[inv.id]:{...draft,feedback:e.target.value}})} placeholder="What went well? Which topics were difficult? What should you revise?" className="mt-1 w-full rounded-lg border border-dark-border bg-dark-lighter p-3 text-sm text-white"/></label>
+              <div className="flex flex-wrap items-center justify-between gap-2"><label className="flex items-center gap-2 text-xs text-dark-muted"><input type="checkbox" checked={draft.completed} onChange={e=>setInterviewDrafts({...interviewDrafts,[inv.id]:{...draft,completed:e.target.checked}})}/> Mark interview completed</label><button type="button" onClick={()=>void updateInterviewFeedback(inv)} className="rounded-xl bg-primary px-4 py-2 text-sm font-semibold text-white">Save feedback</button></div>
+            </article>
+          })}
         </div>
       )}
 

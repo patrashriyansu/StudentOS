@@ -106,3 +106,49 @@ class OAuthIdentity(Base):
     provider = Column(String(24), nullable=False, index=True)
     provider_user_id = Column(String(255), nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+
+
+class NotificationPreference(Base):
+    __tablename__ = "user_notification_preferences"
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    email_enabled = Column(Boolean, nullable=False, default=True)
+    push_enabled = Column(Boolean, nullable=False, default=False)
+    in_app_enabled = Column(Boolean, nullable=False, default=True)
+    assignment_reminders = Column(Boolean, nullable=False, default=True)
+    exam_reminders = Column(Boolean, nullable=False, default=True)
+    attendance_alerts = Column(Boolean, nullable=False, default=True)
+    placement_updates = Column(Boolean, nullable=False, default=True)
+    quiet_hours_start = Column(String(5), nullable=False, default="22:00")
+    quiet_hours_end = Column(String(5), nullable=False, default="08:00")
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class StudentCareerProfile(Base):
+    __tablename__ = "student_career_profiles"
+
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), primary_key=True)
+    career_goal = Column(String(300), nullable=True)
+    target_role = Column(String(160), nullable=True)
+    target_industries = Column(JSON, nullable=False, default=list)
+    preferred_locations = Column(JSON, nullable=False, default=list)
+    employment_types = Column(JSON, nullable=False, default=list)
+    work_mode = Column(String(24), nullable=False, default="any")
+    target_start_date = Column(String(10), nullable=True)
+    onboarding_completed = Column(Boolean, nullable=False, default=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class AccountDeletionRequest(Base):
+    __tablename__ = "account_deletion_requests"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    reason = Column(Text, nullable=True)
+    status = Column(String(24), nullable=False, default="pending", index=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    reviewed_at = Column(DateTime(timezone=True), nullable=True)
+    reviewed_by = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True)
