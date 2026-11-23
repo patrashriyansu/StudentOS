@@ -61,6 +61,8 @@ export function RecruiterWorkspace() {
   const [shortlist, setShortlist] = useState<Row[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
   const [applications, setApplications] = useState<Row[]>([])
+  const [selectedCandidate, setSelectedCandidate] = useState<Row | null>(null)
+  const [candidateLoading, setCandidateLoading] = useState(false)
   const [query, setQuery] = useState('')
   const [branchFilter, setBranchFilter] = useState('')
   const [yearFilter, setYearFilter] = useState('')
@@ -112,6 +114,26 @@ export function RecruiterWorkspace() {
     } catch (e: any) { setError(e?.response?.data?.detail || 'Could not publish this job.') }
     finally { setSaving(false) }
   }
+  const openCandidate = async (studentId: number) => {
+    setCandidateLoading(true); setError('')
+    try {
+      const response = await api.get(`/workspaces/recruiter/candidates/${studentId}`)
+      setSelectedCandidate(response.data)
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Could not load the full candidate profile.')
+    } finally { setCandidateLoading(false) }
+  }
+  const downloadPdf = async (endpoint: string, filename: string) => {
+    try {
+      const response = await api.get(endpoint, { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+      const anchor = document.createElement('a')
+      anchor.href = url; anchor.download = filename; anchor.click()
+      window.URL.revokeObjectURL(url)
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Could not download this resume.')
+    }
+  }
   const saveCandidate = async (studentId: number) => {
     try { await api.post(`/workspaces/recruiter/shortlist/${studentId}`, { note: '' }); await load() }
     catch (e: any) { setError(e?.response?.data?.detail || 'Could not save candidate.') }
@@ -150,7 +172,7 @@ export function RecruiterWorkspace() {
       <p className="text-xs text-dark-muted">{filteredCandidates.length} opted-in profile(s)</p>
       {filteredCandidates.length === 0 ? <Empty title="No shared candidates found" detail="Try a different filter. Students only appear after enabling recruiter profile sharing."/> :
         <div className="grid lg:grid-cols-2 gap-3">{filteredCandidates.map(c => <article key={c.student_id} className="rounded-xl border border-dark-border p-4 space-y-3">
-          <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{c.name}</h3><p className="text-xs text-dark-muted">{[c.course, c.branch].filter(Boolean).join(' · ') || 'Course not provided'} {c.passing_out_year ? '· Batch ' + c.passing_out_year : ''}</p><p className="text-xs text-dark-muted">{c.college || 'College not provided'}</p></div><Action secondary onClick={() => void saveCandidate(c.student_id)}>Save</Action></div>
+          <div className="flex items-start justify-between gap-3"><div><h3 className="font-semibold">{c.name}</h3><p className="text-xs text-dark-muted">{[c.course, c.branch].filter(Boolean).join(' · ') || 'Course not provided'} {c.passing_out_year ? '· Batch ' + c.passing_out_year : ''}</p><p className="text-xs text-dark-muted">{c.college || 'College not provided'}</p></div><div className="flex gap-2"><Action secondary onClick={() => void saveCandidate(c.student_id)}>Save</Action><Action onClick={() => void openCandidate(c.student_id)}>Full profile</Action></div></div>
           {c.email && <p className="text-xs break-all">{c.email}</p>}
           <div className="flex flex-wrap gap-1.5">{(c.skills || []).map(skill => <span key={skill} className="rounded-md bg-primary/10 text-primary px-2 py-1 text-xs">{skill}</span>)}{!c.skills?.length && <span className="text-xs text-dark-muted">No skills listed</span>}</div>
           <div className="grid grid-cols-4 gap-2 rounded-lg bg-dark-lighter p-3 text-center"><div><b>{c.total_problems_solved}</b><p className="text-[10px] text-dark-muted">Solved</p></div><div><b>{c.easy_solved}</b><p className="text-[10px] text-dark-muted">Easy</p></div><div><b>{c.medium_solved}</b><p className="text-[10px] text-dark-muted">Medium</p></div><div><b>{c.hard_solved}</b><p className="text-[10px] text-dark-muted">Hard</p></div></div>
@@ -173,7 +195,35 @@ export function RecruiterWorkspace() {
       </form></Panel>
       <Panel><h2 className="font-semibold">Your job openings</h2>{jobs.length === 0 ? <Empty title="No job openings yet" detail="Create an opening above to start receiving applications."/> : <div className="space-y-3">{jobs.map(job => <article key={job.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap justify-between gap-2"><div><h3 className="font-semibold">{job.title}</h3><p className="text-xs text-dark-muted">{job.company} · {job.employment_type} · {job.location || 'Location not specified'}</p></div><Action secondary onClick={() => void updateJob(job)}>{job.status === 'open' ? 'Close opening' : 'Reopen'}</Action></div><p className="text-sm mt-2 whitespace-pre-wrap">{job.description}</p><p className="text-xs text-dark-muted mt-2">{job.skills.join(' · ')}{job.deadline ? ' · Deadline ' + job.deadline : ''}</p></article>)}</div>}</Panel>
     </>}
-    {path === 'applications' && <Panel><h2 className="font-semibold">Applications received</h2>{applications.length === 0 ? <Empty title="No applications yet" detail="Applications to your active job openings will appear here."/> : <div className="space-y-3">{applications.map(app => <article key={app.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{app.student_name}</h3><p className="text-xs text-dark-muted">{app.job_title} · {app.company}</p>{app.email && <p className="text-xs mt-1">{app.email}</p>}</div><SelectField label="Stage" value={app.status} onChange={v => void updateApplication(app, v)} options={['applied','shortlisted','interview','selected','rejected'].map(v => ({ value: v, label: v.replace('_',' ') }))}/></div><p className="text-sm mt-2">{app.cover_note || 'No cover note provided.'}</p><p className="text-xs text-dark-muted mt-2">Applied {new Date(app.created_at).toLocaleString()}</p></article>)}</div>}</Panel>}
+    {path === 'applications' && <Panel><h2 className="font-semibold">Applications received</h2>{applications.length === 0 ? <Empty title="No applications yet" detail="Applications to your active job openings will appear here."/> : <div className="space-y-3">{applications.map(app => <article key={app.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{app.student_name}</h3><p className="text-xs text-dark-muted">{app.job_title} · {app.company}</p>{app.email && <p className="text-xs mt-1">{app.email}</p>}</div><SelectField label="Stage" value={app.status} onChange={v => void updateApplication(app, v)} options={['applied','shortlisted','interview','selected','rejected'].map(v => ({ value: v, label: v.replace('_',' ') }))}/></div><p className="text-sm mt-2">{app.cover_note || 'No cover note provided.'}</p><div className="flex flex-wrap items-center justify-between gap-2 mt-3"><p className="text-xs text-dark-muted">Applied {new Date(app.created_at).toLocaleString()}</p>{app.resume_available && <Action secondary onClick={() => void downloadPdf(`/workspaces/recruiter/applications/${app.id}/resume`,app.resume_filename||`application-${app.id}-resume.pdf`)}>Download submitted resume</Action>}</div></article>)}</div>}</Panel>}
+    {selectedCandidate && <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-start justify-center p-3 sm:p-6 overflow-y-auto">
+      <section role="dialog" aria-modal="true" aria-label="Full candidate profile" className="w-full max-w-4xl rounded-2xl border border-dark-border bg-dark-card p-4 sm:p-6 space-y-5 shadow-2xl my-4">
+        <div className="flex items-start justify-between gap-3">
+          <div><p className="text-xs uppercase tracking-widest text-primary font-semibold">Candidate profile</p><h2 className="text-2xl font-bold mt-1">{selectedCandidate.name}</h2><p className="text-sm text-dark-muted">{[selectedCandidate.college, selectedCandidate.branch, selectedCandidate.passing_out_year ? 'Batch ' + selectedCandidate.passing_out_year : null].filter(Boolean).join(' · ')}</p></div>
+          <button type="button" onClick={() => setSelectedCandidate(null)} className="rounded-lg border border-dark-border px-3 py-2 text-sm">Close</button>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          {selectedCandidate.email && <span className="rounded-lg bg-dark-lighter border border-dark-border px-3 py-2 text-sm">{selectedCandidate.email}</span>}
+          {selectedCandidate.phone && <span className="rounded-lg bg-dark-lighter border border-dark-border px-3 py-2 text-sm">{selectedCandidate.phone}</span>}
+          {selectedCandidate.bio && <p className="basis-full text-sm text-dark-muted">{selectedCandidate.bio}</p>}
+        </div>
+        <div className="grid sm:grid-cols-2 gap-3">
+          <Panel><h3 className="font-semibold">Skills & interests</h3><div className="flex flex-wrap gap-1.5 mt-2">{(selectedCandidate.skills||[]).map((v:string)=><span key={v} className="rounded-md bg-primary/10 text-primary px-2 py-1 text-xs">{v}</span>)}</div><p className="text-xs text-dark-muted mt-2">{(selectedCandidate.interests||[]).join(' · ') || 'No interests added'}</p></Panel>
+          <Panel><h3 className="font-semibold">Projects & achievements</h3><p className="text-sm text-dark-muted mt-2">{(selectedCandidate.achievements||[]).join(' · ') || 'No achievements added to the profile'}</p></Panel>
+        </div>
+        <Panel><h3 className="font-semibold">Professional links</h3><div className="flex flex-wrap gap-3 text-sm text-primary mt-2">{selectedCandidate.linkedin_url&&<a href={selectedCandidate.linkedin_url} target="_blank" rel="noreferrer">LinkedIn ↗</a>}{selectedCandidate.github_url&&<a href={selectedCandidate.github_url} target="_blank" rel="noreferrer">GitHub ↗</a>}{selectedCandidate.portfolio_url&&<a href={selectedCandidate.portfolio_url} target="_blank" rel="noreferrer">Portfolio ↗</a>}{selectedCandidate.leetcode_username&&<a href={`https://leetcode.com/u/${encodeURIComponent(selectedCandidate.leetcode_username)}/`} target="_blank" rel="noreferrer">LeetCode ↗</a>}</div><div className="grid grid-cols-4 gap-2 bg-dark-lighter rounded-xl p-3 mt-3 text-center">{[['Solved',selectedCandidate.total_problems_solved],['Easy',selectedCandidate.easy_solved],['Medium',selectedCandidate.medium_solved],['Hard',selectedCandidate.hard_solved]].map(([k,v])=><div key={String(k)}><b>{v as number}</b><p className="text-[10px] text-dark-muted">{k}</p></div>)}</div></Panel>
+        <Panel><div className="flex flex-wrap items-center justify-between gap-2"><div><h3 className="font-semibold">Resume</h3><p className="text-xs text-dark-muted">Visible only because this student explicitly enabled resume sharing.</p></div>{selectedCandidate.resume_visible && selectedCandidate.resume_documents?.length>0 && <Action onClick={() => void downloadPdf(`/workspaces/recruiter/candidates/${selectedCandidate.student_id}/resume`,selectedCandidate.resume_documents[0].filename)}>Download PDF</Action>}</div>{!selectedCandidate.resume_visible?<p className="text-sm text-dark-muted mt-2">The student has not enabled resume sharing.</p>:selectedCandidate.resume_documents?.length ? <p className="text-sm mt-2">{selectedCandidate.resume_documents[0].filename} · {Math.ceil(selectedCandidate.resume_documents[0].file_size/1024)} KB</p>:<p className="text-sm text-dark-muted mt-2">No resume uploaded.</p>}{selectedCandidate.external_resume_url&&<a className="text-xs text-primary" href={selectedCandidate.external_resume_url} target="_blank" rel="noreferrer">Open external resume link ↗</a>}</Panel>
+        <Panel><div className="flex items-center justify-between gap-2"><div><h3 className="font-semibold">Academic record</h3><p className="text-xs text-dark-muted">CGPA, SGPA and marks are shown only with separate academic consent.</p></div><badge color={selectedCandidate.academic_records_visible?"success":"secondary"}>{selectedCandidate.academic_records_visible?"Shared by student":"Not shared"}</badge></div>
+          {selectedCandidate.academic ? <>
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 mt-3">{[['CGPA',selectedCandidate.academic.cgpa],['Latest SGPA',selectedCandidate.academic.sgpa],['Course',selectedCandidate.academic.course],['Semester',selectedCandidate.academic.current_semester]].map(([k,v])=><div key={String(k)} className="rounded-xl bg-dark-lighter p-3"><p className="text-xs text-dark-muted">{k}</p><b>{v??'—'}</b></div>)}</div>
+            <h4 className="font-medium mt-4">Semester grade records</h4>{selectedCandidate.academic.semester_results?.length?<div className="overflow-x-auto mt-2"><table className="w-full text-sm"><thead><tr className="text-dark-muted text-left"><th className="p-2">Semester</th><th className="p-2">Subject</th><th className="p-2">Credits</th><th className="p-2">Grade</th><th className="p-2">Grade point</th></tr></thead><tbody>{selectedCandidate.academic.semester_results.map((g:Row,i:number)=><tr key={i} className="border-t border-dark-border"><td className="p-2">{g.semester}</td><td className="p-2">{g.subject}</td><td className="p-2">{g.credits}</td><td className="p-2">{g.grade||'—'}</td><td className="p-2">{g.grade_point}</td></tr>)}</tbody></table></div>:<p className="text-xs text-dark-muted mt-2">No semester grade records.</p>}
+            <h4 className="font-medium mt-4">Assessment marks</h4>{selectedCandidate.academic.class_assessments?.length?<div className="overflow-x-auto mt-2"><table className="w-full text-sm"><thead><tr className="text-dark-muted text-left"><th className="p-2">Subject</th><th className="p-2">Assessment</th><th className="p-2">Marks</th><th className="p-2">Remarks</th></tr></thead><tbody>{selectedCandidate.academic.class_assessments.map((g:Row,i:number)=><tr key={i} className="border-t border-dark-border"><td className="p-2">{g.subject}</td><td className="p-2">{g.assessment}</td><td className="p-2">{g.marks_obtained} / {g.max_marks}</td><td className="p-2">{g.remarks||'—'}</td></tr>)}</tbody></table></div>:<p className="text-xs text-dark-muted mt-2">No assessment marks recorded.</p>}
+          </>:<p className="text-sm text-dark-muted mt-3">Academic details are hidden by default. The student can enable this section in Profile → Recruiter Sharing.</p>}
+        </Panel>
+        <div className="flex justify-end"><button type="button" onClick={() => setSelectedCandidate(null)} className="rounded-xl bg-primary text-white px-4 py-2 text-sm font-semibold">Close profile</button></div>
+      </section>
+    </div>}
+    {candidateLoading && <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center"><div className="rounded-xl bg-dark-card border border-dark-border p-5 text-sm">Loading full candidate profile…</div></div>}
   </div>
 }
 
