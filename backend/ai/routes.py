@@ -1,5 +1,5 @@
 from datetime import date
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from typing import Literal
 
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File
@@ -186,6 +186,8 @@ async def ai_chat(req: ChatRequest, current_user: User = Depends(get_current_use
             "content": item.content,
         } for item in reversed(saved_messages)]
         conversation = saved_conversation
+        if conversation.title == "New conversation" and conversation.message_count == 0:
+            conversation.title = " ".join(req.message.strip().split())[:90] or "New conversation"
     else:
         turns = [turn.model_dump() for turn in req.history[-12:]]
         title = " ".join(req.message.strip().split())[:90]
