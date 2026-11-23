@@ -34,6 +34,44 @@ def register_student(client: TestClient) -> dict[str, str]:
     return {"Authorization": f"Bearer {response.json()['access_token']}"}
 
 
+def test_chat_messages_persist_and_next_turn_uses_saved_history(monkeypatch) -> None:
+    prompts = []
+
+    async def fake_ask_gemini(prompt: str, system: str, thinking_level: str = "low") -> str:
+        prompts.append(prompt)
+        return "A breadth-first search explores neighbours level by level."
+
+    monkeypatch.setattr("backend.ai.routes.ask_gemini", fake_ask_gemini)
+
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        owner = register_student(client)
+        created = client.post("/api/v1/ai/conversations", headers=owner, json={"title": "New conversation"})
+        assert created.status_code == 201, created.text
+        conversation_id = created.json()["id"]
+
+        first = client.post("/api/v1/ai/chat", headers=owner, json={
+            "message": "What is BFS?",
+            "conversation_id": conversation_id,
+        })
+        assert first.status_code == 200, first.text
+        assert first.json()["conversation_id"] == conversation_id
+
+        second = client.post("/api/v1/ai/chat", headers=owner, json={
+            "message": "What is its time complexity?",
+            "conversation_id": conversation_id,
+        })
+        assert second.status_code == 200, second.text
+        assert "What is BFS?" in prompts[1]
+        assert "level by level" in prompts[1]
+
+        detail = client.get(f"/api/v1/ai/conversations/{conversation_id}", headers=owner)
+        assert detail.status_code == 200
+        assert [item["role"] for item in detail.json()["messages"]] == ["user", "assistant", "user", "assistant"]
+        assert detail.json()["title"] == "What is BFS?"
+        assert detail.json()["message_count"] == 4
+
+
 def test_conversation_history_is_private_and_deletable() -> None:
     with TestClient(app) as client:
         wait_until_ready(client)
