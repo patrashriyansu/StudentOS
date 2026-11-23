@@ -646,16 +646,18 @@ async def apply_to_job(job_id: int, req: ApplicationCreate, user: User = Depends
 async def student_applications(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     require_role(user, "student")
     rows = (await db.execute(
-        select(RecruiterApplication, RecruiterJob)
+        select(RecruiterApplication, RecruiterJob, ApplicationResumeSnapshot)
         .join(RecruiterJob, RecruiterJob.id == RecruiterApplication.job_id)
+        .outerjoin(ApplicationResumeSnapshot, ApplicationResumeSnapshot.application_id == RecruiterApplication.id)
         .where(RecruiterApplication.student_id == user.id)
         .order_by(RecruiterApplication.created_at.desc())
     )).all()
     return [{
         "id": application.id, "job_id": job.id, "job_title": job.title, "company": job.company,
         "status": application.status, "recruiter_note": application.recruiter_note,
+        "resume_filename": snapshot.filename if snapshot else None,
         "created_at": application.created_at.isoformat(),
-    } for application, job in rows]
+    } for application, job, snapshot in rows]
 
 
 # ---------------------------------------------------------------------------
