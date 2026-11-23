@@ -237,3 +237,31 @@ class MentorSessionFeedback(Base):
     takeaways = Column(Text, nullable=False)
     next_steps = Column(Text, nullable=True)
     submitted_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+
+class MentorRequest(Base):
+    """Student-initiated request to begin a mentoring relationship."""
+    __tablename__ = "workspace_mentor_requests"
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    mentor_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    message = Column(Text, nullable=False, default="")
+    status = Column(String(16), nullable=False, default="pending", index=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class MentorMessage(Base):
+    """Private messages shared only by an accepted mentor-student pair."""
+    __tablename__ = "workspace_mentor_messages"
+    id = Column(Integer, primary_key=True, index=True)
+    assignment_id = Column(Integer, ForeignKey("mentor_student_assignments.id", ondelete="CASCADE"), nullable=False, index=True)
+    mentor_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    sender_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    content = Column(Text, nullable=False)
+    read_by_mentor = Column(Boolean, nullable=False, default=False)
+    read_by_student = Column(Boolean, nullable=False, default=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)

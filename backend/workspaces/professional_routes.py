@@ -9,11 +9,11 @@ from sqlalchemy.orm import aliased
 
 from backend.core.database import get_db
 from backend.core.security import get_current_user
-from backend.users.models import User
+from backend.users.models import User, UserProfile
 from backend.campus.models import MentorStudentAssignment
 from .models import (
     MentorProgram, MentorDevelopmentGoal, MentorActionItem, MentorCheckIn,
-    MentorSession, MentorSessionFeedback,
+    MentorSession, MentorSessionFeedback, MentorRequest, MentorMessage,
 )
 
 router = APIRouter()
@@ -509,3 +509,255 @@ async def create_student_session_feedback(session_id: int, req: SessionFeedbackC
     ))
     await db.commit()
     return {"message": "Session feedback submitted."}
+
+
+
+class MentorRequestCreate(BaseModel):
+    mentor_id: int
+    message: str = Field(default="", max_length=2000)
+
+
+class MentorRequestReview(BaseModel):
+    status: Literal["accepted", "rejected"]
+
+
+class MentorMessageCreate(BaseModel):
+    content: str = Field(min_length=1, max_length=5000)
+
+
+async def _mentor_assignment(mentor_id: int, student_id: int, db: AsyncSession) -> MentorStudentAssignment:
+    assignment = (await db.execute(select(MentorStudentAssignment).where(
+        MentorStudentAssignment.mentor_id == mentor_id,
+        MentorStudentAssignment.student_id == student_id,
+    ))).scalar_one_or_none()
+    if assignment is None:
+        raise HTTPException(status_code=404, detail="An accepted mentor-student relationship is required to use messaging.")
+    return assignment
+
+
+def _message_dict(item: MentorMessage, sender: User) -> dict:
+    return {
+        "id": item.id,
+        "mentor_id": item.mentor_id,
+        "student_id": item.student_id,
+        "sender_id": item.sender_id,
+        "sender_name": sender.name,
+        "content": item.content,
+        "created_at": item.created_at.isoformat(),
+    }
+
+
+async def _list_pair_messages(
+    assignment: MentorStudentAssignment,
+    user: User,
+    db: AsyncSession,
+) -> list[dict]:
+    rows = (await db.execute(
+        select(MentorMessage, User)
+        .join(User, User.id == MentorMessage.sender_id)
+        .where(MentorMessage.assignment_id == assignment.id)
+        .order_by(MentorMessage.created_at.asc(), MentorMessage.id.asc())
+        .limit(200)
+    )).all()
+    for message, _sender in rows:
+        if message.sender_id != user.id:
+            if user.role == "mentor":
+                message.read_by_mentor = True
+            else:
+                message.read_by_student = True
+    if any(message.sender_id != user.id for message, _sender in rows):
+        await db.commit()
+    return [_message_dict(message, sender) for message, sender in rows]
+
+
+@router.get("/student/mentors")
+async def student_available_mentors(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    require_role(user, "student")
+    rows = (await db.execute(
+        select(User, UserProfile)
+        .outerjoin(UserProfile, UserProfile.user_id == User.id)
+        .where(User.role == "mentor", User.is_active.is_(True), User.id != user.id)
+        .order_by(User.name.asc())
+        .limit(100)
+    )).all()
+    return [{
+        "id": mentor.id,
+        "name": mentor.name,
+        "avatar": mentor.avatar,
+        "bio": profile.bio if profile else None,
+        "department": profile.department if profile else None,
+        "skills": profile.skills or [] if profile else [],
+        "interests": profile.interests or [] if profile else [],
+    } for mentor, profile in rows]
+
+
+@router.get("/student/mentoring/requests")
+async def student_mentor_requests(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    require_role(user, "student")
+    rows = (await db.execute(
+        select(MentorRequest, User)
+        .join(User, User.id == MentorRequest.mentor_id)
+        .where(MentorRequest.student_id == user.id)
+        .order_by(MentorRequest.created_at.desc())
+    )).all()
+    return [{
+        "id": request.id,
+        "mentor_id": mentor.id,
+        "mentor_name": mentor.name,
+        "message": request.message,
+        "status": request.status,
+        "created_at": request.created_at.isoformat(),
+    } for request, mentor in rows]
+
+
+@router.post("/student/mentoring/requests", status_code=201)
+async def create_mentor_request(
+    req: MentorRequestCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(user, "student")
+    mentor = (await db.execute(select(User).where(
+        User.id == req.mentor_id,
+        User.role == "mentor",
+        User.is_active.is_(True),
+    ))).scalar_one_or_none()
+    if mentor is None:
+        raise HTTPException(status_code=404, detail="Mentor account not found.")
+    assignment = (await db.execute(select(MentorStudentAssignment).where(
+        MentorStudentAssignment.mentor_id == mentor.id,
+        MentorStudentAssignment.student_id == user.id,
+    ))).scalar_one_or_none()
+    if assignment:
+        raise HTTPException(status_code=409, detail="You are already assigned to this mentor.")
+    pending = (await db.execute(select(MentorRequest).where(
+        MentorRequest.mentor_id == mentor.id,
+        MentorRequest.student_id == user.id,
+        MentorRequest.status == "pending",
+    ))).scalar_one_or_none()
+    if pending:
+        raise HTTPException(status_code=409, detail="A request to this mentor is already pending.")
+    request = MentorRequest(
+        mentor_id=mentor.id,
+        student_id=user.id,
+        message=req.message.strip(),
+    )
+    db.add(request)
+    await db.commit()
+    await db.refresh(request)
+    return {"id": request.id, "status": request.status, "message": "Mentor request sent."}
+
+
+@router.get("/mentor/requests")
+async def mentor_requests(user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    require_role(user, "mentor")
+    rows = (await db.execute(
+        select(MentorRequest, User)
+        .join(User, User.id == MentorRequest.student_id)
+        .where(MentorRequest.mentor_id == user.id)
+        .order_by(MentorRequest.created_at.desc())
+    )).all()
+    return [{
+        "id": request.id,
+        "student_id": student.id,
+        "student_name": student.name,
+        "student_email": student.email,
+        "message": request.message,
+        "status": request.status,
+        "created_at": request.created_at.isoformat(),
+    } for request, student in rows]
+
+
+@router.patch("/mentor/requests/{request_id}")
+async def review_mentor_request(
+    request_id: int,
+    req: MentorRequestReview,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(user, "mentor")
+    request = (await db.execute(select(MentorRequest).where(
+        MentorRequest.id == request_id,
+        MentorRequest.mentor_id == user.id,
+    ))).scalar_one_or_none()
+    if request is None:
+        raise HTTPException(status_code=404, detail="Mentor request not found.")
+    if request.status != "pending":
+        raise HTTPException(status_code=409, detail="This mentor request has already been reviewed.")
+    request.status = req.status
+    request.updated_at = datetime.now(timezone.utc)
+    if req.status == "accepted":
+        assignment = (await db.execute(select(MentorStudentAssignment).where(
+            MentorStudentAssignment.mentor_id == user.id,
+            MentorStudentAssignment.student_id == request.student_id,
+        ))).scalar_one_or_none()
+        if assignment is None:
+            db.add(MentorStudentAssignment(
+                mentor_id=user.id,
+                student_id=request.student_id,
+                assigned_by=user.id,
+            ))
+    await db.commit()
+    return {"message": "Mentor request " + req.status + ".", "status": request.status}
+
+
+@router.get("/mentor/messages/{student_id}")
+async def mentor_messages(student_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    require_role(user, "mentor")
+    assignment = await _mentor_assignment(user.id, student_id, db)
+    return await _list_pair_messages(assignment, user, db)
+
+
+@router.post("/mentor/messages/{student_id}", status_code=201)
+async def send_mentor_message(
+    student_id: int,
+    req: MentorMessageCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(user, "mentor")
+    assignment = await _mentor_assignment(user.id, student_id, db)
+    message = MentorMessage(
+        assignment_id=assignment.id,
+        mentor_id=user.id,
+        student_id=student_id,
+        sender_id=user.id,
+        content=req.content.strip(),
+        read_by_mentor=True,
+        read_by_student=False,
+    )
+    db.add(message)
+    await db.commit()
+    await db.refresh(message)
+    return {"id": message.id, "message": "Message sent."}
+
+
+@router.get("/student/mentoring/messages/{mentor_id}")
+async def student_mentor_messages(mentor_id: int, user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    require_role(user, "student")
+    assignment = await _mentor_assignment(mentor_id, user.id, db)
+    return await _list_pair_messages(assignment, user, db)
+
+
+@router.post("/student/mentoring/messages/{mentor_id}", status_code=201)
+async def send_student_mentor_message(
+    mentor_id: int,
+    req: MentorMessageCreate,
+    user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    require_role(user, "student")
+    assignment = await _mentor_assignment(mentor_id, user.id, db)
+    message = MentorMessage(
+        assignment_id=assignment.id,
+        mentor_id=mentor_id,
+        student_id=user.id,
+        sender_id=user.id,
+        content=req.content.strip(),
+        read_by_mentor=False,
+        read_by_student=True,
+    )
+    db.add(message)
+    await db.commit()
+    await db.refresh(message)
+    return {"id": message.id, "message": "Message sent."}

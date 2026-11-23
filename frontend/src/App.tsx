@@ -126,12 +126,14 @@ export default function App() {
         <Route path="mentoring" element={<RoleRoute allowedRoles={studentOnly}><StudentMentoring /></RoleRoute>} />
         <Route path="settings" element={<Settings />} />
         <Route path="mentor/students" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
+        <Route path="mentor/requests" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
         <Route path="mentor/programmes" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
         <Route path="mentor/sessions" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
         <Route path="mentor/goals" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
         <Route path="mentor/actions" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
         <Route path="mentor/check-ins" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
         <Route path="mentor/notes" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
+        <Route path="mentor/messages" element={<RoleRoute allowedRoles={mentorOnly}><MentorWorkspace /></RoleRoute>} />
         <Route path="recruiter/candidates" element={<RoleRoute allowedRoles={recruiterOnly}><RecruiterWorkspace /></RoleRoute>} />
         <Route path="recruiter/shortlisted" element={<RoleRoute allowedRoles={recruiterOnly}><RecruiterWorkspace /></RoleRoute>} />
         <Route path="recruiter/jobs" element={<RoleRoute allowedRoles={recruiterOnly}><RecruiterWorkspace /></RoleRoute>} />
