@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, JSON, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, JSON, ForeignKey, LargeBinary
 from sqlalchemy.orm import relationship
 from backend.core.database import Base
 from datetime import datetime, timezone
@@ -52,3 +52,32 @@ class Offer(Base):
     location = Column(String(200))
     joining_date = Column(DateTime(timezone=True), nullable=True)
     status = Column(String(50), default="pending")
+
+
+
+class ResumeDocument(Base):
+    """Private PDF resume file stored as binary data in the existing PostgreSQL database."""
+    __tablename__ = "resume_documents"
+    id = Column(Integer, primary_key=True, index=True)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    filename = Column(String(255), nullable=False)
+    content_type = Column(String(100), nullable=False, default="application/pdf")
+    file_size = Column(Integer, nullable=False)
+    sha256 = Column(String(64), nullable=False)
+    file_data = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class ApplicationResumeSnapshot(Base):
+    """Immutable resume copy attached to one recruiter application at submission time."""
+    __tablename__ = "workspace_application_resume_snapshots"
+    id = Column(Integer, primary_key=True, index=True)
+    application_id = Column(Integer, ForeignKey("workspace_recruiter_applications.id", ondelete="CASCADE"),
+                            nullable=False, unique=True, index=True)
+    resume_document_id = Column(Integer, ForeignKey("resume_documents.id", ondelete="SET NULL"),
+                                 nullable=True, index=True)
+    filename = Column(String(255), nullable=False)
+    content_type = Column(String(100), nullable=False, default="application/pdf")
+    file_size = Column(Integer, nullable=False)
+    file_data = Column(LargeBinary, nullable=False)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
