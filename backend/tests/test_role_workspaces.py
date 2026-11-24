@@ -544,3 +544,249 @@ def test_student_can_request_mentor_and_message_only_after_acceptance() -> None:
             headers=other_student,
         )
         assert intruder.status_code == 404
+
+def test_recruiter_interviews_are_scheduled_for_owned_applications_and_visible_to_student() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        recruiter = register(client, "recruiter")
+        student = register(client, "student", "CSE-I")
+        visibility = client.put("/api/v1/campus/recruiter/visibility", headers=student,
+                                json={"profile_visible": True, "contact_visible": False})
+        assert visibility.status_code == 200
+        muted = client.put("/api/v1/notifications/settings", headers=student,
+                           json={"in_app_enabled": False, "placement_updates": False})
+        assert muted.status_code == 200, muted.text
+
+        job = client.post("/api/v1/workspaces/recruiter/jobs", headers=recruiter, json={
+            "title": "Backend Engineering Intern",
+            "company": "Interview Workflow Test",
+            "description": "Build backend APIs and automated tests.",
+            "employment_type": "Internship",
+            "skills": ["Python", "FastAPI"],
+        })
+        assert job.status_code == 201, job.text
+        pdf = b"%PDF-1.4\\n% interview workflow test\\n%%EOF"
+        uploaded = client.post("/api/v1/placements/resume/upload", headers=student,
+                               files={"file": ("interview.pdf", pdf, "application/pdf")})
+        assert uploaded.status_code == 201, uploaded.text
+        application = client.post(
+            f"/api/v1/workspaces/student/jobs/{job.json()['id']}/apply",
+            headers=student,
+            json={"resume_document_id": uploaded.json()["resume_document_id"],
+                  "cover_note": "I am interested in this role."},
+        )
+        assert application.status_code == 201, application.text
+        recruiter_applications = client.get("/api/v1/workspaces/recruiter/applications", headers=recruiter)
+        assert recruiter_applications.status_code == 200, recruiter_applications.text
+        application_id = recruiter_applications.json()[0]["id"]
+
+        scheduled = client.post(
+            f"/api/v1/workspaces/recruiter/applications/{application_id}/interviews",
+            headers=recruiter,
+            json={
+                "scheduled_at": "2030-01-02T09:00:00Z",
+                "duration_minutes": 45,
+                "interview_type": "technical",
+                "meeting_url": "https://meet.example.test/interview",
+                "notes": "Bring a project walkthrough.",
+            },
+        )
+        assert scheduled.status_code == 201, scheduled.text
+        overlap = client.post(
+            f"/api/v1/workspaces/recruiter/applications/{application_id}/interviews",
+            headers=recruiter,
+            json={"scheduled_at": "2030-01-02T09:30:00Z", "duration_minutes": 30},
+        )
+        assert overlap.status_code == 409, overlap.text
+        recruiter_view = client.get("/api/v1/workspaces/recruiter/interviews", headers=recruiter)
+        assert recruiter_view.status_code == 200
+        assert recruiter_view.json()[0]["student_name"] == student["name"]
+        assert recruiter_view.json()[0]["status"] == "scheduled"
+
+        student_view = client.get("/api/v1/workspaces/student/recruiter-interviews", headers=student)
+        assert student_view.status_code == 200
+        assert student_view.json()[0]["company"] == "Interview Workflow Test"
+        assert student_view.json()[0]["recruiter_name"] == recruiter["name"]
+        assert student_view.json()[0]["meeting_url"] == "https://meet.example.test/interview"
+        student_notifications = client.get("/api/v1/notifications", headers=student)
+        assert student_notifications.status_code == 200, student_notifications.text
+        assert all(item["title"] != "Interview scheduled: Interview Workflow Test"
+                   for item in student_notifications.json())
+
+        assert client.get("/api/v1/workspaces/recruiter/interviews", headers=student).status_code == 403
+        assert client.get("/api/v1/workspaces/student/recruiter-interviews", headers=recruiter).status_code == 403
+
+
+def test_mentor_availability_can_only_be_booked_by_assigned_student() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        admin = register(client, "student")
+        promote(admin["email"], "admin")
+        mentor = register(client, "mentor")
+        assigned = register(client, "student", "CSE-S")
+        unassigned = register(client, "student", "CSE-U")
+
+        assignment = client.post("/api/v1/campus/mentor/assignments", headers=admin, json={
+            "mentor_email": mentor["email"],
+            "student_email": assigned["email"],
+        })
+        assert assignment.status_code == 201, assignment.text
+        muted_mentor = client.put("/api/v1/notifications/settings", headers=mentor,
+                                  json={"in_app_enabled": False})
+        assert muted_mentor.status_code == 200, muted_mentor.text
+
+        slot = client.post("/api/v1/workspaces/mentor/availability", headers=mentor, json={
+            "starts_at": "2030-02-10T09:00:00Z",
+            "ends_at": "2030-02-10T09:30:00Z",
+            "meeting_link": "https://meet.example.test/mentor",
+        })
+        assert slot.status_code == 201, slot.text
+        slot_id = slot.json()["id"]
+        overlapping_slot = client.post("/api/v1/workspaces/mentor/availability", headers=mentor, json={
+            "starts_at": "2030-02-10T09:15:00Z",
+            "ends_at": "2030-02-10T09:45:00Z",
+        })
+        assert overlapping_slot.status_code == 409, overlapping_slot.text
+
+        visible = client.get("/api/v1/workspaces/student/mentoring/availability", headers=assigned)
+        assert visible.status_code == 200
+        assert [item["id"] for item in visible.json()] == [slot_id]
+        assert client.get("/api/v1/workspaces/student/mentoring/availability", headers=unassigned).json() == []
+
+        booked = client.post(
+            f"/api/v1/workspaces/student/mentoring/availability/{slot_id}/book",
+            headers=assigned,
+            json={"message": "I would like to discuss my internship preparation."},
+        )
+        assert booked.status_code == 201, booked.text
+        assert booked.json()["slot"]["status"] == "booked"
+
+        mentor_slots = client.get("/api/v1/workspaces/mentor/availability", headers=mentor)
+        assert mentor_slots.status_code == 200
+        assert mentor_slots.json()[0]["student_name"] == assigned["name"]
+        assert mentor_slots.json()[0]["booking_message"].startswith("I would like")
+        mentor_notifications = client.get("/api/v1/notifications", headers=mentor)
+        assert mentor_notifications.status_code == 200, mentor_notifications.text
+        assert all(item["title"] != "Mentoring slot booked"
+                   for item in mentor_notifications.json())
+
+        duplicate = client.post(
+            f"/api/v1/workspaces/student/mentoring/availability/{slot_id}/book",
+            headers=unassigned,
+            json={"message": "Trying another account."},
+        )
+        assert duplicate.status_code == 404
+        assert client.get("/api/v1/workspaces/mentor/availability", headers=assigned).status_code == 403
+
+def test_academic_calendar_is_user_scoped_and_cgpa_what_if_does_not_persist() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        student = register(client, "student")
+        other_student = register(client, "student")
+
+        saved_grade = client.post("/api/v1/academics/grades", headers=student, json={
+            "semester": 1, "subject": "Data Structures", "credits": 20,
+            "grade_point": 8.4, "grade": "A",
+        })
+        assert saved_grade.status_code == 200, saved_grade.text
+
+        scenario = client.post("/api/v1/academics/cgpa/what-if", headers=student, json={
+            "future_semester_credits": 20,
+            "expected_sgpa": 9.2,
+        })
+        assert scenario.status_code == 200, scenario.text
+        assert scenario.json()["current_cgpa"] == 8.4
+        assert scenario.json()["projected_cgpa"] == 8.8
+        assert scenario.json()["persisted"] is False
+        assert client.get("/api/v1/academics/cgpa", headers=student).json()["cgpa"] == 8.4
+
+        invalid = client.post("/api/v1/academics/cgpa/what-if", headers=student, json={
+            "future_semester_credits": 20,
+            "expected_sgpa": 10.1,
+        })
+        assert invalid.status_code == 422
+
+        exam = client.post("/api/v1/academics/exams", headers=student, json={
+            "subject": "Operating Systems", "exam_type": "Mid-Semester",
+            "date": "2030-01-05T09:00:00Z", "syllabus": "Processes and scheduling",
+        })
+        assert exam.status_code == 200, exam.text
+        assignment = client.post("/api/v1/academics/assignments", headers=student, json={
+            "title": "OS scheduling worksheet", "description": "Complete the scheduling problems.",
+            "subject": "Operating Systems", "due_date": "2030-01-03T23:59:00Z",
+        })
+        assert assignment.status_code == 200, assignment.text
+
+        calendar = client.get("/api/v1/academics/calendar?start_date=2030-01-01&end_date=2030-01-31",
+                              headers=student)
+        assert calendar.status_code == 200, calendar.text
+        assert {item["type"] for item in calendar.json()} == {"exam", "assignment"}
+        assert all(item["date"].startswith("2030-01") for item in calendar.json())
+        assert client.get("/api/v1/academics/calendar", headers=other_student).json() == []
+        assert client.get("/api/v1/academics/calendar?start_date=2030-02-01&end_date=2030-01-01",
+                          headers=student).status_code == 422
+
+def test_productivity_recurring_tasks_generate_next_occurrence_and_subtasks_are_private() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        student = register(client, "student")
+        other_student = register(client, "student")
+
+        parent = client.post("/api/v1/productivity/tasks", headers=student, json={
+            "title": "Monthly project review",
+            "category": "placement",
+            "priority": "high",
+            "due_date": "2030-01-31T09:00:00",
+            "recurring": "monthly",
+        })
+        assert parent.status_code == 201, parent.text
+        parent_id = parent.json()["id"]
+
+        subtask = client.post(
+            f"/api/v1/productivity/tasks/{parent_id}/subtasks",
+            headers=student,
+            json={"title": "Review resume", "priority": "medium"},
+        )
+        assert subtask.status_code == 201, subtask.text
+        assert subtask.json()["parent_task_id"] == parent_id
+
+        foreign_subtask = client.post(
+            f"/api/v1/productivity/tasks/{parent_id}/subtasks",
+            headers=other_student,
+            json={"title": "Attempted cross-user subtask"},
+        )
+        assert foreign_subtask.status_code == 404
+
+        nested_subtask = client.post(
+            f"/api/v1/productivity/tasks/{subtask.json()['id']}/subtasks",
+            headers=student,
+            json={"title": "Nested task should be rejected"},
+        )
+        assert nested_subtask.status_code == 404
+
+        task_list = client.get("/api/v1/productivity/tasks", headers=student)
+        assert task_list.status_code == 200
+        assert task_list.json()[0]["children"][0]["title"] == "Review resume"
+
+        completed = client.put(f"/api/v1/productivity/tasks/{parent_id}", headers=student,
+                               json={"completed": True})
+        assert completed.status_code == 200, completed.text
+        remaining = client.get("/api/v1/productivity/tasks", headers=student).json()
+        assert len(remaining) == 2
+        next_task = next(item for item in remaining if item["id"] != parent_id)
+        assert next_task["recurring"] == "monthly"
+        assert next_task["due_date"].startswith("2030-02-28T09:00:00")
+        assert next_task["completed"] is False
+
+        forbidden_update = client.put(
+            f"/api/v1/productivity/tasks/{parent_id}",
+            headers=other_student,
+            json={"completed": True},
+        )
+        assert forbidden_update.status_code == 404
+
+        invalid_recurring = client.post("/api/v1/productivity/tasks", headers=student, json={
+            "title": "Invalid recurrence",
+            "recurring": "yearly",
+        })
+        assert invalid_recurring.status_code == 422

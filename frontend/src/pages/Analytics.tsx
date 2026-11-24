@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { BarChart3, BookOpen, Code, Briefcase, Heart, Wallet, Timer, Printer } from 'lucide-react'
+import { BarChart3, BookOpen, Code, Briefcase, Heart, Wallet, Timer, Printer, Download } from 'lucide-react'
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
   Area, AreaChart, PieChart, Pie, Cell,
@@ -15,6 +15,8 @@ export default function Analytics() {
   const [wellnessScore, setWellnessScore] = useState<number | null>(null)
   const [financeData, setFinanceData] = useState<any>(null)
   const [loading, setLoading] = useState(true)
+  const [reportDownloading, setReportDownloading] = useState(false)
+  const [reportError, setReportError] = useState('')
 
   useEffect(() => {
     setLoading(true)
@@ -52,6 +54,25 @@ export default function Analytics() {
     }).finally(() => setLoading(false))
   }, [])
 
+
+  const downloadProgressReport = async () => {
+    setReportDownloading(true)
+    setReportError('')
+    try {
+      const response = await api.get('/analytics/report.pdf', { responseType: 'blob' })
+      const url = window.URL.createObjectURL(new Blob([response.data], { type: 'application/pdf' }))
+      const anchor = document.createElement('a')
+      anchor.href = url
+      anchor.download = 'studentos-progress-report.pdf'
+      anchor.click()
+      window.URL.revokeObjectURL(url)
+    } catch (err: any) {
+      setReportError(err?.response?.data?.detail || 'Could not generate your PDF progress report.')
+    } finally {
+      setReportDownloading(false)
+    }
+  }
+
   const categories = [
     { icon: BookOpen, label: 'Academic', value: analytics?.cgpa != null ? `${analytics.cgpa} CGPA` : '—', color: '#6C63FF' },
     { icon: Code, label: 'Coding', value: analytics?.total_problems_solved != null ? `${analytics.total_problems_solved} solved` : '—', color: '#A855F7' },
@@ -74,12 +95,16 @@ export default function Analytics() {
 
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
+      {reportError && <div role="alert" className="rounded-xl border border-rose-500/30 bg-rose-500/10 p-3 text-sm text-rose-200">{reportError}</div>}
       <div className="flex flex-wrap items-end justify-between gap-3">
         <div>
           <h1 className="text-2xl font-bold">Analytics Dashboard</h1>
           <p className="text-dark-muted">Comprehensive view of your performance</p>
         </div>
-        <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl border border-dark-border px-3 py-2 text-sm"><Printer size={15}/>Print / Save PDF</button>
+        <div className="flex flex-wrap gap-2">
+          <button type="button" onClick={() => void downloadProgressReport()} disabled={reportDownloading} className="inline-flex items-center gap-2 rounded-xl bg-primary px-3 py-2 text-sm font-semibold text-white disabled:opacity-50"><Download size={15}/>{reportDownloading?'Generating…':'Download PDF report'}</button>
+          <button type="button" onClick={() => window.print()} className="inline-flex items-center gap-2 rounded-xl border border-dark-border px-3 py-2 text-sm"><Printer size={15}/>Print dashboard</button>
+        </div>
       </div>
 
       {/* Summary Cards */}

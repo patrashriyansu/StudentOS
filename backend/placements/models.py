@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, JSON, ForeignKey, LargeBinary
+from sqlalchemy import Column, Integer, String, Float, Boolean, DateTime, Text, JSON, ForeignKey, LargeBinary, UniqueConstraint
 from sqlalchemy.orm import relationship
 from backend.core.database import Base
 from datetime import datetime, timezone
@@ -81,3 +81,18 @@ class ApplicationResumeSnapshot(Base):
     file_size = Column(Integer, nullable=False)
     file_data = Column(LargeBinary, nullable=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+
+class ResumeBuilderVersion(Base):
+    __tablename__ = "resume_builder_versions"
+    __table_args__ = (UniqueConstraint("user_id", "version_number", name="uq_resume_builder_user_version"),)
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    title = Column(String(120), nullable=False)
+    version_number = Column(Integer, nullable=False)
+    content = Column(JSON, nullable=False, default=dict)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+    updated_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc),
+                        onupdate=lambda: datetime.now(timezone.utc), nullable=False)

@@ -8,7 +8,9 @@ export default function Productivity() {
   // Tasks state
   const [tasks, setTasks] = useState<any[]>([])
   const [showAddTask, setShowAddTask] = useState(false)
-  const [newTask, setNewTask] = useState({ title: '', category: 'academic', priority: 'medium', due_date: '' })
+  const [newTask, setNewTask] = useState({ title: '', category: 'academic', priority: 'medium', due_date: '', recurring: '' })
+  const [activeSubtaskFor, setActiveSubtaskFor] = useState<number | null>(null)
+  const [subtaskTitle, setSubtaskTitle] = useState('')
 
   // Habits state
   const [habits, setHabits] = useState<any[]>([])
@@ -75,12 +77,40 @@ export default function Productivity() {
     e.preventDefault()
     if (!newTask.title.trim()) return
     try {
-      const res = await api.post('/productivity/tasks', newTask)
+      const res = await api.post('/productivity/tasks', {
+        ...newTask,
+        due_date: newTask.due_date ? new Date(newTask.due_date).toISOString() : null,
+        recurring: newTask.recurring || null,
+      })
       setTasks((prev) => [res.data, ...prev])
-      setNewTask({ title: '', category: 'academic', priority: 'medium', due_date: '' })
+      setNewTask({ title: '', category: 'academic', priority: 'medium', due_date: '', recurring: '' })
       setShowAddTask(false)
     } catch (err) {
       console.error('Failed to create task', err)
+    }
+  }
+
+  const handleCreateSubtask = async (event: React.FormEvent, parentTaskId: number) => {
+    event.preventDefault()
+    event.stopPropagation()
+    if (!subtaskTitle.trim()) return
+    try {
+      await api.post(`/productivity/tasks/${parentTaskId}/subtasks`, { title: subtaskTitle.trim() })
+      setSubtaskTitle('')
+      setActiveSubtaskFor(null)
+      await loadData()
+    } catch (err) {
+      console.error('Failed to create subtask', err)
+    }
+  }
+
+  const toggleSubtask = async (event: React.MouseEvent, task: any) => {
+    event.stopPropagation()
+    try {
+      await api.put(`/productivity/tasks/${task.id}`, { completed: !task.completed })
+      await loadData()
+    } catch (err) {
+      console.error('Failed to update subtask', err)
     }
   }
 
@@ -201,6 +231,26 @@ export default function Productivity() {
                   </select>
                 </div>
               </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs text-dark-muted block mb-1">Due date and time</label>
+                  <input type="datetime-local" value={newTask.due_date}
+                    onChange={(e) => setNewTask({ ...newTask, due_date: e.target.value })}
+                    className="w-full bg-dark-lighter border border-dark-border rounded-xl px-3.5 py-2.5 text-sm text-white"/>
+                </div>
+                <div>
+                  <label className="text-xs text-dark-muted block mb-1">Repeat</label>
+                  <select value={newTask.recurring}
+                    onChange={(e) => setNewTask({ ...newTask, recurring: e.target.value })}
+                    className="w-full bg-dark-lighter border border-dark-border rounded-xl px-3.5 py-2.5 text-sm text-white">
+                    <option value="">Does not repeat</option>
+                    <option value="daily">Daily</option>
+                    <option value="weekly">Weekly</option>
+                    <option value="monthly">Monthly</option>
+                  </select>
+                  {newTask.recurring && !newTask.due_date && <p className="mt-1 text-[11px] text-amber-300">A due date is required for recurring tasks.</p>}
+                </div>
+              </div>
               <div className="flex justify-end gap-2 pt-2">
                 <button
                   type="button"
@@ -279,39 +329,50 @@ export default function Productivity() {
               <div
                 key={t.id}
                 onClick={() => toggleTask(t)}
-                className={`glass rounded-xl p-4 flex items-center justify-between cursor-pointer border transition-all ${
+                className={`glass rounded-xl p-4 border transition-all ${
                   t.completed ? 'opacity-60 border-dark-border/50' : 'hover:border-primary/40 border-dark-border'
                 }`}
               >
-                <div className="flex items-center gap-3.5">
-                  <div className={t.completed ? 'text-emerald-400' : 'text-dark-muted'}>
-                    <CheckCircle size={22} className={t.completed ? 'fill-emerald-400/20' : ''} />
-                  </div>
-                  <div>
-                    <h4 className={`text-sm font-semibold ${t.completed ? 'line-through text-dark-muted' : 'text-white'}`}>
-                      {t.title}
-                    </h4>
-                    <div className="flex items-center gap-2 mt-1">
-                      <span className="text-[11px] px-2 py-0.5 rounded-md bg-dark-lighter capitalize text-dark-muted">
-                        {t.category || 'General'}
-                      </span>
-                      <span
-                        className={`text-[11px] px-2 py-0.5 rounded-md capitalize ${
-                          t.priority === 'high'
-                            ? 'bg-rose-500/20 text-rose-400'
-                            : t.priority === 'medium'
-                            ? 'bg-amber-500/20 text-amber-400'
-                            : 'bg-slate-500/20 text-slate-300'
-                        }`}
-                      >
-                        {t.priority}
-                      </span>
+                <div className="flex items-center justify-between gap-3">
+                  <div className="flex items-center gap-3.5 min-w-0">
+                    <div className={t.completed ? 'text-emerald-400' : 'text-dark-muted'}>
+                      <CheckCircle size={22} className={t.completed ? 'fill-emerald-400/20' : ''} />
+                    </div>
+                    <div className="min-w-0">
+                      <h4 className={`text-sm font-semibold ${t.completed ? 'line-through text-dark-muted' : 'text-white'}`}>
+                        {t.title}
+                      </h4>
+                      <div className="flex flex-wrap items-center gap-2 mt-1">
+                        <span className="text-[11px] px-2 py-0.5 rounded-md bg-dark-lighter capitalize text-dark-muted">
+                          {t.category || 'General'}
+                        </span>
+                        <span className="text-[11px] px-2 py-0.5 rounded-md bg-dark-lighter capitalize text-dark-muted">{t.priority}</span>
+                        {t.due_date && <span className="text-[11px] text-dark-muted">Due {new Date(t.due_date).toLocaleString()}</span>}
+                        {t.recurring && <span className="text-[11px] text-primary capitalize">{t.recurring} repeat</span>}
+                      </div>
                     </div>
                   </div>
+                  <span className={`shrink-0 text-xs px-2.5 py-1 rounded-full ${t.completed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-dark-lighter text-dark-muted'}`}>
+                    {t.completed ? '+10 XP Earned' : 'In Progress'}
+                  </span>
                 </div>
-                <span className={`text-xs px-2.5 py-1 rounded-full ${t.completed ? 'bg-emerald-500/20 text-emerald-400' : 'bg-dark-lighter text-dark-muted'}`}>
-                  {t.completed ? '+10 XP Earned' : 'In Progress'}
-                </span>
+                <div className="mt-3 flex items-center justify-between gap-3" onClick={(event) => event.stopPropagation()}>
+                  <span className="text-xs text-dark-muted">{(t.children || []).filter((child: any) => child.completed).length}/{(t.children || []).length} subtasks complete</span>
+                  <button type="button" onClick={() => { setActiveSubtaskFor(activeSubtaskFor === t.id ? null : t.id); setSubtaskTitle('') }}
+                    className="rounded-lg border border-dark-border px-3 py-1.5 text-xs text-dark-muted hover:text-white">+ Add subtask</button>
+                </div>
+                {activeSubtaskFor === t.id && <form onSubmit={(event) => handleCreateSubtask(event, t.id)} onClick={(event) => event.stopPropagation()} className="mt-3 flex gap-2">
+                  <input value={subtaskTitle} onChange={(event) => setSubtaskTitle(event.target.value)} placeholder="Subtask title" required
+                    className="min-w-0 flex-1 rounded-lg border border-dark-border bg-dark-lighter px-3 py-2 text-sm text-white"/>
+                  <button type="submit" className="rounded-lg bg-primary px-3 py-2 text-xs font-semibold text-white">Save</button>
+                </form>}
+                {(t.children || []).length > 0 && <div className="mt-3 space-y-1 border-t border-dark-border pt-2">
+                  {t.children.map((child: any) => <button key={child.id} type="button" onClick={(event) => toggleSubtask(event, child)}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-2 text-left text-xs hover:bg-dark-lighter">
+                    <CheckCircle size={14} className={child.completed ? 'text-emerald-400' : 'text-dark-muted'}/>
+                    <span className={child.completed ? 'text-dark-muted line-through' : 'text-white'}>{child.title}</span>
+                  </button>)}
+                </div>}
               </div>
             ))
           )}

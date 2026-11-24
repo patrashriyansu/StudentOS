@@ -370,6 +370,100 @@ async def get_cgpa(current_user: User = Depends(get_current_user), db: AsyncSess
     weighted = sum(g.grade_point * g.credits for g in grades)
     return {"cgpa": round(weighted / total_credits, 2), "total_credits": total_credits}
 
+
+class CGPAWhatIfRequest(BaseModel):
+    future_semester_credits: int
+    expected_sgpa: float
+
+
+@router.post("/cgpa/what-if")
+async def calculate_cgpa_what_if(req: CGPAWhatIfRequest,
+                                 current_user: User = Depends(get_current_user),
+                                 db: AsyncSession = Depends(get_db)):
+    if not 1 <= req.future_semester_credits <= 100:
+        raise HTTPException(status_code=422, detail="Future semester credits must be between 1 and 100.")
+    if not 0 <= req.expected_sgpa <= 10:
+        raise HTTPException(status_code=422, detail="Expected SGPA must be between 0 and 10.")
+    result = await db.execute(select(Grade).where(Grade.user_id == current_user.id))
+    grades = result.scalars().all()
+    current_credits = sum(int(item.credits or 0) for item in grades)
+    current_points = sum(float(item.grade_point or 0) * int(item.credits or 0) for item in grades)
+    current_cgpa = current_points / current_credits if current_credits else None
+    projected_cgpa = (
+        (current_points + req.expected_sgpa * req.future_semester_credits)
+        / (current_credits + req.future_semester_credits)
+    )
+    return {
+        "current_cgpa": round(current_cgpa, 2) if current_cgpa is not None else None,
+        "current_credits": current_credits,
+        "future_semester_credits": req.future_semester_credits,
+        "expected_sgpa": req.expected_sgpa,
+        "projected_cgpa": round(projected_cgpa, 2),
+        "change": round(projected_cgpa - current_cgpa, 2) if current_cgpa is not None else None,
+        "persisted": False,
+    }
+
+
+@router.get("/calendar")
+async def get_academic_calendar(start_date: date | None = None,
+                                end_date: date | None = None,
+                                current_user: User = Depends(get_current_user),
+                                db: AsyncSession = Depends(get_db)):
+    if start_date and end_date and start_date > end_date:
+        raise HTTPException(status_code=422, detail="Start date must not be after end date.")
+
+    exam_rows = (await db.execute(select(Exam).where(
+        Exam.user_id == current_user.id
+    ).order_by(Exam.date.asc()))).scalars().all()
+    assignment_rows = (await db.execute(select(Assignment).where(
+        Assignment.user_id == current_user.id,
+        Assignment.due_date.is_not(None),
+    ).order_by(Assignment.due_date.asc()))).scalars().all()
+
+    def event_day(value: datetime) -> date:
+        if value.tzinfo is None:
+            return value.date()
+        return value.astimezone(INDIA_TZ).date()
+
+    events = []
+    for exam in exam_rows:
+        if exam.date is None:
+            continue
+        day = event_day(exam.date)
+        if (start_date and day < start_date) or (end_date and day > end_date):
+            continue
+        events.append({
+            "id": f"exam-{exam.id}",
+            "source_id": exam.id,
+            "type": "exam",
+            "title": f"{exam.exam_type}: {exam.subject}",
+            "subject": exam.subject,
+            "starts_at": exam.date.isoformat(),
+            "date": day.isoformat(),
+            "description": exam.syllabus or "",
+            "status": "completed" if exam.completed else "upcoming",
+        })
+    for assignment in assignment_rows:
+        if assignment.due_date is None:
+            continue
+        day = event_day(assignment.due_date)
+        if (start_date and day < start_date) or (end_date and day > end_date):
+            continue
+        events.append({
+            "id": f"assignment-{assignment.id}",
+            "source_id": assignment.id,
+            "type": "assignment",
+            "title": assignment.title,
+            "subject": assignment.subject,
+            "starts_at": assignment.due_date.isoformat(),
+            "date": day.isoformat(),
+            "description": assignment.description or "",
+            "status": assignment.status,
+        })
+    events.sort(key=lambda item: (item["starts_at"], item["type"], item["source_id"]))
+    return events
+
+
 # --- Analytics ---
 @router.get("/analytics")
 async def get_academic_analytics(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):

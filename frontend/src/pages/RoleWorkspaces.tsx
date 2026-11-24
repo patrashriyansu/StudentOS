@@ -61,6 +61,8 @@ export function RecruiterWorkspace() {
   const [shortlist, setShortlist] = useState<Row[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
   const [applications, setApplications] = useState<Row[]>([])
+  const [interviews, setInterviews] = useState<Row[]>([])
+  const [interviewForm, setInterviewForm] = useState({ application_id: '', scheduled_at: '', duration_minutes: '45', interview_type: 'technical', meeting_url: '', notes: '' })
   const [selectedCandidate, setSelectedCandidate] = useState<Row | null>(null)
   const [candidateLoading, setCandidateLoading] = useState(false)
   const [query, setQuery] = useState('')
@@ -73,18 +75,20 @@ export function RecruiterWorkspace() {
   const load = async () => {
     setError('')
     try {
-      const [s, c, sh, j, a] = await Promise.all([
+      const [s, c, sh, j, a, i] = await Promise.all([
         api.get('/workspaces/recruiter/summary'),
         api.get('/campus/recruiter/candidates'),
         api.get('/workspaces/recruiter/shortlist'),
         api.get('/workspaces/recruiter/jobs'),
         api.get('/workspaces/recruiter/applications'),
+        api.get('/workspaces/recruiter/interviews'),
       ])
       setSummary(s.data || {})
       setCandidates(Array.isArray(c.data) ? c.data : [])
       setShortlist(Array.isArray(sh.data) ? sh.data : [])
       setJobs(Array.isArray(j.data) ? j.data : [])
       setApplications(Array.isArray(a.data) ? a.data : [])
+      setInterviews(Array.isArray(i.data) ? i.data : [])
     } catch (e: any) { setError(e?.response?.data?.detail || 'Could not load recruiter workspace.') }
   }
   useEffect(() => { void load() }, [])
@@ -147,6 +151,32 @@ export function RecruiterWorkspace() {
     catch (e: any) { setError(e?.response?.data?.detail || 'Could not update application.') }
   }
 
+  const scheduleInterview = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!interviewForm.application_id || !interviewForm.scheduled_at) {
+      setError('Choose an application and interview time first.')
+      return
+    }
+    setSaving(true); setError('')
+    try {
+      await api.post(`/workspaces/recruiter/applications/${interviewForm.application_id}/interviews`, {
+        ...interviewForm,
+        scheduled_at: new Date(interviewForm.scheduled_at).toISOString(),
+        duration_minutes: Number(interviewForm.duration_minutes),
+      })
+      setInterviewForm({ application_id: '', scheduled_at: '', duration_minutes: '45', interview_type: 'technical', meeting_url: '', notes: '' })
+      await load()
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Could not schedule this interview.')
+    } finally { setSaving(false) }
+  }
+  const updateRecruiterInterview = async (id: number, status: string) => {
+    setSaving(true); setError('')
+    try { await api.patch(`/workspaces/recruiter/interviews/${id}`, { status }); await load() }
+    catch (e: any) { setError(e?.response?.data?.detail || 'Could not update the interview.') }
+    finally { setSaving(false) }
+  }
+
   return <div className="max-w-7xl mx-auto space-y-6">
     <Header eyebrow="Recruiter workspace" title={path === 'overview' ? 'Hiring overview' : path === 'candidates' ? 'Find candidates' : path === 'shortlisted' ? 'Shortlisted talent' : path === 'jobs' ? 'Job openings' : 'Applications'} description="Discover opted-in student talent, manage openings and track hiring progress." onRefresh={() => void load()}/>
     <ErrorLine message={error}/>
@@ -195,7 +225,33 @@ export function RecruiterWorkspace() {
       </form></Panel>
       <Panel><h2 className="font-semibold">Your job openings</h2>{jobs.length === 0 ? <Empty title="No job openings yet" detail="Create an opening above to start receiving applications."/> : <div className="space-y-3">{jobs.map(job => <article key={job.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap justify-between gap-2"><div><h3 className="font-semibold">{job.title}</h3><p className="text-xs text-dark-muted">{job.company} · {job.employment_type} · {job.location || 'Location not specified'}</p></div><Action secondary onClick={() => void updateJob(job)}>{job.status === 'open' ? 'Close opening' : 'Reopen'}</Action></div><p className="text-sm mt-2 whitespace-pre-wrap">{job.description}</p><p className="text-xs text-dark-muted mt-2">{job.skills.join(' · ')}{job.deadline ? ' · Deadline ' + job.deadline : ''}</p></article>)}</div>}</Panel>
     </>}
-    {path === 'applications' && <Panel><h2 className="font-semibold">Applications received</h2>{applications.length === 0 ? <Empty title="No applications yet" detail="Applications to your active job openings will appear here."/> : <div className="space-y-3">{applications.map(app => <article key={app.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{app.student_name}</h3><p className="text-xs text-dark-muted">{app.job_title} · {app.company}</p>{app.email && <p className="text-xs mt-1">{app.email}</p>}</div><SelectField label="Stage" value={app.status} onChange={v => void updateApplication(app, v)} options={['applied','shortlisted','interview','selected','rejected'].map(v => ({ value: v, label: v.replace('_',' ') }))}/></div><p className="text-sm mt-2">{app.cover_note || 'No cover note provided.'}</p><div className="flex flex-wrap items-center justify-between gap-2 mt-3"><p className="text-xs text-dark-muted">Applied {new Date(app.created_at).toLocaleString()}</p>{app.resume_available && <Action secondary onClick={() => void downloadPdf(`/workspaces/recruiter/applications/${app.id}/resume`,app.resume_filename||`application-${app.id}-resume.pdf`)}>Download submitted resume</Action>}</div></article>)}</div>}</Panel>}
+    {path === 'applications' && <>
+      <Panel>
+        <h2 className="font-semibold">Schedule an interview</h2>
+        <p className="text-xs text-dark-muted">Choose an applicant from one of your job openings. The student receives an in-app notification when you schedule or update the interview.</p>
+        <form onSubmit={scheduleInterview} className="grid md:grid-cols-2 gap-3">
+          <SelectField label="Application" value={interviewForm.application_id} onChange={v=>setInterviewForm({...interviewForm,application_id:v})}
+            options={[{value:'',label:'Select applicant and role'},...applications.filter(a=>!['rejected','withdrawn'].includes(a.status)).map(a=>({value:String(a.id),label:a.student_name+' · '+a.job_title+' · '+a.company}))]}/>
+          <Field label="Date and time" type="datetime-local" required value={interviewForm.scheduled_at} onChange={v=>setInterviewForm({...interviewForm,scheduled_at:v})}/>
+          <Field label="Duration (minutes)" type="number" value={interviewForm.duration_minutes} onChange={v=>setInterviewForm({...interviewForm,duration_minutes:v})}/>
+          <SelectField label="Interview type" value={interviewForm.interview_type} onChange={v=>setInterviewForm({...interviewForm,interview_type:v})}
+            options={['technical','hr','coding','managerial','other'].map(v=>({value:v,label:v.toUpperCase()}))}/>
+          <Field label="Meeting link (optional)" value={interviewForm.meeting_url} onChange={v=>setInterviewForm({...interviewForm,meeting_url:v})}/>
+          <TextArea label="Candidate instructions (optional)" value={interviewForm.notes} onChange={v=>setInterviewForm({...interviewForm,notes:v})} rows={2}/>
+          <div className="md:col-span-2"><Action disabled={saving||!interviewForm.application_id||!interviewForm.scheduled_at}><CalendarDays size={14}/>Schedule interview</Action></div>
+        </form>
+      </Panel>
+      <Panel>
+        <h2 className="font-semibold">Scheduled interviews</h2>
+        {interviews.length===0?<Empty title="No interviews scheduled" detail="Interviews you arrange with applicants will appear here."/>:
+          <div className="space-y-2">{interviews.map(item=><article key={item.id} className="rounded-xl border border-dark-border p-3 flex flex-wrap items-center justify-between gap-3">
+            <div><b>{item.student_name} · {item.job_title}</b><p className="text-xs text-dark-muted">{item.company} · {new Date(item.scheduled_at).toLocaleString()} · {item.duration_minutes} min · {item.interview_type}</p>
+              {item.meeting_url&&<a className="text-xs text-primary" href={item.meeting_url} target="_blank" rel="noreferrer">Open meeting link ↗</a>}</div>
+            <SelectField label="Status" value={item.status} onChange={v=>void updateRecruiterInterview(item.id,v)} options={['scheduled','completed','cancelled'].map(v=>({value:v,label:v}))}/>
+          </article>)}</div>}
+      </Panel>
+      <Panel><h2 className="font-semibold">Applications received</h2>{applications.length === 0 ? <Empty title="No applications yet" detail="Applications to your active job openings will appear here."/> : <div className="space-y-3">{applications.map(app => <article key={app.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{app.student_name}</h3><p className="text-xs text-dark-muted">{app.job_title} · {app.company}</p>{app.email && <p className="text-xs mt-1">{app.email}</p>}</div><SelectField label="Stage" value={app.status} onChange={v => void updateApplication(app, v)} options={['applied','shortlisted','interview','selected','rejected'].map(v => ({ value: v, label: v.replace('_',' ') }))}/></div><p className="text-sm mt-2">{app.cover_note || 'No cover note provided.'}</p><div className="flex flex-wrap items-center justify-between gap-2 mt-3"><p className="text-xs text-dark-muted">Applied {new Date(app.created_at).toLocaleString()}</p>{app.resume_available && <Action secondary onClick={() => void downloadPdf(`/workspaces/recruiter/applications/${app.id}/resume`,app.resume_filename||`application-${app.id}-resume.pdf`)}>Download submitted resume</Action>}</div></article>)}</div>}</Panel>
+    </>}
     {selectedCandidate && <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-start justify-center p-3 sm:p-6 overflow-y-auto">
       <section role="dialog" aria-modal="true" aria-label="Full candidate profile" className="w-full max-w-4xl rounded-2xl border border-dark-border bg-dark-card p-4 sm:p-6 space-y-5 shadow-2xl my-4">
         <div className="flex items-start justify-between gap-3">
@@ -237,6 +293,7 @@ export function MentorWorkspace() {
   const [students,setStudents]=useState<Row[]>([])
   const [programmes,setProgrammes]=useState<Row[]>([])
   const [sessions,setSessions]=useState<Row[]>([])
+  const [availability,setAvailability]=useState<Row[]>([])
   const [goals,setGoals]=useState<Row[]>([])
   const [actions,setActions]=useState<Row[]>([])
   const [checkins,setCheckins]=useState<Row[]>([])
@@ -246,6 +303,7 @@ export function MentorWorkspace() {
   const [saving,setSaving]=useState(false)
   const [programmeForm,setProgrammeForm]=useState({student_id:'',title:'',focus_area:'Career readiness',description:'',start_date:new Date().toISOString().slice(0,10),target_end_date:'',meeting_cadence:'biweekly'})
   const [sessionForm,setSessionForm]=useState({student_id:'',scheduled_at:'',duration_minutes:'30',meeting_link:'',agenda:''})
+  const [slotForm,setSlotForm]=useState({starts_at:'',ends_at:'',meeting_link:''})
   const [goalForm,setGoalForm]=useState({program_id:'',title:'',category:'Career readiness',desired_outcome:'',success_measure:'',baseline:'',target:'',priority:'medium',due_date:''})
   const [actionForm,setActionForm]=useState({goal_id:'',title:'',description:'',owner:'student',due_date:'',resource_url:''})
   const [noteForm,setNoteForm]=useState({student_id:'',body:''})
@@ -254,7 +312,7 @@ export function MentorWorkspace() {
   const load=async()=>{
     setError('')
     try{
-      const [s,st,p,se,g,ac,ci,n,fb]=await Promise.all([
+      const [s,st,p,se,g,ac,ci,n,fb,slots]=await Promise.all([
         api.get('/workspaces/mentor/program-dashboard'),
         api.get('/campus/mentor/students'),
         api.get('/workspaces/mentor/programmes'),
@@ -264,10 +322,11 @@ export function MentorWorkspace() {
         api.get('/workspaces/mentor/check-ins'),
         api.get('/workspaces/mentor/notes'),
         api.get('/workspaces/mentor/session-feedback'),
+        api.get('/workspaces/mentor/availability'),
       ])
       setSummary(s.data||{});setStudents(st.data||[]);setProgrammes(p.data||[])
       setSessions(se.data||[]);setGoals(g.data||[]);setActions(ac.data||[])
-      setCheckins(ci.data||[]);setNotes(n.data||[]);setSessionFeedback(fb.data||[])
+      setCheckins(ci.data||[]);setNotes(n.data||[]);setSessionFeedback(fb.data||[]);setAvailability(slots.data||[])
     }catch(e:any){setError(e?.response?.data?.detail||'Could not load the mentoring workspace.')}
   }
   useEffect(()=>{void load()},[])
@@ -279,6 +338,25 @@ export function MentorWorkspace() {
         :payload
       await api.post(endpoint,body);reset();await load()
     }catch(e:any){setError(e?.response?.data?.detail||'Could not save this mentoring record.')}
+    finally{setSaving(false)}
+  }
+  const publishAvailability=async(event:FormEvent)=>{
+    event.preventDefault();setSaving(true);setError('')
+    try{
+      await api.post('/workspaces/mentor/availability',{
+        starts_at:new Date(slotForm.starts_at).toISOString(),
+        ends_at:new Date(slotForm.ends_at).toISOString(),
+        meeting_link:slotForm.meeting_link||null,
+      })
+      setSlotForm({starts_at:'',ends_at:'',meeting_link:''})
+      await load()
+    }catch(e:any){setError(e?.response?.data?.detail||'Could not publish this availability slot.')}
+    finally{setSaving(false)}
+  }
+  const cancelAvailability=async(id:number)=>{
+    setSaving(true);setError('')
+    try{await api.patch('/workspaces/mentor/availability/'+id,{status:'cancelled'});await load()}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not cancel this slot.')}
     finally{setSaving(false)}
   }
   const updateProgramme=async(id:number,status:string)=>{
@@ -373,6 +451,28 @@ export function MentorWorkspace() {
         <Action disabled={saving||!sessionForm.student_id}><Plus size={14}/>Schedule session</Action>
       </form></Panel>
       <Panel><h2 className="font-semibold">Sessions and outcomes</h2>{sessions.length===0?<Empty title="No sessions scheduled" detail="Schedule the first structured mentoring conversation above."/>:<div className="space-y-2">{sessions.map(s=><article key={s.id} className="rounded-xl border border-dark-border p-3 flex flex-wrap items-center justify-between gap-3"><div><b>{s.student_name}</b><p className="text-xs text-dark-muted">{new Date(s.scheduled_at).toLocaleString()} · {s.duration_minutes} min</p>{s.agenda&&<p className="text-sm mt-1">{s.agenda}</p>}{s.meeting_link&&<a className="text-xs text-primary" href={s.meeting_link} target="_blank" rel="noreferrer">Open meeting link ↗</a>}{sessionFeedback.filter(f=>f.session_id===s.id).map(f=><p key={f.id} className="text-xs text-dark-muted mt-2">Mentee feedback: {f.rating}/5 · {f.takeaways}</p>)}</div><SelectField label="Status" value={s.status} onChange={v=>void updateSession(s.id,v)} options={['scheduled','completed','cancelled'].map(v=>({value:v,label:v}))}/></article>)}</div>}</Panel>
+
+      <Panel>
+        <h2 className="font-semibold">Publish bookable availability</h2>
+        <p className="text-xs text-dark-muted">Create future time slots that your assigned mentees can book. Overlapping slots are rejected by the server.</p>
+        <form onSubmit={publishAvailability} className="grid md:grid-cols-2 gap-3">
+          <Field label="Starts at" type="datetime-local" required value={slotForm.starts_at} onChange={v=>setSlotForm({...slotForm,starts_at:v})}/>
+          <Field label="Ends at" type="datetime-local" required value={slotForm.ends_at} onChange={v=>setSlotForm({...slotForm,ends_at:v})}/>
+          <Field label="Meeting link (optional)" value={slotForm.meeting_link} onChange={v=>setSlotForm({...slotForm,meeting_link:v})}/>
+          <div className="flex items-end"><Action disabled={saving||!slotForm.starts_at||!slotForm.ends_at}><Plus size={14}/>Publish slot</Action></div>
+        </form>
+        <div className="space-y-2">
+          {availability.length===0?<Empty title="No availability published" detail="Add time slots above. They will become visible to your assigned mentees."/>:
+            availability.map(slot=><article key={slot.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dark-border p-3">
+              <div><b>{new Date(slot.starts_at).toLocaleString()} – {new Date(slot.ends_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</b>
+                <p className="text-xs text-dark-muted capitalize">{slot.status}{slot.student_name?' · booked by '+slot.student_name:''}</p>
+                {slot.booking_message&&<p className="mt-1 text-xs text-dark-muted">{slot.booking_message}</p>}
+                {slot.meeting_link&&<a href={slot.meeting_link} target="_blank" rel="noreferrer" className="text-xs text-primary">Meeting link ↗</a>}
+              </div>
+              {slot.status!=='cancelled'&&<Action secondary disabled={saving} onClick={()=>void cancelAvailability(slot.id)}>Cancel slot</Action>}
+            </article>)}
+        </div>
+      </Panel>
     </>}
     {path==='goals'&&<>
       <Panel><h2 className="font-semibold">Create a measurable development goal</h2><form onSubmit={e=>void submit(e,'/workspaces/mentor/development-goals',{...goalForm,program_id:Number(goalForm.program_id),due_date:goalForm.due_date||null},()=>setGoalForm({program_id:'',title:'',category:'Career readiness',desired_outcome:'',success_measure:'',baseline:'',target:'',priority:'medium',due_date:''}))} className="grid md:grid-cols-2 gap-3">
@@ -727,6 +827,8 @@ export function StudentMentoring() {
   const [checkIn,setCheckIn]=useState({confidence_rating:'3',progress_status:'on_track',wins:'',blockers:'',support_needed:''})
   const [feedback,setFeedback]=useState<Record<number,{rating:string;takeaways:string;next_steps:string}>>({})
   const [availableMentors,setAvailableMentors]=useState<Row[]>([])
+  const [availableSlots,setAvailableSlots]=useState<Row[]>([])
+  const [bookedSlots,setBookedSlots]=useState<Row[]>([])
   const [mentorRequests,setMentorRequests]=useState<Row[]>([])
   const [requestMentorId,setRequestMentorId]=useState('')
   const [requestMessage,setRequestMessage]=useState('')
@@ -736,13 +838,16 @@ export function StudentMentoring() {
   const load=async()=>{
     setError('')
     try{
-      const [r,m,requests]=await Promise.all([
+      const [r,m,requests,slots,bookings]=await Promise.all([
         api.get('/workspaces/student/mentoring'),
         api.get('/workspaces/student/mentors'),
         api.get('/workspaces/student/mentoring/requests'),
+        api.get('/workspaces/student/mentoring/availability'),
+        api.get('/workspaces/student/mentoring/bookings'),
       ])
       setData(r.data||{programmes:[],goals:[],action_items:[],sessions:[],check_ins:[]})
       setAvailableMentors(m.data||[]);setMentorRequests(requests.data||[])
+      setAvailableSlots(slots.data||[]);setBookedSlots(bookings.data||[])
     }
     catch(e:any){setError(e?.response?.data?.detail||'Could not load your mentoring plan.')}
   }
@@ -757,6 +862,12 @@ export function StudentMentoring() {
     setBusy(true);setError('')
     try{await api.patch(`/workspaces/student/mentoring/action-items/${id}`,{status});await load()}
     catch(e:any){setError(e?.response?.data?.detail||'Could not update the action item.')}
+    finally{setBusy(false)}
+  }
+  const bookMentorSlot=async(slotId:number)=>{
+    setBusy(true);setError('')
+    try{await api.post('/workspaces/student/mentoring/availability/'+slotId+'/book',{message:''});await load()}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not book this mentoring slot.')}
     finally{setBusy(false)}
   }
   const submitCheckIn=async(event:FormEvent)=>{
@@ -834,7 +945,18 @@ export function StudentMentoring() {
         </>}
       </Panel>
     </div>
-\n    {(data.programmes||[]).length===0?<Panel><Empty title="No mentoring programme yet" detail="When a mentor creates a development plan for you, it will appear here for your review and acceptance."/></Panel>:
+\n    <Panel>
+      <h2 className="font-semibold">Book time with your mentor</h2>
+      <p className="text-xs text-dark-muted">Only time slots published by mentors assigned to you are shown here.</p>
+      {availableSlots.length===0?<Empty title="No bookable slots right now" detail="Your assigned mentor has not published an available time slot. You can still use private messages to coordinate."/>:
+        <div className="space-y-2">{availableSlots.map(slot=><article key={slot.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dark-border p-3">
+          <div><b>{slot.mentor_name}</b><p className="text-xs text-dark-muted">{new Date(slot.starts_at).toLocaleString()} – {new Date(slot.ends_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</p>
+            {slot.meeting_link&&<p className="text-xs text-primary">Meeting link will be available after booking.</p>}</div>
+          <Action disabled={busy} onClick={()=>void bookMentorSlot(slot.id)}>Book this slot</Action>
+        </article>)}</div>}
+      {bookedSlots.length>0&&<div className="border-t border-dark-border pt-3 space-y-2"><h3 className="text-sm font-semibold">My bookings</h3>{bookedSlots.map(slot=><article key={slot.id} className="rounded-xl border border-dark-border p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><b>{slot.mentor_name}</b><p className="text-xs text-dark-muted">{new Date(slot.starts_at).toLocaleString()} – {new Date(slot.ends_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</p></div><span className="rounded-full bg-dark-lighter px-3 py-1 text-xs capitalize">{slot.status}</span></div>{slot.meeting_link&&slot.status==='booked'&&<a href={slot.meeting_link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs text-primary">Join session ↗</a>}{slot.booking_message&&<p className="mt-1 text-xs text-dark-muted">{slot.booking_message}</p>}</article>)}</div>}
+    </Panel>
+    {(data.programmes||[]).length===0?<Panel><Empty title="No mentoring programme yet" detail="When a mentor creates a development plan for you, it will appear here for your review and acceptance."/></Panel>:
       <Panel><h2 className="font-semibold">Mentoring programmes</h2><div className="space-y-3">{data.programmes.map((p:Row)=><article key={p.id} className="rounded-xl border border-dark-border p-4 space-y-2"><div className="flex flex-wrap justify-between gap-2"><div><h3 className="font-semibold">{p.title}</h3><p className="text-xs text-dark-muted">{p.mentor_name} · {p.focus_area} · {p.meeting_cadence} meetings</p></div><span className="text-xs rounded-full bg-dark-lighter px-3 py-1 capitalize">{p.status.replace('_',' ')}</span></div><p className="text-sm text-dark-muted">{p.description}</p><p className="text-xs text-dark-muted">{p.start_date}{p.target_end_date?' → '+p.target_end_date:''}</p>{p.status==='awaiting_student'&&<div className="flex gap-2 pt-2"><Action onClick={()=>void respond(p.id,true)} disabled={busy}>Accept plan</Action><Action secondary onClick={()=>void respond(p.id,false)} disabled={busy}>Decline</Action></div>}</article>)}</div></Panel>}
     <Panel><h2 className="font-semibold">Growth goals</h2>{(data.goals||[]).length===0?<Empty title="No growth goals yet" detail="Goals agreed with your mentor will appear here after you accept a programme."/>:<div className="space-y-3">{data.goals.map((g:Row)=><div key={g.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap justify-between gap-2"><div><b>{g.title}</b><p className="text-xs text-dark-muted">{g.category} · due {g.due_date||'not set'} · {g.priority} priority</p></div><b className="text-sm">{g.progress_percent}%</b></div><p className="text-sm mt-2">{g.desired_outcome}</p><p className="text-xs text-dark-muted mt-1">Success measure: {g.success_measure}</p><div className="h-2 rounded-full bg-dark-lighter overflow-hidden mt-3"><div className="h-full bg-primary rounded-full" style={{width:`${g.progress_percent}%`}}/></div></div>)}</div>}</Panel>
     <Panel><h2 className="font-semibold">My action items</h2>{(data.action_items||[]).length===0?<Empty title="No actions assigned" detail="Your agreed next steps will appear here."/>:<div className="space-y-2">{data.action_items.map((item:Row)=><div key={item.id} className="rounded-xl border border-dark-border p-3 flex flex-wrap items-center justify-between gap-3"><div><b>{item.title}</b><p className="text-xs text-dark-muted">{item.owner==='student'?'Your task':'Mentor task'} · due {item.due_date||'not set'}</p>{item.description&&<p className="text-sm mt-1">{item.description}</p>}{item.resource_url&&<a href={item.resource_url} target="_blank" rel="noreferrer" className="text-xs text-primary">Open resource ↗</a>}</div>{item.owner==='student'?<SelectField label="Status" value={item.status} onChange={v=>void updateAction(item.id,v)} options={['not_started','in_progress','completed','blocked'].map(v=>({value:v,label:v.replace('_',' ')}))}/>:<span className="text-xs text-dark-muted capitalize">{item.status.replace('_',' ')}</span>}</div>)}</div>}</Panel>

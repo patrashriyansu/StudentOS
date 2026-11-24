@@ -15,6 +15,7 @@ bcrypt==4.0.1
 PyJWT==2.8.0
 python-multipart==0.0.12
 pypdf>=5.1,<7
+reportlab>=4.2,<5
 
 # Validation & Config
 pydantic[email-validator]==2.9.2

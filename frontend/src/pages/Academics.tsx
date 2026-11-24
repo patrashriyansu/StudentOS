@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react'
 import { BookOpen, Calendar, Clock, Plus, CheckCircle, AlertCircle, Check, X, Sparkles } from 'lucide-react'
 import { api } from '../services/api'
+import AcademicPlanningPanel from './AcademicPlanningPanel'
 
 const WEEKDAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday']
 
@@ -675,6 +676,7 @@ export default function Academics() {
           ))}
         </div>
       )}
+      <AcademicPlanningPanel />
     </div>
   )
 }

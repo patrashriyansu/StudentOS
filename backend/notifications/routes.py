@@ -7,10 +7,10 @@ from datetime import datetime, timezone
 from zoneinfo import ZoneInfo
 from backend.core.database import get_db
 from backend.core.security import get_current_user
-from backend.users.models import User, Notification, EmailReminder
+from backend.users.models import User, Notification, EmailReminder, NotificationPreference
 from backend.core.email import email_delivery_configured, missing_email_settings, send_email
 from backend.notifications.service import to_utc_datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional, Literal
 
 router = APIRouter()
@@ -205,17 +205,80 @@ async def create_notification(req: NotificationCreate, current_user: User = Depe
     await db.commit()
     return {"message": "Notification created", "id": notification.id}
 
-@router.get("/settings")
-async def get_notification_settings(current_user: User = Depends(get_current_user)):
+
+class NotificationSettingsUpdate(BaseModel):
+    email_enabled: bool | None = None
+    in_app_enabled: bool | None = None
+    assignment_reminders: bool | None = None
+    exam_reminders: bool | None = None
+    attendance_alerts: bool | None = None
+    placement_updates: bool | None = None
+    quiet_hours_start: str | None = Field(default=None, pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+    quiet_hours_end: str | None = Field(default=None, pattern=r"^(?:[01][0-9]|2[0-3]):[0-5][0-9]$")
+
+
+async def _notification_preferences(user: User, db: AsyncSession) -> NotificationPreference:
+    preference = (await db.execute(
+        select(NotificationPreference).where(NotificationPreference.user_id == user.id)
+    )).scalar_one_or_none()
+    if preference is None:
+        preference = NotificationPreference(user_id=user.id)
+        db.add(preference)
+        await db.commit()
+        await db.refresh(preference)
+    return preference
+
+
+def _notification_settings_dict(preference: NotificationPreference) -> dict:
+    email_available = email_delivery_configured()
     return {
-        "email_notifications": email_delivery_configured(),
-        "push_notifications": True,
-        "in_app_notifications": True,
-        "reminders": email_delivery_configured(),
-        "quiet_hours_start": "22:00",
-        "quiet_hours_end": "08:00"
+        "email_enabled": preference.email_enabled,
+        "email_notifications": preference.email_enabled and email_available,
+        "email_delivery_available": email_available,
+        "push_enabled": False,
+        "push_notifications": False,
+        "push_available": False,
+        "in_app_enabled": preference.in_app_enabled,
+        "in_app_notifications": preference.in_app_enabled,
+        "assignment_reminders": preference.assignment_reminders,
+        "exam_reminders": preference.exam_reminders,
+        "attendance_alerts": preference.attendance_alerts,
+        "placement_updates": preference.placement_updates,
+        "reminders": preference.email_enabled and email_available,
+        "quiet_hours_start": preference.quiet_hours_start,
+        "quiet_hours_end": preference.quiet_hours_end,
+        "updated_at": preference.updated_at.isoformat() if preference.updated_at else None,
     }
+
+
+@router.get("/settings")
+async def get_notification_settings(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    preference = await _notification_preferences(current_user, db)
+    return _notification_settings_dict(preference)
+
+
+@router.put("/settings")
+async def update_notification_settings(
+    req: NotificationSettingsUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    preference = await _notification_preferences(current_user, db)
+    for field, value in req.model_dump(exclude_unset=True).items():
+        if value is not None:
+            setattr(preference, field, value)
+    preference.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(preference)
+    return _notification_settings_dict(preference)
+
 
 @router.post("/subscribe")
 async def subscribe_push(token: str, current_user: User = Depends(get_current_user)):
-    return {"message": "Push subscription updated"}
+    raise HTTPException(
+        status_code=501,
+        detail="Browser push delivery is not configured for this StudentOS deployment. In-app and email preferences are available.",
+    )

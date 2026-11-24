@@ -6,9 +6,9 @@ from datetime import datetime, timezone, timedelta
 from backend.core.database import get_db
 from backend.core.security import get_current_user
 from backend.users.models import User
-from backend.placements.models import Resume, ResumeDocument, Application, Interview, Offer
+from backend.placements.models import Resume, ResumeDocument, Application, Interview, Offer, ResumeBuilderVersion
 from backend.notifications.service import INDIA_TZ, schedule_email_reminder, to_utc_datetime
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import Optional
 import json
 import hashlib
@@ -254,3 +254,173 @@ async def get_placement_analytics(current_user: User = Depends(get_current_user)
     for a in applications:
         status_count[a.status] = status_count.get(a.status, 0) + 1
     return {"total_applications": len(applications), "status_breakdown": status_count, "applications_by_status": status_count}
+
+
+
+class ResumeEducationEntry(BaseModel):
+    degree: str = Field(min_length=1, max_length=160)
+    institution: str = Field(min_length=1, max_length=180)
+    location: str = Field(default="", max_length=120)
+    start_year: str = Field(default="", max_length=20)
+    end_year: str = Field(default="", max_length=20)
+    details: str = Field(default="", max_length=1600)
+
+
+class ResumeExperienceEntry(BaseModel):
+    role: str = Field(min_length=1, max_length=160)
+    company: str = Field(min_length=1, max_length=180)
+    location: str = Field(default="", max_length=120)
+    start_date: str = Field(default="", max_length=30)
+    end_date: str = Field(default="", max_length=30)
+    details: str = Field(default="", max_length=2400)
+
+
+class ResumeProjectEntry(BaseModel):
+    name: str = Field(min_length=1, max_length=160)
+    technologies: list[str] = Field(default_factory=list, max_length=20)
+    link: str = Field(default="", max_length=500)
+    description: str = Field(default="", max_length=2000)
+
+
+class ResumeBuilderContent(BaseModel):
+    full_name: str = Field(min_length=1, max_length=120)
+    headline: str = Field(default="", max_length=180)
+    email: str = Field(default="", max_length=254)
+    phone: str = Field(default="", max_length=40)
+    location: str = Field(default="", max_length=120)
+    summary: str = Field(default="", max_length=3000)
+    education: list[ResumeEducationEntry] = Field(default_factory=list, max_length=8)
+    experience: list[ResumeExperienceEntry] = Field(default_factory=list, max_length=12)
+    projects: list[ResumeProjectEntry] = Field(default_factory=list, max_length=12)
+    skills: list[str] = Field(default_factory=list, max_length=60)
+    certifications: list[str] = Field(default_factory=list, max_length=30)
+    achievements: list[str] = Field(default_factory=list, max_length=30)
+
+
+class ResumeBuilderVersionCreate(BaseModel):
+    title: str = Field(min_length=1, max_length=120)
+    content: ResumeBuilderContent
+
+
+class InterviewUpdate(BaseModel):
+    feedback: str | None = Field(default=None, max_length=5000)
+    rating: float | None = Field(default=None, ge=1, le=5)
+    confidence_score: float | None = Field(default=None, ge=1, le=5)
+    completed: bool | None = None
+
+
+def _resume_builder_dict(item: ResumeBuilderVersion) -> dict:
+    return {
+        "id": item.id,
+        "title": item.title,
+        "version_number": item.version_number,
+        "content": item.content,
+        "created_at": item.created_at.isoformat(),
+        "updated_at": item.updated_at.isoformat(),
+    }
+
+
+@router.get("/resume-versions")
+async def list_resume_builder_versions(
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    result = await db.execute(
+        select(ResumeBuilderVersion)
+        .where(ResumeBuilderVersion.user_id == current_user.id)
+        .order_by(ResumeBuilderVersion.version_number.desc())
+    )
+    return [_resume_builder_dict(item) for item in result.scalars().all()]
+
+
+@router.post("/resume-versions", status_code=201)
+async def create_resume_builder_version(
+    req: ResumeBuilderVersionCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    if current_user.role != "student":
+        raise HTTPException(status_code=403, detail="Only students can create career resumes.")
+    count = (await db.execute(
+        select(func.count(ResumeBuilderVersion.id)).where(ResumeBuilderVersion.user_id == current_user.id)
+    )).scalar_one()
+    if count >= 20:
+        raise HTTPException(status_code=409, detail="You can keep up to 20 resume versions. Delete an older version first.")
+    latest = (await db.execute(
+        select(func.max(ResumeBuilderVersion.version_number)).where(ResumeBuilderVersion.user_id == current_user.id)
+    )).scalar_one()
+    item = ResumeBuilderVersion(
+        user_id=current_user.id,
+        title=req.title.strip(),
+        version_number=(latest or 0) + 1,
+        content=req.content.model_dump(),
+    )
+    db.add(item)
+    await db.commit()
+    await db.refresh(item)
+    return _resume_builder_dict(item)
+
+
+@router.put("/resume-versions/{version_id}")
+async def update_resume_builder_version(
+    version_id: int,
+    req: ResumeBuilderVersionCreate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    item = (await db.execute(select(ResumeBuilderVersion).where(
+        ResumeBuilderVersion.id == version_id,
+        ResumeBuilderVersion.user_id == current_user.id,
+    ))).scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Resume version not found.")
+    item.title = req.title.strip()
+    item.content = req.content.model_dump()
+    item.updated_at = datetime.now(timezone.utc)
+    await db.commit()
+    await db.refresh(item)
+    return _resume_builder_dict(item)
+
+
+@router.delete("/resume-versions/{version_id}")
+async def delete_resume_builder_version(
+    version_id: int,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    item = (await db.execute(select(ResumeBuilderVersion).where(
+        ResumeBuilderVersion.id == version_id,
+        ResumeBuilderVersion.user_id == current_user.id,
+    ))).scalar_one_or_none()
+    if item is None:
+        raise HTTPException(status_code=404, detail="Resume version not found.")
+    await db.delete(item)
+    await db.commit()
+    return {"message": "Resume version deleted."}
+
+
+@router.patch("/interviews/{interview_id}")
+async def update_interview_feedback(
+    interview_id: int,
+    req: InterviewUpdate,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db),
+):
+    interview = (await db.execute(select(Interview).where(
+        Interview.id == interview_id,
+        Interview.user_id == current_user.id,
+    ))).scalar_one_or_none()
+    if interview is None:
+        raise HTTPException(status_code=404, detail="Interview not found.")
+    values = req.model_dump(exclude_unset=True)
+    for field, value in values.items():
+        setattr(interview, field, value)
+    await db.commit()
+    await db.refresh(interview)
+    return {
+        "id": interview.id,
+        "completed": interview.completed,
+        "feedback": interview.feedback,
+        "rating": interview.rating,
+        "confidence_score": interview.confidence_score,
+    }
