@@ -61,6 +61,8 @@ export function RecruiterWorkspace() {
   const [shortlist, setShortlist] = useState<Row[]>([])
   const [jobs, setJobs] = useState<Job[]>([])
   const [applications, setApplications] = useState<Row[]>([])
+  const [interviews, setInterviews] = useState<Row[]>([])
+  const [interviewForm, setInterviewForm] = useState({ application_id: '', scheduled_at: '', duration_minutes: '45', interview_type: 'technical', meeting_url: '', notes: '' })
   const [selectedCandidate, setSelectedCandidate] = useState<Row | null>(null)
   const [candidateLoading, setCandidateLoading] = useState(false)
   const [query, setQuery] = useState('')
@@ -73,18 +75,20 @@ export function RecruiterWorkspace() {
   const load = async () => {
     setError('')
     try {
-      const [s, c, sh, j, a] = await Promise.all([
+      const [s, c, sh, j, a, i] = await Promise.all([
         api.get('/workspaces/recruiter/summary'),
         api.get('/campus/recruiter/candidates'),
         api.get('/workspaces/recruiter/shortlist'),
         api.get('/workspaces/recruiter/jobs'),
         api.get('/workspaces/recruiter/applications'),
+        api.get('/workspaces/recruiter/interviews'),
       ])
       setSummary(s.data || {})
       setCandidates(Array.isArray(c.data) ? c.data : [])
       setShortlist(Array.isArray(sh.data) ? sh.data : [])
       setJobs(Array.isArray(j.data) ? j.data : [])
       setApplications(Array.isArray(a.data) ? a.data : [])
+      setInterviews(Array.isArray(i.data) ? i.data : [])
     } catch (e: any) { setError(e?.response?.data?.detail || 'Could not load recruiter workspace.') }
   }
   useEffect(() => { void load() }, [])
@@ -147,6 +151,32 @@ export function RecruiterWorkspace() {
     catch (e: any) { setError(e?.response?.data?.detail || 'Could not update application.') }
   }
 
+  const scheduleInterview = async (event: FormEvent) => {
+    event.preventDefault()
+    if (!interviewForm.application_id || !interviewForm.scheduled_at) {
+      setError('Choose an application and interview time first.')
+      return
+    }
+    setSaving(true); setError('')
+    try {
+      await api.post(`/workspaces/recruiter/applications/${interviewForm.application_id}/interviews`, {
+        ...interviewForm,
+        scheduled_at: new Date(interviewForm.scheduled_at).toISOString(),
+        duration_minutes: Number(interviewForm.duration_minutes),
+      })
+      setInterviewForm({ application_id: '', scheduled_at: '', duration_minutes: '45', interview_type: 'technical', meeting_url: '', notes: '' })
+      await load()
+    } catch (e: any) {
+      setError(e?.response?.data?.detail || 'Could not schedule this interview.')
+    } finally { setSaving(false) }
+  }
+  const updateRecruiterInterview = async (id: number, status: string) => {
+    setSaving(true); setError('')
+    try { await api.patch(`/workspaces/recruiter/interviews/${id}`, { status }); await load() }
+    catch (e: any) { setError(e?.response?.data?.detail || 'Could not update the interview.') }
+    finally { setSaving(false) }
+  }
+
   return <div className="max-w-7xl mx-auto space-y-6">
     <Header eyebrow="Recruiter workspace" title={path === 'overview' ? 'Hiring overview' : path === 'candidates' ? 'Find candidates' : path === 'shortlisted' ? 'Shortlisted talent' : path === 'jobs' ? 'Job openings' : 'Applications'} description="Discover opted-in student talent, manage openings and track hiring progress." onRefresh={() => void load()}/>
     <ErrorLine message={error}/>
@@ -195,7 +225,33 @@ export function RecruiterWorkspace() {
       </form></Panel>
       <Panel><h2 className="font-semibold">Your job openings</h2>{jobs.length === 0 ? <Empty title="No job openings yet" detail="Create an opening above to start receiving applications."/> : <div className="space-y-3">{jobs.map(job => <article key={job.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap justify-between gap-2"><div><h3 className="font-semibold">{job.title}</h3><p className="text-xs text-dark-muted">{job.company} · {job.employment_type} · {job.location || 'Location not specified'}</p></div><Action secondary onClick={() => void updateJob(job)}>{job.status === 'open' ? 'Close opening' : 'Reopen'}</Action></div><p className="text-sm mt-2 whitespace-pre-wrap">{job.description}</p><p className="text-xs text-dark-muted mt-2">{job.skills.join(' · ')}{job.deadline ? ' · Deadline ' + job.deadline : ''}</p></article>)}</div>}</Panel>
     </>}
-    {path === 'applications' && <Panel><h2 className="font-semibold">Applications received</h2>{applications.length === 0 ? <Empty title="No applications yet" detail="Applications to your active job openings will appear here."/> : <div className="space-y-3">{applications.map(app => <article key={app.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{app.student_name}</h3><p className="text-xs text-dark-muted">{app.job_title} · {app.company}</p>{app.email && <p className="text-xs mt-1">{app.email}</p>}</div><SelectField label="Stage" value={app.status} onChange={v => void updateApplication(app, v)} options={['applied','shortlisted','interview','selected','rejected'].map(v => ({ value: v, label: v.replace('_',' ') }))}/></div><p className="text-sm mt-2">{app.cover_note || 'No cover note provided.'}</p><div className="flex flex-wrap items-center justify-between gap-2 mt-3"><p className="text-xs text-dark-muted">Applied {new Date(app.created_at).toLocaleString()}</p>{app.resume_available && <Action secondary onClick={() => void downloadPdf(`/workspaces/recruiter/applications/${app.id}/resume`,app.resume_filename||`application-${app.id}-resume.pdf`)}>Download submitted resume</Action>}</div></article>)}</div>}</Panel>}
+    {path === 'applications' && <>
+      <Panel>
+        <h2 className="font-semibold">Schedule an interview</h2>
+        <p className="text-xs text-dark-muted">Choose an applicant from one of your job openings. The student receives an in-app notification when you schedule or update the interview.</p>
+        <form onSubmit={scheduleInterview} className="grid md:grid-cols-2 gap-3">
+          <SelectField label="Application" value={interviewForm.application_id} onChange={v=>setInterviewForm({...interviewForm,application_id:v})}
+            options={[{value:'',label:'Select applicant and role'},...applications.filter(a=>!['rejected','withdrawn'].includes(a.status)).map(a=>({value:String(a.id),label:a.student_name+' · '+a.job_title+' · '+a.company}))]}/>
+          <Field label="Date and time" type="datetime-local" required value={interviewForm.scheduled_at} onChange={v=>setInterviewForm({...interviewForm,scheduled_at:v})}/>
+          <Field label="Duration (minutes)" type="number" value={interviewForm.duration_minutes} onChange={v=>setInterviewForm({...interviewForm,duration_minutes:v})}/>
+          <SelectField label="Interview type" value={interviewForm.interview_type} onChange={v=>setInterviewForm({...interviewForm,interview_type:v})}
+            options={['technical','hr','coding','managerial','other'].map(v=>({value:v,label:v.toUpperCase()}))}/>
+          <Field label="Meeting link (optional)" value={interviewForm.meeting_url} onChange={v=>setInterviewForm({...interviewForm,meeting_url:v})}/>
+          <TextArea label="Candidate instructions (optional)" value={interviewForm.notes} onChange={v=>setInterviewForm({...interviewForm,notes:v})} rows={2}/>
+          <div className="md:col-span-2"><Action disabled={saving||!interviewForm.application_id||!interviewForm.scheduled_at}><CalendarDays size={14}/>Schedule interview</Action></div>
+        </form>
+      </Panel>
+      <Panel>
+        <h2 className="font-semibold">Scheduled interviews</h2>
+        {interviews.length===0?<Empty title="No interviews scheduled" detail="Interviews you arrange with applicants will appear here."/>:
+          <div className="space-y-2">{interviews.map(item=><article key={item.id} className="rounded-xl border border-dark-border p-3 flex flex-wrap items-center justify-between gap-3">
+            <div><b>{item.student_name} · {item.job_title}</b><p className="text-xs text-dark-muted">{item.company} · {new Date(item.scheduled_at).toLocaleString()} · {item.duration_minutes} min · {item.interview_type}</p>
+              {item.meeting_url&&<a className="text-xs text-primary" href={item.meeting_url} target="_blank" rel="noreferrer">Open meeting link ↗</a>}</div>
+            <SelectField label="Status" value={item.status} onChange={v=>void updateRecruiterInterview(item.id,v)} options={['scheduled','completed','cancelled'].map(v=>({value:v,label:v}))}/>
+          </article>)}</div>}
+      </Panel>
+      <Panel><h2 className="font-semibold">Applications received</h2>{applications.length === 0 ? <Empty title="No applications yet" detail="Applications to your active job openings will appear here."/> : <div className="space-y-3">{applications.map(app => <article key={app.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap items-start justify-between gap-3"><div><h3 className="font-semibold">{app.student_name}</h3><p className="text-xs text-dark-muted">{app.job_title} · {app.company}</p>{app.email && <p className="text-xs mt-1">{app.email}</p>}</div><SelectField label="Stage" value={app.status} onChange={v => void updateApplication(app, v)} options={['applied','shortlisted','interview','selected','rejected'].map(v => ({ value: v, label: v.replace('_',' ') }))}/></div><p className="text-sm mt-2">{app.cover_note || 'No cover note provided.'}</p><div className="flex flex-wrap items-center justify-between gap-2 mt-3"><p className="text-xs text-dark-muted">Applied {new Date(app.created_at).toLocaleString()}</p>{app.resume_available && <Action secondary onClick={() => void downloadPdf(`/workspaces/recruiter/applications/${app.id}/resume`,app.resume_filename||`application-${app.id}-resume.pdf`)}>Download submitted resume</Action>}</div></article>)}</div>}</Panel>
+    </>}
     {selectedCandidate && <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-start justify-center p-3 sm:p-6 overflow-y-auto">
       <section role="dialog" aria-modal="true" aria-label="Full candidate profile" className="w-full max-w-4xl rounded-2xl border border-dark-border bg-dark-card p-4 sm:p-6 space-y-5 shadow-2xl my-4">
         <div className="flex items-start justify-between gap-3">
