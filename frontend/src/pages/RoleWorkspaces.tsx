@@ -293,6 +293,7 @@ export function MentorWorkspace() {
   const [students,setStudents]=useState<Row[]>([])
   const [programmes,setProgrammes]=useState<Row[]>([])
   const [sessions,setSessions]=useState<Row[]>([])
+  const [availability,setAvailability]=useState<Row[]>([])
   const [goals,setGoals]=useState<Row[]>([])
   const [actions,setActions]=useState<Row[]>([])
   const [checkins,setCheckins]=useState<Row[]>([])
@@ -302,6 +303,7 @@ export function MentorWorkspace() {
   const [saving,setSaving]=useState(false)
   const [programmeForm,setProgrammeForm]=useState({student_id:'',title:'',focus_area:'Career readiness',description:'',start_date:new Date().toISOString().slice(0,10),target_end_date:'',meeting_cadence:'biweekly'})
   const [sessionForm,setSessionForm]=useState({student_id:'',scheduled_at:'',duration_minutes:'30',meeting_link:'',agenda:''})
+  const [slotForm,setSlotForm]=useState({starts_at:'',ends_at:'',meeting_link:''})
   const [goalForm,setGoalForm]=useState({program_id:'',title:'',category:'Career readiness',desired_outcome:'',success_measure:'',baseline:'',target:'',priority:'medium',due_date:''})
   const [actionForm,setActionForm]=useState({goal_id:'',title:'',description:'',owner:'student',due_date:'',resource_url:''})
   const [noteForm,setNoteForm]=useState({student_id:'',body:''})
@@ -310,7 +312,7 @@ export function MentorWorkspace() {
   const load=async()=>{
     setError('')
     try{
-      const [s,st,p,se,g,ac,ci,n,fb]=await Promise.all([
+      const [s,st,p,se,g,ac,ci,n,fb,slots]=await Promise.all([
         api.get('/workspaces/mentor/program-dashboard'),
         api.get('/campus/mentor/students'),
         api.get('/workspaces/mentor/programmes'),
@@ -320,10 +322,11 @@ export function MentorWorkspace() {
         api.get('/workspaces/mentor/check-ins'),
         api.get('/workspaces/mentor/notes'),
         api.get('/workspaces/mentor/session-feedback'),
+        api.get('/workspaces/mentor/availability'),
       ])
       setSummary(s.data||{});setStudents(st.data||[]);setProgrammes(p.data||[])
       setSessions(se.data||[]);setGoals(g.data||[]);setActions(ac.data||[])
-      setCheckins(ci.data||[]);setNotes(n.data||[]);setSessionFeedback(fb.data||[])
+      setCheckins(ci.data||[]);setNotes(n.data||[]);setSessionFeedback(fb.data||[]);setAvailability(slots.data||[])
     }catch(e:any){setError(e?.response?.data?.detail||'Could not load the mentoring workspace.')}
   }
   useEffect(()=>{void load()},[])
@@ -335,6 +338,25 @@ export function MentorWorkspace() {
         :payload
       await api.post(endpoint,body);reset();await load()
     }catch(e:any){setError(e?.response?.data?.detail||'Could not save this mentoring record.')}
+    finally{setSaving(false)}
+  }
+  const publishAvailability=async(event:FormEvent)=>{
+    event.preventDefault();setSaving(true);setError('')
+    try{
+      await api.post('/workspaces/mentor/availability',{
+        starts_at:new Date(slotForm.starts_at).toISOString(),
+        ends_at:new Date(slotForm.ends_at).toISOString(),
+        meeting_link:slotForm.meeting_link||null,
+      })
+      setSlotForm({starts_at:'',ends_at:'',meeting_link:''})
+      await load()
+    }catch(e:any){setError(e?.response?.data?.detail||'Could not publish this availability slot.')}
+    finally{setSaving(false)}
+  }
+  const cancelAvailability=async(id:number)=>{
+    setSaving(true);setError('')
+    try{await api.patch('/workspaces/mentor/availability/'+id,{status:'cancelled'});await load()}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not cancel this slot.')}
     finally{setSaving(false)}
   }
   const updateProgramme=async(id:number,status:string)=>{
@@ -429,6 +451,28 @@ export function MentorWorkspace() {
         <Action disabled={saving||!sessionForm.student_id}><Plus size={14}/>Schedule session</Action>
       </form></Panel>
       <Panel><h2 className="font-semibold">Sessions and outcomes</h2>{sessions.length===0?<Empty title="No sessions scheduled" detail="Schedule the first structured mentoring conversation above."/>:<div className="space-y-2">{sessions.map(s=><article key={s.id} className="rounded-xl border border-dark-border p-3 flex flex-wrap items-center justify-between gap-3"><div><b>{s.student_name}</b><p className="text-xs text-dark-muted">{new Date(s.scheduled_at).toLocaleString()} · {s.duration_minutes} min</p>{s.agenda&&<p className="text-sm mt-1">{s.agenda}</p>}{s.meeting_link&&<a className="text-xs text-primary" href={s.meeting_link} target="_blank" rel="noreferrer">Open meeting link ↗</a>}{sessionFeedback.filter(f=>f.session_id===s.id).map(f=><p key={f.id} className="text-xs text-dark-muted mt-2">Mentee feedback: {f.rating}/5 · {f.takeaways}</p>)}</div><SelectField label="Status" value={s.status} onChange={v=>void updateSession(s.id,v)} options={['scheduled','completed','cancelled'].map(v=>({value:v,label:v}))}/></article>)}</div>}</Panel>
+
+      <Panel>
+        <h2 className="font-semibold">Publish bookable availability</h2>
+        <p className="text-xs text-dark-muted">Create future time slots that your assigned mentees can book. Overlapping slots are rejected by the server.</p>
+        <form onSubmit={publishAvailability} className="grid md:grid-cols-2 gap-3">
+          <Field label="Starts at" type="datetime-local" required value={slotForm.starts_at} onChange={v=>setSlotForm({...slotForm,starts_at:v})}/>
+          <Field label="Ends at" type="datetime-local" required value={slotForm.ends_at} onChange={v=>setSlotForm({...slotForm,ends_at:v})}/>
+          <Field label="Meeting link (optional)" value={slotForm.meeting_link} onChange={v=>setSlotForm({...slotForm,meeting_link:v})}/>
+          <div className="flex items-end"><Action disabled={saving||!slotForm.starts_at||!slotForm.ends_at}><Plus size={14}/>Publish slot</Action></div>
+        </form>
+        <div className="space-y-2">
+          {availability.length===0?<Empty title="No availability published" detail="Add time slots above. They will become visible to your assigned mentees."/>:
+            availability.map(slot=><article key={slot.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dark-border p-3">
+              <div><b>{new Date(slot.starts_at).toLocaleString()} – {new Date(slot.ends_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</b>
+                <p className="text-xs text-dark-muted capitalize">{slot.status}{slot.student_name?' · booked by '+slot.student_name:''}</p>
+                {slot.booking_message&&<p className="mt-1 text-xs text-dark-muted">{slot.booking_message}</p>}
+                {slot.meeting_link&&<a href={slot.meeting_link} target="_blank" rel="noreferrer" className="text-xs text-primary">Meeting link ↗</a>}
+              </div>
+              {slot.status!=='cancelled'&&<Action secondary disabled={saving} onClick={()=>void cancelAvailability(slot.id)}>Cancel slot</Action>}
+            </article>)}
+        </div>
+      </Panel>
     </>}
     {path==='goals'&&<>
       <Panel><h2 className="font-semibold">Create a measurable development goal</h2><form onSubmit={e=>void submit(e,'/workspaces/mentor/development-goals',{...goalForm,program_id:Number(goalForm.program_id),due_date:goalForm.due_date||null},()=>setGoalForm({program_id:'',title:'',category:'Career readiness',desired_outcome:'',success_measure:'',baseline:'',target:'',priority:'medium',due_date:''}))} className="grid md:grid-cols-2 gap-3">
