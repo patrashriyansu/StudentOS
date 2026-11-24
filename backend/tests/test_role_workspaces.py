@@ -714,3 +714,68 @@ def test_academic_calendar_is_user_scoped_and_cgpa_what_if_does_not_persist() ->
         assert client.get("/api/v1/academics/calendar", headers=other_student).json() == []
         assert client.get("/api/v1/academics/calendar?start_date=2030-02-01&end_date=2030-01-01",
                           headers=student).status_code == 422
+
+def test_productivity_recurring_tasks_generate_next_occurrence_and_subtasks_are_private() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        student = register(client, "student")
+        other_student = register(client, "student")
+
+        parent = client.post("/api/v1/productivity/tasks", headers=student, json={
+            "title": "Monthly project review",
+            "category": "placement",
+            "priority": "high",
+            "due_date": "2030-01-31T09:00:00",
+            "recurring": "monthly",
+        })
+        assert parent.status_code == 201, parent.text
+        parent_id = parent.json()["id"]
+
+        subtask = client.post(
+            f"/api/v1/productivity/tasks/{parent_id}/subtasks",
+            headers=student,
+            json={"title": "Review resume", "priority": "medium"},
+        )
+        assert subtask.status_code == 201, subtask.text
+        assert subtask.json()["parent_task_id"] == parent_id
+
+        foreign_subtask = client.post(
+            f"/api/v1/productivity/tasks/{parent_id}/subtasks",
+            headers=other_student,
+            json={"title": "Attempted cross-user subtask"},
+        )
+        assert foreign_subtask.status_code == 404
+
+        nested_subtask = client.post(
+            f"/api/v1/productivity/tasks/{subtask.json()['id']}/subtasks",
+            headers=student,
+            json={"title": "Nested task should be rejected"},
+        )
+        assert nested_subtask.status_code == 404
+
+        task_list = client.get("/api/v1/productivity/tasks", headers=student)
+        assert task_list.status_code == 200
+        assert task_list.json()[0]["children"][0]["title"] == "Review resume"
+
+        completed = client.put(f"/api/v1/productivity/tasks/{parent_id}", headers=student,
+                               json={"completed": True})
+        assert completed.status_code == 200, completed.text
+        remaining = client.get("/api/v1/productivity/tasks", headers=student).json()
+        assert len(remaining) == 2
+        next_task = next(item for item in remaining if item["id"] != parent_id)
+        assert next_task["recurring"] == "monthly"
+        assert next_task["due_date"].startswith("2030-02-28T09:00:00")
+        assert next_task["completed"] is False
+
+        forbidden_update = client.put(
+            f"/api/v1/productivity/tasks/{parent_id}",
+            headers=other_student,
+            json={"completed": True},
+        )
+        assert forbidden_update.status_code == 404
+
+        invalid_recurring = client.post("/api/v1/productivity/tasks", headers=student, json={
+            "title": "Invalid recurrence",
+            "recurring": "yearly",
+        })
+        assert invalid_recurring.status_code == 422
