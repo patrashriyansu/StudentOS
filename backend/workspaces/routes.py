@@ -11,7 +11,7 @@ import io
 
 from backend.core.database import get_db
 from backend.core.security import get_current_user
-from backend.users.models import User, UserProfile
+from backend.users.models import User, UserProfile, Notification
 from backend.academics.models import Grade
 from backend.placements.models import ResumeDocument, ApplicationResumeSnapshot
 from backend.campus.models import (
@@ -25,6 +25,7 @@ from .models import (
     ClassAssignment, AssignmentSubmission, ClassMark,
     LearningResource, TimetableEntry, MentorProgram, MentorDevelopmentGoal,
     MentorActionItem, MentorCheckIn, MentorSessionFeedback,
+    RecruiterInterview,
 )
 
 router = APIRouter()
@@ -1225,3 +1226,151 @@ async def delete_mentor_assignment(assignment_id: int, user: User = Depends(get_
         await db.delete(assignment)
         await db.commit()
     return {"message": "Mentor assignment removed."}
+
+
+# ---------------------------------------------------------------------------
+# Recruiter interview scheduling
+# ---------------------------------------------------------------------------
+
+class RecruiterInterviewCreate(BaseModel):
+    scheduled_at: datetime
+    duration_minutes: int = Field(default=45, ge=15, le=240)
+    interview_type: Literal["technical", "hr", "coding", "managerial", "other"] = "technical"
+    meeting_url: str | None = Field(default=None, max_length=1000)
+    notes: str | None = Field(default=None, max_length=3000)
+
+
+class RecruiterInterviewUpdate(BaseModel):
+    status: Literal["scheduled", "completed", "cancelled"]
+
+
+def recruiter_interview_dict(interview: RecruiterInterview, job: RecruiterJob,
+                             student: User, application: RecruiterApplication) -> dict:
+    return {
+        "id": interview.id,
+        "application_id": application.id,
+        "job_id": job.id,
+        "job_title": job.title,
+        "company": job.company,
+        "student_id": student.id,
+        "student_name": student.name,
+        "scheduled_at": normalize_dt(interview.scheduled_at).isoformat(),
+        "duration_minutes": interview.duration_minutes,
+        "interview_type": interview.interview_type,
+        "meeting_url": interview.meeting_url,
+        "notes": interview.notes,
+        "status": interview.status,
+    }
+
+
+@router.get("/recruiter/interviews")
+async def list_recruiter_interviews(user: User = Depends(get_current_user),
+                                    db: AsyncSession = Depends(get_db)):
+    require_role(user, "recruiter")
+    rows = (await db.execute(
+        select(RecruiterInterview, RecruiterJob, User, RecruiterApplication)
+        .join(RecruiterJob, RecruiterJob.id == RecruiterInterview.job_id)
+        .join(User, User.id == RecruiterInterview.student_id)
+        .join(RecruiterApplication, RecruiterApplication.id == RecruiterInterview.application_id)
+        .where(RecruiterInterview.recruiter_id == user.id)
+        .order_by(RecruiterInterview.scheduled_at.asc())
+    )).all()
+    return [recruiter_interview_dict(interview, job, student, application)
+            for interview, job, student, application in rows]
+
+
+@router.post("/recruiter/applications/{application_id}/interviews", status_code=201)
+async def schedule_recruiter_interview(application_id: int, req: RecruiterInterviewCreate,
+                                       user: User = Depends(get_current_user),
+                                       db: AsyncSession = Depends(get_db)):
+    require_role(user, "recruiter")
+    scheduled_at = normalize_dt(req.scheduled_at)
+    if scheduled_at is None or scheduled_at <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=422, detail="Choose a future interview date and time.")
+
+    application_row = (await db.execute(
+        select(RecruiterApplication, RecruiterJob, User)
+        .join(RecruiterJob, RecruiterJob.id == RecruiterApplication.job_id)
+        .join(User, User.id == RecruiterApplication.student_id)
+        .join(RecruiterVisibility, RecruiterVisibility.user_id == RecruiterApplication.student_id)
+        .where(
+            RecruiterApplication.id == application_id,
+            RecruiterJob.recruiter_id == user.id,
+            RecruiterVisibility.profile_visible.is_(True),
+            RecruiterApplication.status.notin_(["rejected", "withdrawn"]),
+        )
+    )).first()
+    if application_row is None:
+        raise HTTPException(status_code=404, detail="An eligible application for one of your jobs was not found.")
+
+    application, job, student = application_row
+    existing_rows = (await db.execute(select(RecruiterInterview).where(
+        RecruiterInterview.recruiter_id == user.id,
+        RecruiterInterview.status == "scheduled",
+    ))).scalars().all()
+    requested_end = scheduled_at + timedelta(minutes=req.duration_minutes)
+    for existing in existing_rows:
+        existing_start = normalize_dt(existing.scheduled_at)
+        existing_end = existing_start + timedelta(minutes=existing.duration_minutes)
+        if scheduled_at < existing_end and existing_start < requested_end:
+            raise HTTPException(status_code=409, detail="This time overlaps another scheduled interview in your calendar.")
+
+    interview = RecruiterInterview(
+        recruiter_id=user.id, application_id=application.id, job_id=job.id,
+        student_id=student.id, scheduled_at=scheduled_at,
+        duration_minutes=req.duration_minutes, interview_type=req.interview_type,
+        meeting_url=req.meeting_url.strip() if req.meeting_url else None,
+        notes=req.notes.strip() if req.notes else None, status="scheduled",
+    )
+    db.add(interview)
+    application.status = "interview"
+    db.add(Notification(
+        user_id=student.id,
+        title=f"Interview scheduled: {job.company}",
+        message=f"{req.interview_type.title()} interview for {job.title} is scheduled for {scheduled_at.isoformat()}.",
+        notification_type="placement",
+    ))
+    await db.commit()
+    await db.refresh(interview)
+    return {"id": interview.id, "message": "Interview scheduled and the student was notified.",
+            "scheduled_at": scheduled_at.isoformat()}
+
+
+@router.get("/student/recruiter-interviews")
+async def list_student_recruiter_interviews(user: User = Depends(get_current_user),
+                                            db: AsyncSession = Depends(get_db)):
+    require_role(user, "student")
+    rows = (await db.execute(
+        select(RecruiterInterview, RecruiterJob, User, RecruiterApplication)
+        .join(RecruiterJob, RecruiterJob.id == RecruiterInterview.job_id)
+        .join(User, User.id == RecruiterInterview.recruiter_id)
+        .join(RecruiterApplication, RecruiterApplication.id == RecruiterInterview.application_id)
+        .where(RecruiterInterview.student_id == user.id)
+        .order_by(RecruiterInterview.scheduled_at.asc())
+    )).all()
+    return [{
+        **recruiter_interview_dict(interview, job, user, application),
+        "recruiter_name": recruiter.name,
+    } for interview, job, recruiter, application in rows]
+
+
+@router.patch("/recruiter/interviews/{interview_id}")
+async def update_recruiter_interview(interview_id: int, req: RecruiterInterviewUpdate,
+                                     user: User = Depends(get_current_user),
+                                     db: AsyncSession = Depends(get_db)):
+    require_role(user, "recruiter")
+    interview = (await db.execute(select(RecruiterInterview).where(
+        RecruiterInterview.id == interview_id,
+        RecruiterInterview.recruiter_id == user.id,
+    ))).scalar_one_or_none()
+    if interview is None:
+        raise HTTPException(status_code=404, detail="Interview not found.")
+    interview.status = req.status
+    db.add(Notification(
+        user_id=interview.student_id,
+        title="Interview update",
+        message=f"Your interview has been marked {req.status}.",
+        notification_type="placement",
+    ))
+    await db.commit()
+    return {"message": "Interview status updated.", "status": interview.status}
