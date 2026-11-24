@@ -3,6 +3,7 @@ import contextlib
 import logging
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from sqlalchemy import text
 from contextlib import asynccontextmanager
 from backend.core.database import engine, Base
 from backend.core.config import settings
@@ -40,6 +41,10 @@ async def initialize_database(app: FastAPI):
     try:
         async with engine.begin() as conn:
             await conn.run_sync(Base.metadata.create_all)
+            # Existing databases are not altered by create_all(). The avatar
+            # is a base64 data URL, so widen the PostgreSQL column on startup.
+            if conn.dialect.name == "postgresql":
+                await conn.execute(text("ALTER TABLE users ALTER COLUMN avatar TYPE TEXT"))
         if settings.SEED_DEMO_DATA:
             await seed_data()
         app.state.db_ready = True
