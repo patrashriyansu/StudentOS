@@ -553,6 +553,9 @@ def test_recruiter_interviews_are_scheduled_for_owned_applications_and_visible_t
         visibility = client.put("/api/v1/campus/recruiter/visibility", headers=student,
                                 json={"profile_visible": True, "contact_visible": False})
         assert visibility.status_code == 200
+        muted = client.put("/api/v1/notifications/settings", headers=student,
+                           json={"in_app_enabled": False, "placement_updates": False})
+        assert muted.status_code == 200, muted.text
 
         job = client.post("/api/v1/workspaces/recruiter/jobs", headers=recruiter, json={
             "title": "Backend Engineering Intern",
@@ -599,6 +602,10 @@ def test_recruiter_interviews_are_scheduled_for_owned_applications_and_visible_t
         assert student_view.json()[0]["company"] == "Interview Workflow Test"
         assert student_view.json()[0]["recruiter_name"] == recruiter["name"]
         assert student_view.json()[0]["meeting_url"] == "https://meet.example.test/interview"
+        student_notifications = client.get("/api/v1/notifications", headers=student)
+        assert student_notifications.status_code == 200, student_notifications.text
+        assert all(item["title"] != "Interview scheduled: Interview Workflow Test"
+                   for item in student_notifications.json())
 
         assert client.get("/api/v1/workspaces/recruiter/interviews", headers=student).status_code == 403
         assert client.get("/api/v1/workspaces/student/recruiter-interviews", headers=recruiter).status_code == 403
@@ -618,6 +625,9 @@ def test_mentor_availability_can_only_be_booked_by_assigned_student() -> None:
             "student_email": assigned["email"],
         })
         assert assignment.status_code == 201, assignment.text
+        muted_mentor = client.put("/api/v1/notifications/settings", headers=mentor,
+                                  json={"in_app_enabled": False})
+        assert muted_mentor.status_code == 200, muted_mentor.text
 
         slot = client.post("/api/v1/workspaces/mentor/availability", headers=mentor, json={
             "starts_at": "2030-02-10T09:00:00Z",
@@ -644,6 +654,10 @@ def test_mentor_availability_can_only_be_booked_by_assigned_student() -> None:
         assert mentor_slots.status_code == 200
         assert mentor_slots.json()[0]["student_name"] == assigned["name"]
         assert mentor_slots.json()[0]["booking_message"].startswith("I would like")
+        mentor_notifications = client.get("/api/v1/notifications", headers=mentor)
+        assert mentor_notifications.status_code == 200, mentor_notifications.text
+        assert all(item["title"] != "Mentoring slot booked"
+                   for item in mentor_notifications.json())
 
         duplicate = client.post(
             f"/api/v1/workspaces/student/mentoring/availability/{slot_id}/book",
