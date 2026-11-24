@@ -109,6 +109,40 @@ async def create_task(req: TaskCreate, current_user: User = Depends(get_current_
     await _award_xp(current_user, 2, "task_created", db)
     return _task_dict(task)
 
+@router.post("/tasks/{task_id}/subtasks", status_code=201)
+async def create_subtask(task_id: int, req: TaskCreate,
+                         current_user: User = Depends(get_current_user),
+                         db: AsyncSession = Depends(get_db)):
+    parent = (await db.execute(select(Task).where(
+        Task.id == task_id,
+        Task.user_id == current_user.id,
+        Task.parent_task_id.is_(None),
+    ))).scalar_one_or_none()
+    if parent is None:
+        raise HTTPException(status_code=404, detail="Parent task not found.")
+    if req.recurring:
+        raise HTTPException(status_code=422, detail="Subtasks cannot have their own recurrence.")
+    try:
+        due_date = datetime.fromisoformat(req.due_date.replace("Z", "+00:00")) if req.due_date else None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Enter a valid subtask due date.") from exc
+    subtask = Task(
+        user_id=current_user.id,
+        parent_task_id=parent.id,
+        title=req.title.strip(),
+        description=req.description,
+        priority=req.priority,
+        category=req.category or parent.category,
+        due_date=due_date,
+        tags=req.tags or [],
+        recurring=None,
+    )
+    db.add(subtask)
+    await db.commit()
+    await db.refresh(subtask)
+    return _task_dict(subtask)
+
+
 @router.put("/tasks/{task_id}")
 async def update_task(task_id: int, req: TaskUpdate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
     result = await db.execute(select(Task).where(Task.id == task_id, Task.user_id == current_user.id))
