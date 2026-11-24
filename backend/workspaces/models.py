@@ -265,3 +265,33 @@ class MentorMessage(Base):
     read_by_mentor = Column(Boolean, nullable=False, default=False)
     read_by_student = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False, index=True)
+
+class RecruiterInterview(Base):
+    """An interview scheduled by the owner of a job application."""
+    __tablename__ = "workspace_recruiter_interviews"
+    id = Column(Integer, primary_key=True, index=True)
+    recruiter_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    application_id = Column(Integer, ForeignKey("workspace_recruiter_applications.id", ondelete="CASCADE"), nullable=False, index=True)
+    job_id = Column(Integer, ForeignKey("workspace_recruiter_jobs.id", ondelete="CASCADE"), nullable=False, index=True)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    scheduled_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    duration_minutes = Column(Integer, nullable=False, default=45)
+    interview_type = Column(String(32), nullable=False, default="technical")
+    meeting_url = Column(String(1000), nullable=True)
+    notes = Column(Text, nullable=True)
+    status = Column(String(20), nullable=False, default="scheduled", index=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
+
+
+class MentorAvailabilitySlot(Base):
+    """A bookable time slot published by a mentor for assigned students."""
+    __tablename__ = "workspace_mentor_availability_slots"
+    id = Column(Integer, primary_key=True, index=True)
+    mentor_id = Column(Integer, ForeignKey("users.id", ondelete="CASCADE"), nullable=False, index=True)
+    starts_at = Column(DateTime(timezone=True), nullable=False, index=True)
+    ends_at = Column(DateTime(timezone=True), nullable=False)
+    meeting_link = Column(String(1000), nullable=True)
+    status = Column(String(20), nullable=False, default="available", index=True)
+    student_id = Column(Integer, ForeignKey("users.id", ondelete="SET NULL"), nullable=True, index=True)
+    booking_message = Column(Text, nullable=True)
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc), nullable=False)
