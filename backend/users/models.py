@@ -10,7 +10,7 @@ class User(Base):
     password_hash = Column(String(255), nullable=False)
     name = Column(String(255), nullable=False)
     role = Column(String(50), default="student")  # student, faculty, admin, recruiter, mentor
-    avatar = Column(String(500), nullable=True)
+    avatar = Column(Text, nullable=True)
     google_id = Column(String(255), nullable=True)
     is_active = Column(Boolean, default=True)
     is_verified = Column(Boolean, default=False)
