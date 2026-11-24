@@ -9,11 +9,12 @@ from sqlalchemy.orm import aliased
 
 from backend.core.database import get_db
 from backend.core.security import get_current_user
-from backend.users.models import User, UserProfile
+from backend.users.models import User, UserProfile, Notification
 from backend.campus.models import MentorStudentAssignment
 from .models import (
     MentorProgram, MentorDevelopmentGoal, MentorActionItem, MentorCheckIn,
     MentorSession, MentorSessionFeedback, MentorRequest, MentorMessage,
+    MentorAvailabilitySlot,
 )
 
 router = APIRouter()
@@ -761,3 +762,179 @@ async def send_student_mentor_message(
     await db.commit()
     await db.refresh(message)
     return {"id": message.id, "message": "Message sent."}
+
+
+
+# ---------------------------------------------------------------------------
+# Mentor availability and student booking
+# ---------------------------------------------------------------------------
+
+class MentorAvailabilityCreate(BaseModel):
+    starts_at: datetime
+    ends_at: datetime
+    meeting_link: str | None = Field(default=None, max_length=1000)
+
+
+class MentorAvailabilityUpdate(BaseModel):
+    status: Literal["cancelled", "completed"]
+
+
+class MentorAvailabilityBooking(BaseModel):
+    message: str | None = Field(default=None, max_length=1000)
+
+
+def availability_dict(slot: MentorAvailabilitySlot, student: User | None = None) -> dict:
+    return {
+        "id": slot.id,
+        "mentor_id": slot.mentor_id,
+        "starts_at": (slot.starts_at.replace(tzinfo=timezone.utc)
+                      if slot.starts_at.tzinfo is None else slot.starts_at).isoformat(),
+        "ends_at": (slot.ends_at.replace(tzinfo=timezone.utc)
+                    if slot.ends_at.tzinfo is None else slot.ends_at).isoformat(),
+        "meeting_link": slot.meeting_link,
+        "status": slot.status,
+        "student_id": slot.student_id,
+        "student_name": student.name if student else None,
+        "booking_message": slot.booking_message,
+    }
+
+
+@router.post("/mentor/availability", status_code=201)
+async def create_mentor_availability(req: MentorAvailabilityCreate,
+                                     user: User = Depends(get_current_user),
+                                     db: AsyncSession = Depends(get_db)):
+    require_role(user, "mentor")
+    starts_at = req.starts_at.replace(tzinfo=timezone.utc) if req.starts_at.tzinfo is None else req.starts_at
+    ends_at = req.ends_at.replace(tzinfo=timezone.utc) if req.ends_at.tzinfo is None else req.ends_at
+    now = datetime.now(timezone.utc)
+    duration = (ends_at - starts_at).total_seconds() / 60
+    if starts_at <= now:
+        raise HTTPException(status_code=422, detail="Availability must start in the future.")
+    if duration < 15 or duration > 240:
+        raise HTTPException(status_code=422, detail="Availability must be between 15 minutes and 4 hours.")
+    existing_slots = (await db.execute(select(MentorAvailabilitySlot).where(
+        MentorAvailabilitySlot.mentor_id == user.id,
+        MentorAvailabilitySlot.status != "cancelled",
+    ))).scalars().all()
+    for existing in existing_slots:
+        existing_start = existing.starts_at.replace(tzinfo=timezone.utc) if existing.starts_at.tzinfo is None else existing.starts_at
+        existing_end = existing.ends_at.replace(tzinfo=timezone.utc) if existing.ends_at.tzinfo is None else existing.ends_at
+        if starts_at < existing_end and existing_start < ends_at:
+            raise HTTPException(status_code=409, detail="This availability overlaps another published slot.")
+    slot = MentorAvailabilitySlot(
+        mentor_id=user.id, starts_at=starts_at, ends_at=ends_at,
+        meeting_link=req.meeting_link.strip() if req.meeting_link else None,
+        status="available",
+    )
+    db.add(slot)
+    await db.commit()
+    await db.refresh(slot)
+    return availability_dict(slot)
+
+
+@router.get("/mentor/availability")
+async def list_mentor_availability(user: User = Depends(get_current_user),
+                                   db: AsyncSession = Depends(get_db)):
+    require_role(user, "mentor")
+    rows = (await db.execute(
+        select(MentorAvailabilitySlot, User)
+        .outerjoin(User, User.id == MentorAvailabilitySlot.student_id)
+        .where(MentorAvailabilitySlot.mentor_id == user.id)
+        .order_by(MentorAvailabilitySlot.starts_at.asc())
+    )).all()
+    return [availability_dict(slot, student) for slot, student in rows]
+
+
+@router.patch("/mentor/availability/{slot_id}")
+async def update_mentor_availability(slot_id: int, req: MentorAvailabilityUpdate,
+                                     user: User = Depends(get_current_user),
+                                     db: AsyncSession = Depends(get_db)):
+    require_role(user, "mentor")
+    slot = (await db.execute(select(MentorAvailabilitySlot).where(
+        MentorAvailabilitySlot.id == slot_id,
+        MentorAvailabilitySlot.mentor_id == user.id,
+    ))).scalar_one_or_none()
+    if slot is None:
+        raise HTTPException(status_code=404, detail="Availability slot not found.")
+    slot.status = req.status
+    if slot.student_id is not None:
+        db.add(Notification(
+            user_id=slot.student_id,
+            title="Mentoring session update",
+            message=f"Your mentor has marked the booked slot as {req.status}.",
+            notification_type="info",
+        ))
+    await db.commit()
+    return {"message": "Availability updated.", "status": slot.status}
+
+
+@router.get("/student/mentoring/availability")
+async def student_available_mentor_slots(mentor_id: int | None = None,
+                                         user: User = Depends(get_current_user),
+                                         db: AsyncSession = Depends(get_db)):
+    require_role(user, "student")
+    assignments_query = select(MentorStudentAssignment.mentor_id).where(
+        MentorStudentAssignment.student_id == user.id
+    )
+    if mentor_id is not None:
+        assignments_query = assignments_query.where(MentorStudentAssignment.mentor_id == mentor_id)
+    mentor_ids = list((await db.execute(assignments_query)).scalars().all())
+    if not mentor_ids:
+        return []
+    rows = (await db.execute(
+        select(MentorAvailabilitySlot, User)
+        .join(User, User.id == MentorAvailabilitySlot.mentor_id)
+        .where(
+            MentorAvailabilitySlot.mentor_id.in_(mentor_ids),
+            MentorAvailabilitySlot.status == "available",
+            MentorAvailabilitySlot.starts_at > datetime.now(timezone.utc),
+        )
+        .order_by(MentorAvailabilitySlot.starts_at.asc())
+    )).all()
+    return [{**availability_dict(slot), "mentor_name": mentor.name} for slot, mentor in rows]
+
+
+@router.post("/student/mentoring/availability/{slot_id}/book", status_code=201)
+async def book_mentor_availability(slot_id: int, req: MentorAvailabilityBooking,
+                                   user: User = Depends(get_current_user),
+                                   db: AsyncSession = Depends(get_db)):
+    require_role(user, "student")
+    slot = (await db.execute(select(MentorAvailabilitySlot).where(
+        MentorAvailabilitySlot.id == slot_id
+    ).with_for_update())).scalar_one_or_none()
+    if slot is None or slot.status != "available":
+        raise HTTPException(status_code=404, detail="This availability slot is no longer available.")
+    assignment = (await db.execute(select(MentorStudentAssignment).where(
+        MentorStudentAssignment.mentor_id == slot.mentor_id,
+        MentorStudentAssignment.student_id == user.id,
+    ))).scalar_one_or_none()
+    if assignment is None:
+        raise HTTPException(status_code=403, detail="You can only book a slot with your assigned mentor.")
+    starts_at = slot.starts_at.replace(tzinfo=timezone.utc) if slot.starts_at.tzinfo is None else slot.starts_at
+    if starts_at <= datetime.now(timezone.utc):
+        raise HTTPException(status_code=422, detail="This slot is in the past.")
+    slot.status = "booked"
+    slot.student_id = user.id
+    slot.booking_message = req.message.strip() if req.message else None
+    db.add(Notification(
+        user_id=slot.mentor_id,
+        title="Mentoring slot booked",
+        message=f"{user.name} booked your availability for {starts_at.isoformat()}.",
+        notification_type="info",
+    ))
+    await db.commit()
+    await db.refresh(slot)
+    return {"message": "Mentoring slot booked.", "slot": availability_dict(slot)}
+
+
+@router.get("/student/mentoring/bookings")
+async def list_student_mentor_bookings(user: User = Depends(get_current_user),
+                                       db: AsyncSession = Depends(get_db)):
+    require_role(user, "student")
+    rows = (await db.execute(
+        select(MentorAvailabilitySlot, User)
+        .join(User, User.id == MentorAvailabilitySlot.mentor_id)
+        .where(MentorAvailabilitySlot.student_id == user.id)
+        .order_by(MentorAvailabilitySlot.starts_at.desc())
+    )).all()
+    return [{**availability_dict(slot), "mentor_name": mentor.name} for slot, mentor in rows]
