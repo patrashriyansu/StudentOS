@@ -1340,10 +1340,11 @@ async def schedule_recruiter_interview(application_id: int, req: RecruiterInterv
 async def list_student_recruiter_interviews(user: User = Depends(get_current_user),
                                             db: AsyncSession = Depends(get_db)):
     require_role(user, "student")
+    recruiter_user = aliased(User)
     rows = (await db.execute(
-        select(RecruiterInterview, RecruiterJob, User, RecruiterApplication)
+        select(RecruiterInterview, RecruiterJob, recruiter_user, RecruiterApplication)
         .join(RecruiterJob, RecruiterJob.id == RecruiterInterview.job_id)
-        .join(User, User.id == RecruiterInterview.recruiter_id)
+        .join(recruiter_user, recruiter_user.id == RecruiterInterview.recruiter_id)
         .join(RecruiterApplication, RecruiterApplication.id == RecruiterInterview.application_id)
         .where(RecruiterInterview.student_id == user.id)
         .order_by(RecruiterInterview.scheduled_at.asc())
