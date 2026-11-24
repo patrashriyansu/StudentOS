@@ -573,7 +573,9 @@ def test_recruiter_interviews_are_scheduled_for_owned_applications_and_visible_t
                   "cover_note": "I am interested in this role."},
         )
         assert application.status_code == 201, application.text
-        application_id = application.json()["id"]
+        recruiter_applications = client.get("/api/v1/workspaces/recruiter/applications", headers=recruiter)
+        assert recruiter_applications.status_code == 200, recruiter_applications.text
+        application_id = recruiter_applications.json()[0]["id"]
 
         scheduled = client.post(
             f"/api/v1/workspaces/recruiter/applications/{application_id}/interviews",
