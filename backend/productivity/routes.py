@@ -160,6 +160,10 @@ async def update_task(task_id: int, req: TaskUpdate, current_user: User = Depend
         await _award_xp(current_user, 10, "task_completed", db)
         if task.recurring in ("daily", "weekly", "monthly") and task.parent_task_id is None and task.due_date is not None:
             next_due = _next_task_due_date(task.due_date, task.recurring)
+            now = datetime.now(timezone.utc)
+            comparison_now = now if next_due.tzinfo is not None else now.replace(tzinfo=None)
+            while next_due <= comparison_now:
+                next_due = _next_task_due_date(next_due, task.recurring)
             db.add(Task(
                 user_id=current_user.id,
                 title=task.title,
