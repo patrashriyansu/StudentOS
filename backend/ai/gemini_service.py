@@ -93,7 +93,7 @@ def _select_fallback_model(configured_model: str, available_models: set[str]) ->
     for candidate in GEMINI_MODEL_FALLBACKS:
         if candidate != configured and candidate in available_models:
             return candidate
-    remaining = sorted(name for name in available_models if name != configured)
+    remaining = sorted(name for name in available_models if name != configured and name.startswith("gemini-"))
     return remaining[0] if remaining else None
 
 
