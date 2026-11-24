@@ -14,6 +14,7 @@ export default function Placements() {
   const [tab, setTab] = useState<'opportunities' | 'applications' | 'resume' | 'builder' | 'interviews' | 'offers'>('applications')
   const [applications, setApplications] = useState<any[]>([])
   const [interviews, setInterviews] = useState<any[]>([])
+  const [recruiterInterviews, setRecruiterInterviews] = useState<any[]>([])
   const [offers, setOffers] = useState<any[]>([])
   const [showAddModal, setShowAddModal] = useState(false)
   const [showInterviewModal, setShowInterviewModal] = useState(false)
@@ -58,6 +59,8 @@ export default function Placements() {
       ])
       setJobs(jobResponse.status === 'fulfilled' && Array.isArray(jobResponse.value.data) ? jobResponse.value.data : [])
       setStudentJobApplications(studentApplicationResponse.status === 'fulfilled' && Array.isArray(studentApplicationResponse.value.data) ? studentApplicationResponse.value.data : [])
+      const recruiterInterviewResponse = await api.get('/workspaces/student/recruiter-interviews').catch(() => ({ data: [] }))
+      setRecruiterInterviews(Array.isArray(recruiterInterviewResponse.data) ? recruiterInterviewResponse.data : [])
     } catch (err) {
       console.error(err)
     }
@@ -672,7 +675,8 @@ export default function Placements() {
       {/* Tab: Interviews */}
       {tab === 'interviews' && (
         <div className="space-y-4">
-          {interviews.length === 0 ? (
+          {recruiterInterviews.length > 0 && <section className="glass rounded-2xl border border-primary/30 p-5 space-y-3"><div><h3 className="font-semibold">Interviews from recruiters</h3><p className="text-xs text-dark-muted">These interviews were scheduled against your job applications. Check the meeting link and instructions before joining.</p></div>{recruiterInterviews.map((item:any)=><article key={item.id} className="rounded-xl border border-dark-border p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><b>{item.company} · {item.job_title}</b><p className="text-xs text-dark-muted">{item.recruiter_name} · {new Date(item.scheduled_at).toLocaleString()} · {item.duration_minutes} min · {item.interview_type}</p>{item.notes&&<p className="mt-2 text-sm">{item.notes}</p>}{item.meeting_url&&<a href={item.meeting_url} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs text-primary">Join interview ↗</a>}</div><span className="rounded-full bg-dark-lighter px-3 py-1 text-xs capitalize">{item.status}</span></div></article>)}</section>}
+          {interviews.length === 0 && recruiterInterviews.length === 0 ? (
             <div className="glass rounded-2xl p-12 text-center border border-dashed border-dark-border">
               <Star size={36} className="text-dark-muted mx-auto mb-3" />
               <h3 className="font-semibold">No interviews scheduled</h3>
