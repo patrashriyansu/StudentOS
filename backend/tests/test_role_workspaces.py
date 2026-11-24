@@ -592,6 +592,12 @@ def test_recruiter_interviews_are_scheduled_for_owned_applications_and_visible_t
             },
         )
         assert scheduled.status_code == 201, scheduled.text
+        overlap = client.post(
+            f"/api/v1/workspaces/recruiter/applications/{application_id}/interviews",
+            headers=recruiter,
+            json={"scheduled_at": "2030-01-02T09:30:00Z", "duration_minutes": 30},
+        )
+        assert overlap.status_code == 409, overlap.text
         recruiter_view = client.get("/api/v1/workspaces/recruiter/interviews", headers=recruiter)
         assert recruiter_view.status_code == 200
         assert recruiter_view.json()[0]["student_name"] == student["name"]
@@ -636,6 +642,11 @@ def test_mentor_availability_can_only_be_booked_by_assigned_student() -> None:
         })
         assert slot.status_code == 201, slot.text
         slot_id = slot.json()["id"]
+        overlapping_slot = client.post("/api/v1/workspaces/mentor/availability", headers=mentor, json={
+            "starts_at": "2030-02-10T09:15:00Z",
+            "ends_at": "2030-02-10T09:45:00Z",
+        })
+        assert overlapping_slot.status_code == 409, overlapping_slot.text
 
         visible = client.get("/api/v1/workspaces/student/mentoring/availability", headers=assigned)
         assert visible.status_code == 200
