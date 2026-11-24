@@ -136,7 +136,7 @@ export default function AcademicPlanningPanel() {
                 {events.map(item=><article key={item.id} className="rounded-xl border border-dark-border p-3">
                   <div className="flex items-start justify-between gap-3">
                     <div><p className="text-xs uppercase tracking-wide text-primary">{item.type}</p><p className="text-sm font-semibold">{item.title}</p><p className="text-xs text-dark-muted">{item.subject} · {new Date(item.starts_at).toLocaleString()}</p></div>
-                    <span className="rounded-full bg-dark-lighter px-2 py-1 text-[10px] capitalize text-dark-muted">{item.status.replaceAll('_',' ')}</span>
+                    <span className="rounded-full bg-dark-lighter px-2 py-1 text-[10px] capitalize text-dark-muted">{item.status.replace(/_/g, ' ')}</span>
                   </div>
                   {item.description && <p className="mt-2 text-xs text-dark-muted">{item.description}</p>}
                 </article>)}
