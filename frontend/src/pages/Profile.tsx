@@ -130,11 +130,15 @@ export default function Profile() {
     if (!selected) return
 
     if (!['image/png', 'image/jpeg', 'image/webp'].includes(selected.type)) {
+      setAvatarFile(null)
+      setAvatarPreview('')
       setPageError('Choose a PNG, JPEG or WebP image.')
       event.target.value = ''
       return
     }
     if (selected.size > 2 * 1024 * 1024) {
+      setAvatarFile(null)
+      setAvatarPreview('')
       setPageError('Profile photos must be 2 MB or smaller.')
       event.target.value = ''
       return
@@ -144,6 +148,7 @@ export default function Profile() {
     setFeedback('')
     setAvatarFile(selected)
     setAvatarPreview(URL.createObjectURL(selected))
+    event.target.value = ''
   }
 
   const handleAvatarUpload = async () => {
