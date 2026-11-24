@@ -2,6 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select, func, and_
 from datetime import date, datetime, timezone, timedelta
+from calendar import monthrange
 from typing import Optional, List
 from pydantic import BaseModel
 from backend.core.database import get_db
@@ -60,20 +61,48 @@ async def get_tasks(current_user: User = Depends(get_current_user), db: AsyncSes
     query = query.order_by(Task.due_date.asc().nullslast(), Task.created_at.desc())
     result = await db.execute(query)
     tasks = result.scalars().all()
-    return [_task_dict(t) for t in tasks]
+    if not tasks:
+        return []
+    child_result = await db.execute(select(Task).where(
+        Task.user_id == current_user.id,
+        Task.parent_task_id.in_([task.id for task in tasks]),
+    ).order_by(Task.created_at.asc()))
+    children_by_parent: dict[int, list[Task]] = {}
+    for child in child_result.scalars().all():
+        children_by_parent.setdefault(child.parent_task_id, []).append(child)
+    return [_task_dict(task, children_by_parent.get(task.id, [])) for task in tasks]
 
 @router.post("/tasks", status_code=201)
 async def create_task(req: TaskCreate, current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
+    if req.recurring not in (None, "daily", "weekly", "monthly"):
+        raise HTTPException(status_code=422, detail="Recurrence must be daily, weekly, monthly or empty.")
+    if req.recurring and not req.due_date:
+        raise HTTPException(status_code=422, detail="A due date is required for a recurring task.")
+    if req.parent_task_id is not None:
+        parent = (await db.execute(select(Task).where(
+            Task.id == req.parent_task_id,
+            Task.user_id == current_user.id,
+        ))).scalar_one_or_none()
+        if parent is None:
+            raise HTTPException(status_code=404, detail="Parent task not found.")
+        if parent.parent_task_id is not None:
+            raise HTTPException(status_code=422, detail="Subtasks can only be one level deep.")
+        if req.recurring:
+            raise HTTPException(status_code=422, detail="Subtasks cannot have their own recurrence.")
+    try:
+        due_date = datetime.fromisoformat(req.due_date.replace("Z", "+00:00")) if req.due_date else None
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail="Enter a valid task due date.") from exc
     task = Task(
         user_id=current_user.id,
-        title=req.title,
+        title=req.title.strip(),
         description=req.description,
         priority=req.priority,
         category=req.category,
         tags=req.tags or [],
         recurring=req.recurring,
         parent_task_id=req.parent_task_id,
-        due_date=datetime.fromisoformat(req.due_date) if req.due_date else None
+        due_date=due_date,
     )
     db.add(task); await db.commit(); await db.refresh(task)
     # Award XP for creating task
@@ -95,6 +124,21 @@ async def update_task(task_id: int, req: TaskUpdate, current_user: User = Depend
     if req.completed and not was_completed:
         task.completed_at = datetime.now(timezone.utc)
         await _award_xp(current_user, 10, "task_completed", db)
+        if task.recurring in ("daily", "weekly", "monthly") and task.parent_task_id is None and task.due_date is not None:
+            next_due = _next_task_due_date(task.due_date, task.recurring)
+            db.add(Task(
+                user_id=current_user.id,
+                title=task.title,
+                description=task.description,
+                priority=task.priority,
+                category=task.category,
+                due_date=next_due,
+                recurring=task.recurring,
+                parent_task_id=None,
+                tags=task.tags or [],
+            ))
+    elif req.completed is False:
+        task.completed_at = None
     task.updated_at = datetime.now(timezone.utc)
     await db.commit()
     return _task_dict(task)
@@ -105,8 +149,15 @@ async def delete_task(task_id: int, current_user: User = Depends(get_current_use
     task = result.scalar_one_or_none()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
-    await db.delete(task); await db.commit()
-    return {"message": "Task deleted"}
+    child_result = await db.execute(select(Task).where(
+        Task.user_id == current_user.id,
+        Task.parent_task_id == task.id,
+    ))
+    for child in child_result.scalars().all():
+        await db.delete(child)
+    await db.delete(task)
+    await db.commit()
+    return {"message": "Task and its subtasks deleted"}
 
 @router.get("/tasks/stats")
 async def get_task_stats(current_user: User = Depends(get_current_user), db: AsyncSession = Depends(get_db)):
@@ -219,12 +270,28 @@ async def get_productivity_summary(current_user: User = Depends(get_current_user
 
 
 # ── Helpers ────────────────────────────────────────────────────────────────────
-def _task_dict(t: Task) -> dict:
+def _next_task_due_date(due_date: datetime, recurrence: str) -> datetime:
+    if recurrence == "daily":
+        return due_date + timedelta(days=1)
+    if recurrence == "weekly":
+        return due_date + timedelta(days=7)
+    if recurrence == "monthly":
+        month_index = due_date.month
+        year_value = due_date.year + (month_index // 12)
+        month_value = (month_index % 12) + 1
+        day_value = min(due_date.day, monthrange(year_value, month_value)[1])
+        return due_date.replace(year=year_value, month=month_value, day=day_value)
+    raise ValueError("Unsupported recurrence.")
+
+
+def _task_dict(t: Task, children: list[Task] | None = None) -> dict:
     return {
         "id": t.id, "title": t.title, "description": t.description, "priority": t.priority,
         "category": t.category, "due_date": t.due_date.isoformat() if t.due_date else None,
         "completed": t.completed, "completed_at": t.completed_at.isoformat() if t.completed_at else None,
-        "tags": t.tags or [], "recurring": t.recurring, "created_at": t.created_at.isoformat()
+        "tags": t.tags or [], "recurring": t.recurring, "created_at": t.created_at.isoformat(),
+        "parent_task_id": t.parent_task_id,
+        "children": [_task_dict(child) for child in (children or [])],
     }
 
 async def _award_xp(user: User, amount: int, reason: str, db: AsyncSession):
