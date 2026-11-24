@@ -352,12 +352,16 @@ export default function Layout() {
             style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', minWidth: 0 }}
           >
             <div style={{
-              width: 36, height: 36, borderRadius: '50%', flexShrink: 0,
+              width: 36, height: 36, borderRadius: '50%', flexShrink: 0, overflow: 'hidden',
               background: 'linear-gradient(135deg,#6C63FF,#A855F7)',
               display: 'flex', alignItems: 'center', justifyContent: 'center',
               fontSize: 14, fontWeight: 700, color: '#fff',
             }}>
-              {user?.name?.[0]?.toUpperCase() || 'S'}
+              {user?.avatar ? (
+                <img src={user.avatar} alt="" className="w-full h-full object-cover" />
+              ) : (
+                user?.name?.[0]?.toUpperCase() || 'S'
+              )}
             </div>
             <div className="app-user-details">
               <div className="app-user-name" style={{ fontSize: 13, fontWeight: 600, color: 'var(--app-text)', lineHeight: 1 }}>

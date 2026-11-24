@@ -3,7 +3,11 @@ import {
   Mail, Calendar, Award, Github, Linkedin, Globe, Edit2, Save, Sparkles,
   GraduationCap, ShieldCheck, AlertCircle, CheckCircle2,
 } from 'lucide-react'
-import { useState, useEffect, type FormEvent } from 'react'
+import { useState, useEffect, useRef, type ChangeEvent, type FormEvent } from 'react'
+import { useDispatch } from 'react-redux'
+import type { AppDispatch } from '../store'
+import { setUser } from '../store/slices/authSlice'
+import { saveUser, shouldRememberAuth } from '../services/authStorage'
 import { api } from '../services/api'
 
 type AcademicProfile = {
@@ -34,6 +38,7 @@ const emptyAcademicProfile: AcademicProfile = {
 
 export default function Profile() {
   const { user } = useAuth()
+  const dispatch = useDispatch<AppDispatch>()
   const [editing, setEditing] = useState(false)
   const [profileData, setProfileData] = useState<any>({
     bio: '',
@@ -52,6 +57,15 @@ export default function Profile() {
   const [visibilityBusy, setVisibilityBusy] = useState(false)
   const [feedback, setFeedback] = useState('')
   const [pageError, setPageError] = useState('')
+  const [avatarFile, setAvatarFile] = useState<File | null>(null)
+  const [avatarPreview, setAvatarPreview] = useState('')
+  const [avatarBusy, setAvatarBusy] = useState(false)
+  const avatarInputRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (!avatarPreview.startsWith('blob:')) return
+    return () => URL.revokeObjectURL(avatarPreview)
+  }, [avatarPreview])
 
   useEffect(() => {
     api.get('/users/profile')
@@ -108,6 +122,56 @@ export default function Profile() {
       setPageError('')
     } catch (err: any) {
       setPageError(err?.response?.data?.detail || 'Failed to update profile information.')
+    }
+  }
+
+  const handleAvatarSelection = (event: ChangeEvent<HTMLInputElement>) => {
+    const selected = event.target.files?.[0]
+    if (!selected) return
+
+    if (!['image/png', 'image/jpeg', 'image/webp'].includes(selected.type)) {
+      setAvatarFile(null)
+      setAvatarPreview('')
+      setPageError('Choose a PNG, JPEG or WebP image.')
+      event.target.value = ''
+      return
+    }
+    if (selected.size > 2 * 1024 * 1024) {
+      setAvatarFile(null)
+      setAvatarPreview('')
+      setPageError('Profile photos must be 2 MB or smaller.')
+      event.target.value = ''
+      return
+    }
+
+    setPageError('')
+    setFeedback('')
+    setAvatarFile(selected)
+    setAvatarPreview(URL.createObjectURL(selected))
+    event.target.value = ''
+  }
+
+  const handleAvatarUpload = async () => {
+    if (!avatarFile || !user) return
+    const formData = new FormData()
+    formData.append('file', avatarFile)
+    setAvatarBusy(true)
+    setPageError('')
+    setFeedback('')
+    try {
+      const response = await api.post('/users/upload-avatar', formData)
+      const updatedUser = { ...user, avatar: response.data?.avatar as string }
+      if (!updatedUser.avatar) throw new Error('The server did not return the uploaded profile photo.')
+      dispatch(setUser(updatedUser))
+      saveUser(updatedUser, shouldRememberAuth())
+      setAvatarFile(null)
+      setAvatarPreview('')
+      if (avatarInputRef.current) avatarInputRef.current.value = ''
+      setFeedback('Profile photo updated successfully.')
+    } catch (err: any) {
+      setPageError(err?.response?.data?.detail || err?.message || 'Could not upload your profile photo.')
+    } finally {
+      setAvatarBusy(false)
     }
   }
 
@@ -201,8 +265,40 @@ export default function Profile() {
 
       <div className="glass rounded-2xl p-8 border border-dark-border">
         <div className="flex flex-col sm:flex-row items-start gap-6">
-          <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-3xl font-bold shrink-0">
-            {user?.name?.[0]?.toUpperCase() || '?'}
+          <div className="shrink-0 flex flex-col items-center gap-2">
+            <div className="w-20 h-20 rounded-2xl bg-gradient-to-br from-primary to-secondary flex items-center justify-center text-3xl font-bold overflow-hidden">
+              {(avatarPreview || user?.avatar) ? (
+                <img src={avatarPreview || user?.avatar} alt={`${user?.name || 'User'} profile`} className="w-full h-full object-cover" />
+              ) : (
+                user?.name?.[0]?.toUpperCase() || '?'
+              )}
+            </div>
+            <input
+              ref={avatarInputRef}
+              type="file"
+              accept="image/png,image/jpeg,image/webp"
+              onChange={handleAvatarSelection}
+              className="hidden"
+              aria-label="Choose profile photo"
+            />
+            <button
+              type="button"
+              onClick={() => avatarInputRef.current?.click()}
+              className="text-xs font-medium text-primary hover:text-white transition-colors"
+            >
+              {user?.avatar ? 'Change photo' : 'Add photo'}
+            </button>
+            {avatarFile && (
+              <button
+                type="button"
+                onClick={() => void handleAvatarUpload()}
+                disabled={avatarBusy}
+                className="rounded-lg bg-primary px-3 py-1.5 text-xs font-semibold text-white disabled:opacity-50"
+              >
+                {avatarBusy ? 'Uploading…' : 'Upload photo'}
+              </button>
+            )}
+            <span className="text-[10px] text-dark-muted">PNG, JPG or WebP · Max 2 MB</span>
           </div>
           <div className="flex-1 w-full">
             <div className="flex items-center justify-between gap-3">

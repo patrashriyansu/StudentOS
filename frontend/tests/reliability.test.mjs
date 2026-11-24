@@ -256,3 +256,17 @@ test('all account roles receive distinct workspaces and the student classroom is
   assert.match(backend, /resume_document_id/)
   assert.match(backend, /You can only manage your assigned classes/)
 })
+
+test('profile page uploads a validated photo and the app header uses the saved avatar', async () => {
+  const profile = await read('../src/pages/Profile.tsx')
+  const layout = await read('../src/components/layout/Layout.tsx')
+  assert.match(profile, /\/users\/upload-avatar/)
+  assert.match(profile, /accept="image\/png,image\/jpeg,image\/webp"/)
+  assert.match(profile, /2 \* 1024 \* 1024/)
+  assert.match(profile, /URL\.createObjectURL/)
+  assert.match(profile, /dispatch\(setUser\(updatedUser\)\)/)
+  assert.match(profile, /saveUser\(updatedUser, shouldRememberAuth\(\)\)/)
+  assert.match(layout, /user\?\.avatar/)
+  assert.match(layout, /object-cover/)
+})
+
