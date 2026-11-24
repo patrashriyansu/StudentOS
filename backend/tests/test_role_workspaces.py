@@ -650,3 +650,51 @@ def test_mentor_availability_can_only_be_booked_by_assigned_student() -> None:
         )
         assert duplicate.status_code == 404
         assert client.get("/api/v1/workspaces/mentor/availability", headers=assigned).status_code == 403
+
+def test_academic_calendar_is_user_scoped_and_cgpa_what_if_does_not_persist() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        student = register(client, "student")
+        other_student = register(client, "student")
+
+        saved_grade = client.post("/api/v1/academics/grades", headers=student, json={
+            "semester": 1, "subject": "Data Structures", "credits": 20,
+            "grade_point": 8.4, "grade": "A",
+        })
+        assert saved_grade.status_code == 200, saved_grade.text
+
+        scenario = client.post("/api/v1/academics/cgpa/what-if", headers=student, json={
+            "future_semester_credits": 20,
+            "expected_sgpa": 9.2,
+        })
+        assert scenario.status_code == 200, scenario.text
+        assert scenario.json()["current_cgpa"] == 8.4
+        assert scenario.json()["projected_cgpa"] == 8.8
+        assert scenario.json()["persisted"] is False
+        assert client.get("/api/v1/academics/cgpa", headers=student).json()["cgpa"] == 8.4
+
+        invalid = client.post("/api/v1/academics/cgpa/what-if", headers=student, json={
+            "future_semester_credits": 20,
+            "expected_sgpa": 10.1,
+        })
+        assert invalid.status_code == 422
+
+        exam = client.post("/api/v1/academics/exams", headers=student, json={
+            "subject": "Operating Systems", "exam_type": "Mid-Semester",
+            "date": "2030-01-05T09:00:00Z", "syllabus": "Processes and scheduling",
+        })
+        assert exam.status_code == 200, exam.text
+        assignment = client.post("/api/v1/academics/assignments", headers=student, json={
+            "title": "OS scheduling worksheet", "description": "Complete the scheduling problems.",
+            "subject": "Operating Systems", "due_date": "2030-01-03T23:59:00Z",
+        })
+        assert assignment.status_code == 200, assignment.text
+
+        calendar = client.get("/api/v1/academics/calendar?start_date=2030-01-01&end_date=2030-01-31",
+                              headers=student)
+        assert calendar.status_code == 200, calendar.text
+        assert {item["type"] for item in calendar.json()} == {"exam", "assignment"}
+        assert all(item["date"].startswith("2030-01") for item in calendar.json())
+        assert client.get("/api/v1/academics/calendar", headers=other_student).json() == []
+        assert client.get("/api/v1/academics/calendar?start_date=2030-02-01&end_date=2030-01-01",
+                          headers=student).status_code == 422
