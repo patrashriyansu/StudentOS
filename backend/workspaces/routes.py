@@ -11,7 +11,7 @@ import io
 
 from backend.core.database import get_db
 from backend.core.security import get_current_user
-from backend.users.models import User, UserProfile, Notification
+from backend.users.models import User, UserProfile, Notification, NotificationPreference
 from backend.academics.models import Grade
 from backend.placements.models import ResumeDocument, ApplicationResumeSnapshot
 from backend.campus.models import (
@@ -27,6 +27,27 @@ from .models import (
     MentorActionItem, MentorCheckIn, MentorSessionFeedback,
     RecruiterInterview,
 )
+
+
+async def _add_workspace_notification(db: AsyncSession, user_id: int, title: str,
+                                      message: str, notification_type: str = "info",
+                                      placement_update: bool = False) -> bool:
+    preferences = (await db.execute(
+        select(NotificationPreference).where(NotificationPreference.user_id == user_id)
+    )).scalar_one_or_none()
+    if preferences is not None:
+        if not preferences.in_app_enabled:
+            return False
+        if placement_update and not preferences.placement_updates:
+            return False
+    db.add(Notification(
+        user_id=user_id,
+        title=title,
+        message=message,
+        notification_type=notification_type,
+    ))
+    return True
+
 
 router = APIRouter()
 
@@ -1324,12 +1345,11 @@ async def schedule_recruiter_interview(application_id: int, req: RecruiterInterv
     )
     db.add(interview)
     application.status = "interview"
-    db.add(Notification(
-        user_id=student.id,
-        title=f"Interview scheduled: {job.company}",
-        message=f"{req.interview_type.title()} interview for {job.title} is scheduled for {scheduled_at.isoformat()}.",
-        notification_type="placement",
-    ))
+    await _add_workspace_notification(
+        db, student.id, f"Interview scheduled: {job.company}",
+        f"{req.interview_type.title()} interview for {job.title} is scheduled for {scheduled_at.isoformat()}.",
+        "placement", placement_update=True,
+    )
     await db.commit()
     await db.refresh(interview)
     return {"id": interview.id, "message": "Interview scheduled and the student was notified.",
@@ -1367,11 +1387,10 @@ async def update_recruiter_interview(interview_id: int, req: RecruiterInterviewU
     if interview is None:
         raise HTTPException(status_code=404, detail="Interview not found.")
     interview.status = req.status
-    db.add(Notification(
-        user_id=interview.student_id,
-        title="Interview update",
-        message=f"Your interview has been marked {req.status}.",
-        notification_type="placement",
-    ))
+    await _add_workspace_notification(
+        db, interview.student_id, "Interview update",
+        f"Your interview has been marked {req.status}.",
+        "placement", placement_update=True,
+    )
     await db.commit()
     return {"message": "Interview status updated.", "status": interview.status}
