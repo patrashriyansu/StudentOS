@@ -9,13 +9,29 @@ from sqlalchemy.orm import aliased
 
 from backend.core.database import get_db
 from backend.core.security import get_current_user
-from backend.users.models import User, UserProfile, Notification
+from backend.users.models import User, UserProfile, Notification, NotificationPreference
 from backend.campus.models import MentorStudentAssignment
 from .models import (
     MentorProgram, MentorDevelopmentGoal, MentorActionItem, MentorCheckIn,
     MentorSession, MentorSessionFeedback, MentorRequest, MentorMessage,
     MentorAvailabilitySlot,
 )
+
+
+async def _add_mentor_notification(db: AsyncSession, user_id: int, title: str, message: str) -> bool:
+    preferences = (await db.execute(
+        select(NotificationPreference).where(NotificationPreference.user_id == user_id)
+    )).scalar_one_or_none()
+    if preferences is not None and not preferences.in_app_enabled:
+        return False
+    db.add(Notification(
+        user_id=user_id,
+        title=title,
+        message=message,
+        notification_type="info",
+    ))
+    return True
+
 
 router = APIRouter()
 
@@ -858,12 +874,10 @@ async def update_mentor_availability(slot_id: int, req: MentorAvailabilityUpdate
         raise HTTPException(status_code=404, detail="Availability slot not found.")
     slot.status = req.status
     if slot.student_id is not None:
-        db.add(Notification(
-            user_id=slot.student_id,
-            title="Mentoring session update",
-            message=f"Your mentor has marked the booked slot as {req.status}.",
-            notification_type="info",
-        ))
+        await _add_mentor_notification(
+            db, slot.student_id, "Mentoring session update",
+            f"Your mentor has marked the booked slot as {req.status}.",
+        )
     await db.commit()
     return {"message": "Availability updated.", "status": slot.status}
 
@@ -916,12 +930,10 @@ async def book_mentor_availability(slot_id: int, req: MentorAvailabilityBooking,
     slot.status = "booked"
     slot.student_id = user.id
     slot.booking_message = req.message.strip() if req.message else None
-    db.add(Notification(
-        user_id=slot.mentor_id,
-        title="Mentoring slot booked",
-        message=f"{user.name} booked your availability for {starts_at.isoformat()}.",
-        notification_type="info",
-    ))
+    await _add_mentor_notification(
+        db, slot.mentor_id, "Mentoring slot booked",
+        f"{user.name} booked your availability for {starts_at.isoformat()}.",
+    )
     await db.commit()
     await db.refresh(slot)
     return {"message": "Mentoring slot booked.", "slot": availability_dict(slot)}
