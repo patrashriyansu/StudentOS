@@ -209,15 +209,19 @@ def test_avatar_upload_is_validated_and_persisted() -> None:
         )
         assert invalid.status_code == 415
 
+        # A normal base64 image data URL is much longer than 500 chars.
+        jpeg_bytes = bytes([255, 216, 255]) + (b"studentos-avatar-test" * 128) + bytes([255, 217])
         uploaded = client.post(
             "/api/v1/users/upload-avatar",
             headers=headers,
-            files={"file": ("avatar.jpg", bytes([255, 216, 255, 217]), "image/jpeg")},
+            files={"file": ("avatar.jpg", jpeg_bytes, "image/jpeg")},
         )
-        assert uploaded.status_code == 200
+        assert uploaded.status_code == 200, uploaded.text
+        assert len(uploaded.json()["avatar"]) > 500
         profile = client.get("/api/v1/auth/me", headers=headers)
         assert profile.status_code == 200
         assert profile.json()["avatar"].startswith("data:image/jpeg;base64,")
+        assert len(profile.json()["avatar"]) > 500
 
 
 
