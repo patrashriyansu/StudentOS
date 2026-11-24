@@ -220,12 +220,18 @@ async def _generate_text(
     except Exception as exc:
         logger.exception("Gemini request failed")
         message = str(exc).lower()
-        if "api key" in message or "unauthorized" in message or "permission" in message:
+        if "model" in message and any(term in message for term in ("not found", "unavailable", "not supported", "no accessible", "does not list")):
+            detail = (
+                "No accessible Gemini model is available to this API key. Check that GEMINI_API_KEY "
+                "belongs to a Google AI Studio project with Gemini Developer API access and set "
+                "GEMINI_MODEL to a model listed for that key."
+            )
+        elif "api key" in message or "unauthorized" in message or "permission" in message:
             detail = "Gemini rejected the configured API key. Check GEMINI_API_KEY in the backend environment."
         elif "quota" in message or "rate limit" in message or "resource_exhausted" in message:
             detail = "The Gemini API quota or rate limit has been reached. Check your Google AI Studio project and try again."
-        elif "not found" in message or "model" in message:
-            detail = f"The configured Gemini model ({settings.GEMINI_MODEL}) is unavailable to this API key. Check GEMINI_MODEL and model access."
+        elif "not found" in message:
+            detail = f"The configured Gemini model ({settings.GEMINI_MODEL}) is unavailable. Check GEMINI_MODEL and model access."
         else:
             detail = "Gemini could not complete the request. Please try again in a moment."
         raise HTTPException(status_code=502, detail=detail) from exc
