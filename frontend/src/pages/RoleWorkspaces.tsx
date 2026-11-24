@@ -376,12 +376,6 @@ export function MentorWorkspace() {
     catch(e:any){setError(e?.response?.data?.detail||'Could not update goal progress.')}
     finally{setSaving(false)}
   }
-  const bookMentorSlot=async(slotId:number)=>{
-    setBusy(true);setError('')
-    try{await api.post('/workspaces/student/mentoring/availability/'+slotId+'/book',{message:''});await load()}
-    catch(e:any){setError(e?.response?.data?.detail||'Could not book this mentoring slot.')}
-    finally{setBusy(false)}
-  }
   const updateAction=async(id:number,status:string)=>{
     setSaving(true);setError('')
     try{await api.patch(`/workspaces/mentor/action-items/${id}`,{status});await load()}
@@ -868,6 +862,12 @@ export function StudentMentoring() {
     setBusy(true);setError('')
     try{await api.patch(`/workspaces/student/mentoring/action-items/${id}`,{status});await load()}
     catch(e:any){setError(e?.response?.data?.detail||'Could not update the action item.')}
+    finally{setBusy(false)}
+  }
+  const bookMentorSlot=async(slotId:number)=>{
+    setBusy(true);setError('')
+    try{await api.post('/workspaces/student/mentoring/availability/'+slotId+'/book',{message:''});await load()}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not book this mentoring slot.')}
     finally{setBusy(false)}
   }
   const submitCheckIn=async(event:FormEvent)=>{
