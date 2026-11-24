@@ -175,7 +175,7 @@ test('the Settings sidebar destination resolves to a real page with persistent t
   const layout = await read('../src/components/layout/Layout.tsx')
   assert.match(layout, /to: '\/settings'/)
   assert.match(app, /<Route path="settings" element={<Settings \/>} \/>/)
-  assert.match(settings, /<ThemeControl\\s*\/>/)
+  assert.match(settings, /<ThemeControl\s*\/>/)
   assert.match(settings, /studentos-theme|saved in this browser/)
 })
 
