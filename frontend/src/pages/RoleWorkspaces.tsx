@@ -376,6 +376,12 @@ export function MentorWorkspace() {
     catch(e:any){setError(e?.response?.data?.detail||'Could not update goal progress.')}
     finally{setSaving(false)}
   }
+  const bookMentorSlot=async(slotId:number)=>{
+    setBusy(true);setError('')
+    try{await api.post('/workspaces/student/mentoring/availability/'+slotId+'/book',{message:''});await load()}
+    catch(e:any){setError(e?.response?.data?.detail||'Could not book this mentoring slot.')}
+    finally{setBusy(false)}
+  }
   const updateAction=async(id:number,status:string)=>{
     setSaving(true);setError('')
     try{await api.patch(`/workspaces/mentor/action-items/${id}`,{status});await load()}
@@ -827,6 +833,8 @@ export function StudentMentoring() {
   const [checkIn,setCheckIn]=useState({confidence_rating:'3',progress_status:'on_track',wins:'',blockers:'',support_needed:''})
   const [feedback,setFeedback]=useState<Record<number,{rating:string;takeaways:string;next_steps:string}>>({})
   const [availableMentors,setAvailableMentors]=useState<Row[]>([])
+  const [availableSlots,setAvailableSlots]=useState<Row[]>([])
+  const [bookedSlots,setBookedSlots]=useState<Row[]>([])
   const [mentorRequests,setMentorRequests]=useState<Row[]>([])
   const [requestMentorId,setRequestMentorId]=useState('')
   const [requestMessage,setRequestMessage]=useState('')
@@ -836,13 +844,16 @@ export function StudentMentoring() {
   const load=async()=>{
     setError('')
     try{
-      const [r,m,requests]=await Promise.all([
+      const [r,m,requests,slots,bookings]=await Promise.all([
         api.get('/workspaces/student/mentoring'),
         api.get('/workspaces/student/mentors'),
         api.get('/workspaces/student/mentoring/requests'),
+        api.get('/workspaces/student/mentoring/availability'),
+        api.get('/workspaces/student/mentoring/bookings'),
       ])
       setData(r.data||{programmes:[],goals:[],action_items:[],sessions:[],check_ins:[]})
       setAvailableMentors(m.data||[]);setMentorRequests(requests.data||[])
+      setAvailableSlots(slots.data||[]);setBookedSlots(bookings.data||[])
     }
     catch(e:any){setError(e?.response?.data?.detail||'Could not load your mentoring plan.')}
   }
@@ -934,7 +945,18 @@ export function StudentMentoring() {
         </>}
       </Panel>
     </div>
-\n    {(data.programmes||[]).length===0?<Panel><Empty title="No mentoring programme yet" detail="When a mentor creates a development plan for you, it will appear here for your review and acceptance."/></Panel>:
+\n    <Panel>
+      <h2 className="font-semibold">Book time with your mentor</h2>
+      <p className="text-xs text-dark-muted">Only time slots published by mentors assigned to you are shown here.</p>
+      {availableSlots.length===0?<Empty title="No bookable slots right now" detail="Your assigned mentor has not published an available time slot. You can still use private messages to coordinate."/>:
+        <div className="space-y-2">{availableSlots.map(slot=><article key={slot.id} className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-dark-border p-3">
+          <div><b>{slot.mentor_name}</b><p className="text-xs text-dark-muted">{new Date(slot.starts_at).toLocaleString()} – {new Date(slot.ends_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</p>
+            {slot.meeting_link&&<p className="text-xs text-primary">Meeting link will be available after booking.</p>}</div>
+          <Action disabled={busy} onClick={()=>void bookMentorSlot(slot.id)}>Book this slot</Action>
+        </article>)}</div>}
+      {bookedSlots.length>0&&<div className="border-t border-dark-border pt-3 space-y-2"><h3 className="text-sm font-semibold">My bookings</h3>{bookedSlots.map(slot=><article key={slot.id} className="rounded-xl border border-dark-border p-3"><div className="flex flex-wrap items-center justify-between gap-2"><div><b>{slot.mentor_name}</b><p className="text-xs text-dark-muted">{new Date(slot.starts_at).toLocaleString()} – {new Date(slot.ends_at).toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'})}</p></div><span className="rounded-full bg-dark-lighter px-3 py-1 text-xs capitalize">{slot.status}</span></div>{slot.meeting_link&&slot.status==='booked'&&<a href={slot.meeting_link} target="_blank" rel="noreferrer" className="mt-2 inline-block text-xs text-primary">Join session ↗</a>}{slot.booking_message&&<p className="mt-1 text-xs text-dark-muted">{slot.booking_message}</p>}</article>)}</div>}
+    </Panel>
+    {(data.programmes||[]).length===0?<Panel><Empty title="No mentoring programme yet" detail="When a mentor creates a development plan for you, it will appear here for your review and acceptance."/></Panel>:
       <Panel><h2 className="font-semibold">Mentoring programmes</h2><div className="space-y-3">{data.programmes.map((p:Row)=><article key={p.id} className="rounded-xl border border-dark-border p-4 space-y-2"><div className="flex flex-wrap justify-between gap-2"><div><h3 className="font-semibold">{p.title}</h3><p className="text-xs text-dark-muted">{p.mentor_name} · {p.focus_area} · {p.meeting_cadence} meetings</p></div><span className="text-xs rounded-full bg-dark-lighter px-3 py-1 capitalize">{p.status.replace('_',' ')}</span></div><p className="text-sm text-dark-muted">{p.description}</p><p className="text-xs text-dark-muted">{p.start_date}{p.target_end_date?' → '+p.target_end_date:''}</p>{p.status==='awaiting_student'&&<div className="flex gap-2 pt-2"><Action onClick={()=>void respond(p.id,true)} disabled={busy}>Accept plan</Action><Action secondary onClick={()=>void respond(p.id,false)} disabled={busy}>Decline</Action></div>}</article>)}</div></Panel>}
     <Panel><h2 className="font-semibold">Growth goals</h2>{(data.goals||[]).length===0?<Empty title="No growth goals yet" detail="Goals agreed with your mentor will appear here after you accept a programme."/>:<div className="space-y-3">{data.goals.map((g:Row)=><div key={g.id} className="rounded-xl border border-dark-border p-4"><div className="flex flex-wrap justify-between gap-2"><div><b>{g.title}</b><p className="text-xs text-dark-muted">{g.category} · due {g.due_date||'not set'} · {g.priority} priority</p></div><b className="text-sm">{g.progress_percent}%</b></div><p className="text-sm mt-2">{g.desired_outcome}</p><p className="text-xs text-dark-muted mt-1">Success measure: {g.success_measure}</p><div className="h-2 rounded-full bg-dark-lighter overflow-hidden mt-3"><div className="h-full bg-primary rounded-full" style={{width:`${g.progress_percent}%`}}/></div></div>)}</div>}</Panel>
     <Panel><h2 className="font-semibold">My action items</h2>{(data.action_items||[]).length===0?<Empty title="No actions assigned" detail="Your agreed next steps will appear here."/>:<div className="space-y-2">{data.action_items.map((item:Row)=><div key={item.id} className="rounded-xl border border-dark-border p-3 flex flex-wrap items-center justify-between gap-3"><div><b>{item.title}</b><p className="text-xs text-dark-muted">{item.owner==='student'?'Your task':'Mentor task'} · due {item.due_date||'not set'}</p>{item.description&&<p className="text-sm mt-1">{item.description}</p>}{item.resource_url&&<a href={item.resource_url} target="_blank" rel="noreferrer" className="text-xs text-primary">Open resource ↗</a>}</div>{item.owner==='student'?<SelectField label="Status" value={item.status} onChange={v=>void updateAction(item.id,v)} options={['not_started','in_progress','completed','blocked'].map(v=>({value:v,label:v.replace('_',' ')}))}/>:<span className="text-xs text-dark-muted capitalize">{item.status.replace('_',' ')}</span>}</div>)}</div>}</Panel>
