@@ -544,3 +544,109 @@ def test_student_can_request_mentor_and_message_only_after_acceptance() -> None:
             headers=other_student,
         )
         assert intruder.status_code == 404
+
+def test_recruiter_interviews_are_scheduled_for_owned_applications_and_visible_to_student() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        recruiter = register(client, "recruiter")
+        student = register(client, "student", "CSE-I")
+        visibility = client.put("/api/v1/campus/recruiter/visibility", headers=student,
+                                json={"profile_visible": True, "contact_visible": False})
+        assert visibility.status_code == 200
+
+        job = client.post("/api/v1/workspaces/recruiter/jobs", headers=recruiter, json={
+            "title": "Backend Engineering Intern",
+            "company": "Interview Workflow Test",
+            "description": "Build backend APIs and automated tests.",
+            "employment_type": "Internship",
+            "skills": ["Python", "FastAPI"],
+        })
+        assert job.status_code == 201, job.text
+        pdf = b"%PDF-1.4\\n% interview workflow test\\n%%EOF"
+        uploaded = client.post("/api/v1/placements/resume/upload", headers=student,
+                               files={"file": ("interview.pdf", pdf, "application/pdf")})
+        assert uploaded.status_code == 201, uploaded.text
+        application = client.post(
+            f"/api/v1/workspaces/student/jobs/{job.json()['id']}/apply",
+            headers=student,
+            json={"resume_document_id": uploaded.json()["resume_document_id"],
+                  "cover_note": "I am interested in this role."},
+        )
+        assert application.status_code == 201, application.text
+        application_id = application.json()["id"]
+
+        scheduled = client.post(
+            f"/api/v1/workspaces/recruiter/applications/{application_id}/interviews",
+            headers=recruiter,
+            json={
+                "scheduled_at": "2030-01-02T09:00:00Z",
+                "duration_minutes": 45,
+                "interview_type": "technical",
+                "meeting_url": "https://meet.example.test/interview",
+                "notes": "Bring a project walkthrough.",
+            },
+        )
+        assert scheduled.status_code == 201, scheduled.text
+        recruiter_view = client.get("/api/v1/workspaces/recruiter/interviews", headers=recruiter)
+        assert recruiter_view.status_code == 200
+        assert recruiter_view.json()[0]["student_name"] == student["name"]
+        assert recruiter_view.json()[0]["status"] == "scheduled"
+
+        student_view = client.get("/api/v1/workspaces/student/recruiter-interviews", headers=student)
+        assert student_view.status_code == 200
+        assert student_view.json()[0]["company"] == "Interview Workflow Test"
+        assert student_view.json()[0]["recruiter_name"] == recruiter["name"]
+        assert student_view.json()[0]["meeting_url"] == "https://meet.example.test/interview"
+
+        assert client.get("/api/v1/workspaces/recruiter/interviews", headers=student).status_code == 403
+        assert client.get("/api/v1/workspaces/student/recruiter-interviews", headers=recruiter).status_code == 403
+
+
+def test_mentor_availability_can_only_be_booked_by_assigned_student() -> None:
+    with TestClient(app) as client:
+        wait_until_ready(client)
+        admin = register(client, "student")
+        promote(admin["email"], "admin")
+        mentor = register(client, "mentor")
+        assigned = register(client, "student", "CSE-S")
+        unassigned = register(client, "student", "CSE-U")
+
+        assignment = client.post("/api/v1/campus/mentor/assignments", headers=admin, json={
+            "mentor_email": mentor["email"],
+            "student_email": assigned["email"],
+        })
+        assert assignment.status_code == 201, assignment.text
+
+        slot = client.post("/api/v1/workspaces/mentor/availability", headers=mentor, json={
+            "starts_at": "2030-02-10T09:00:00Z",
+            "ends_at": "2030-02-10T09:30:00Z",
+            "meeting_link": "https://meet.example.test/mentor",
+        })
+        assert slot.status_code == 201, slot.text
+        slot_id = slot.json()["id"]
+
+        visible = client.get("/api/v1/workspaces/student/mentoring/availability", headers=assigned)
+        assert visible.status_code == 200
+        assert [item["id"] for item in visible.json()] == [slot_id]
+        assert client.get("/api/v1/workspaces/student/mentoring/availability", headers=unassigned).json() == []
+
+        booked = client.post(
+            f"/api/v1/workspaces/student/mentoring/availability/{slot_id}/book",
+            headers=assigned,
+            json={"message": "I would like to discuss my internship preparation."},
+        )
+        assert booked.status_code == 201, booked.text
+        assert booked.json()["slot"]["status"] == "booked"
+
+        mentor_slots = client.get("/api/v1/workspaces/mentor/availability", headers=mentor)
+        assert mentor_slots.status_code == 200
+        assert mentor_slots.json()[0]["student_name"] == assigned["name"]
+        assert mentor_slots.json()[0]["booking_message"].startswith("I would like")
+
+        duplicate = client.post(
+            f"/api/v1/workspaces/student/mentoring/availability/{slot_id}/book",
+            headers=unassigned,
+            json={"message": "Trying another account."},
+        )
+        assert duplicate.status_code == 404
+        assert client.get("/api/v1/workspaces/mentor/availability", headers=assigned).status_code == 403
